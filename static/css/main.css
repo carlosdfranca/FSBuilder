@@ -1,129 +1,321 @@
-/* ========================
-   ESTILO BASE CORPORATIVO
-   ======================== */
-
-/* === Variáveis principais === */
+/* ================================
+   Design Tokens — Cinnamon Platform
+================================ */
 :root {
-    --cor-principal: #B86231;
-    --cor-principal-hover: #7b4322;
-    --cor-secundaria: #19535F;
-    --cor-terciária: #0B7A75;
-    --cor-danger: #dc3545;
-    --cor-success: #198754;
-    --cinza-claro: #F7F3E3;
-    --cinza-medio: #C1BDB3;
-    --cinza-escuro: #939088;
-    --texto-claro: #ffffff;
-    --texto-escuro: #2B3834;
+    /* Superfícies — Obsidian */
+    --surface-1: #111113;
+    --surface-2: #171719;
+    --surface-3: #1C1C1E;
+    --surface-raised: #222224;
+
+    /* Texto */
+    --text-primary: #F8F5F0;
+    --text-secondary: #ADADB1;
+    --text-muted: #6C6C70;
+
+    /* Bordas */
+    --border-color: rgba(255, 255, 255, 0.06);
+    --border-radius: 12px;
+    --border-radius-sm: 8px;
+
+    /* Accent — Cinnammon bordeaux */
+    --accent-primary: #6B1A2A;
+    --accent-primary-hover: #4A0F1C;
+    --accent-primary-glow: rgba(107, 26, 42, 0.20);
+
+    /* Status */
+    --status-active: #10b981;
+    --status-inactive: #6b7585;
+
+    /* Sombras */
+    --shadow-card: none;
+    --shadow-card-hover: 0 10px 36px rgba(0, 0, 0, 0.75);
+
+    /* Compat — nomes legados mapeados para o novo sistema */
+    --cor-principal: #6B1A2A;
+    --cor-principal-hover: #4A0F1C;
+    --cor-secundaria: #171719;
+    --cor-terciária: #C47080;
+    --cor-danger: #ef4444;
+    --cor-success: #10b981;
+    --cinza-claro: #1C1C1E;
+    --cinza-medio: rgba(255, 255, 255, 0.08);
+    --cinza-escuro: #6C6C70;
+    --texto-claro: #F8F5F0;
+    --texto-escuro: #F8F5F0;
 }
 
-/* === Reset básico === */
+/* ================================
+   Cinnamon Platform — Tema Global
+================================ */
 body {
-    background-color: var(--cor-secundaria);
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    color: var(--texto-escuro);
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+    background-color: var(--surface-1);
+    color: var(--text-primary);
     margin: 0;
+    padding: 0;
 }
 
-/* === Botões === */
-.btn-primary {
-    background-color: var(--cor-principal);
-    border-color: var(--cor-principal);
-    color: var(--texto-claro);
+.container {
+    max-width: 1400px;
 }
-.btn-primary:hover {
-    background-color: var(--cor-principal-hover);
-    border-color: var(--cor-principal-hover);
+
+/* ================================
+   Buttons
+================================ */
+.btn {
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+    font-weight: 500;
+    font-size: 0.875rem;
+    border-radius: var(--border-radius-sm);
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    border: none;
+    cursor: pointer;
+}
+.btn:active { transform: scale(0.98); }
+
+.btn-primary {
+    background-color: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+}
+.btn-primary:hover,
+.btn-primary:focus-visible {
+    background-color: var(--accent-primary-hover);
+    border-color: var(--accent-primary-hover);
+    color: var(--text-primary);
+    box-shadow: 0 0 0 3px var(--accent-primary-glow);
+}
+.btn-primary:active {
+    background-color: var(--accent-primary-hover);
+    border-color: var(--accent-primary-hover);
+}
+.btn-primary:disabled,
+.btn-primary.disabled {
+    background-color: var(--surface-raised) !important;
+    border-color: var(--surface-raised) !important;
+    color: var(--text-muted) !important;
+    opacity: 0.65;
+    cursor: not-allowed;
 }
 
 .btn-outline-primary {
-    color: var(--cor-principal);
-    border-color: var(--cor-principal);
+    color: #C47080;
+    border: 1px solid rgba(107, 26, 42, 0.45);
     background-color: transparent;
-    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
-
 .btn-outline-primary:hover {
-    background-color: var(--cor-principal-hover);
-    border-color: var(--cor-principal-hover);
-    color: var(--texto-claro);
+    background-color: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
 }
 
-.btn-secondary {
-    background-color: var(--cinza-escuro);
-    border-color: var(--cinza-escuro);
-    color: var(--texto-claro);
+.btn-secondary,
+.btn-outline-secondary {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: var(--text-secondary);
 }
-.btn-secondary:hover {
-    background-color: #565e64;
-    border-color: #565e64;
+.btn-secondary:hover,
+.btn-outline-secondary:hover {
+    background: rgba(255, 255, 255, 0.10);
+    border-color: rgba(255, 255, 255, 0.16);
+    color: var(--text-primary);
+}
+
+.btn-success {
+    background-color: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    color: #34d399;
+}
+.btn-success:hover {
+    background-color: rgba(16, 185, 129, 0.25);
+    color: #34d399;
 }
 
 .btn-danger {
-    background-color: var(--cor-danger);
-    border-color: var(--cor-danger);
-    color: var(--texto-claro);
+    background-color: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: #f87171;
 }
 .btn-danger:hover {
-    background-color: #bb2d3b;
-    border-color: #b02a37;
+    background-color: rgba(239, 68, 68, 0.25);
+    color: #f87171;
 }
 
-/* === Cartões === */
+.btn-outline-danger {
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    background: transparent;
+}
+.btn-outline-danger:hover {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+}
+
+.btn-sm {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.7rem;
+}
+
+/* ================================
+   Cards
+================================ */
 .card {
-    border: none;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-    background-color: var(--texto-claro);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--surface-2);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-card);
+    transition: box-shadow 0.2s ease;
+}
+.card:hover {
+    box-shadow: var(--shadow-card-hover);
+}
+.card h4, .card h5, .card h6 {
+    color: var(--text-primary);
+}
+.card .card-body {
+    color: var(--text-primary);
+}
+.card .card-title {
+    color: var(--text-primary);
+}
+.card .card-text {
+    color: var(--text-secondary);
 }
 
-/* === Formulários === */
-.form-control {
-    border-radius: 6px;
-    border: 1px solid var(--cinza-medio);
+/* Modal dark */
+.modal-content {
+    background-color: var(--surface-2);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: var(--border-radius);
 }
-.form-control:focus {
-    border-color: var(--cor-principal);
-    box-shadow: 0 0 0 0.2rem rgba(0,77,153,0.25);
+.modal-header {
+    border-bottom: 1px solid var(--border-color);
 }
+.modal-footer {
+    border-top: 1px solid var(--border-color);
+}
+.modal-title {
+    color: var(--text-primary);
+}
+.btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+/* ================================
+   Forms — dark theme
+================================ */
+.form-control,
+.form-select {
+    background-color: var(--surface-3);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: var(--text-primary);
+    border-radius: var(--border-radius-sm);
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+    font-size: 0.9rem;
+}
+.form-control::placeholder {
+    color: var(--text-muted);
+}
+.form-control:focus,
+.form-select:focus {
+    background-color: var(--surface-3);
+    border-color: rgba(107, 26, 42, 0.55);
+    color: var(--text-primary);
+    box-shadow: 0 0 0 3px var(--accent-primary-glow);
+}
+.form-select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ADADB1' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+}
+.form-select option {
+    background-color: var(--surface-3);
+    color: var(--text-primary);
+}
+.form-label,
 label {
     font-weight: 500;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+.form-control.is-invalid,
+.form-select.is-invalid {
+    border-color: rgba(239, 68, 68, 0.5);
+}
+.input-group-text {
+    background-color: var(--surface-raised);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: var(--text-secondary);
 }
 
-/* === Tabelas === */
+/* ================================
+   Tables — dark theme
+================================ */
 .table {
     border-collapse: collapse;
-    background-color: var(--texto-claro);
+    color: var(--text-primary);
+    --bs-table-bg: transparent;
+    --bs-table-border-color: var(--border-color);
 }
 .table th {
-    background-color: var(--cor-principal);
-    color: var(--texto-claro);
+    background-color: var(--surface-raised);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
     font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border-color) !important;
+    padding: 0.75rem;
 }
 .table td, .table th {
     padding: 0.75rem;
     vertical-align: middle;
-    border: 1px solid var(--cinza-medio);
+    border-color: var(--border-color);
+}
+.table td {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+.table-striped > tbody > tr:nth-of-type(odd) > * {
+    --bs-table-accent-bg: rgba(255, 255, 255, 0.025);
+    color: var(--text-primary);
 }
 .table-hover tbody tr:hover {
-    background-color: var(--cinza-claro);
+    background-color: rgba(255, 255, 255, 0.04);
+    cursor: default;
+}
+.table-responsive {
+    border-radius: var(--border-radius-sm);
 }
 
-/* === Alerts === */
+/* ================================
+   Alerts
+================================ */
 .alert-success {
-    background-color: #d1e7dd;
-    border-color: #badbcc;
-    color: #0f5132;
+    background-color: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.30);
+    color: #34d399;
 }
-.alert-danger {
-    background-color: #f8d7da;
-    border-color: #f5c2c7;
-    color: #842029;
+.alert-danger,
+.alert-error {
+    background-color: rgba(239, 68, 68, 0.10);
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    color: #f87171;
 }
 .alert-info {
-    background-color: #cff4fc;
-    border-color: #b6effb;
-    color: #055160;
+    background-color: rgba(107, 26, 42, 0.12);
+    border: 1px solid rgba(107, 26, 42, 0.28);
+    color: #C47080;
+}
+.alert-warning {
+    background-color: rgba(245, 158, 11, 0.10);
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    color: #fbbf24;
+}
+.btn-close {
+    filter: invert(1) grayscale(100%) brightness(180%);
 }
 
 /* === Espaçamento padrão === */
@@ -132,81 +324,344 @@ label {
 .pt-4 { padding-top: 1.5rem !important; }
 .pb-4 { padding-bottom: 1.5rem !important; }
 
-/* === Login específico === */
+/* ================================
+   Login
+================================ */
 .login-card {
-    max-width: 400px;
+    max-width: 420px;
     width: 100%;
-    padding: 2rem;
-    background-color: var(--cinza-claro);
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    padding: 2.25rem;
+    background-color: var(--surface-2);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
 }
 
 .login-container {
     min-height: 100vh;
+    background-color: var(--surface-1);
 }
 
-/* === Logo da marca === */
+/* ================================
+   Brand logo
+================================ */
 .brand-logo {
     max-width: 60px;
     height: auto;
     margin-bottom: 2rem;
 }
 
-/* === Grid interno para conteúdo de páginas === */
+/* ================================
+   Page content block
+================================ */
 .pagina-conteudo {
     padding: 2rem;
-    background-color: var(--texto-claro);
+    background-color: var(--surface-2);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+}
+
+/* ================================
+   Site Navbar
+================================ */
+.site-nav {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: rgba(12, 9, 10, 0.94);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    height: 60px;
+    display: flex;
+    align-items: center;
+    margin-bottom: 0;
+}
+.site-nav__inner {
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 100%;
+}
+
+/* Brand */
+.site-nav__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    text-decoration: none;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    flex-shrink: 0;
+    margin-right: 0.75rem;
+}
+.site-nav__brand strong { font-weight: 800; }
+.site-nav__brand:hover { color: var(--text-primary); }
+.site-nav__brand-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #6B1A2A, #4A0F1C);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    color: #fff;
+    flex-shrink: 0;
+}
+.site-nav__logo {
+    height: 28px;
+    width: auto;
+    display: block;
+    object-fit: contain;
+}
+
+/* Company selector */
+.site-nav__empresa {
+    margin-right: 0.5rem;
+}
+.site-nav__empresa-form {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 0.3rem 0.75rem;
+    position: relative;
+}
+.site-nav__empresa-icon {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+.site-nav__empresa-select {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 500;
+    font-family: 'Inter', sans-serif;
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0;
+    padding-right: 1rem;
+    cursor: pointer;
+    outline: none;
+}
+.site-nav__empresa-select option {
+    background: var(--surface-3);
+    color: var(--text-primary);
+}
+.site-nav__empresa-chevron {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    pointer-events: none;
+    flex-shrink: 0;
+    margin-left: -0.9rem;
+}
+
+/* Nav links */
+.site-nav__links {
+    display: flex !important;
+    align-items: center;
+    flex: 1;
+}
+.site-nav__menu {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex: 1;
+}
+.site-nav__link {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: 7px;
+    transition: color 0.14s ease, background 0.14s ease;
+    white-space: nowrap;
+}
+.site-nav__link:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+.site-nav__link.is-active {
+    color: var(--text-primary);
+    background: rgba(107, 26, 42, 0.14);
+}
+
+/* Dropdown panel */
+.site-nav__dropdown {
+    list-style: none;
+    margin: 0;
+    padding: 0.35rem;
+    min-width: 200px;
+    background: #100d0e;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 1001;
+    display: none;
+}
+.site-nav__dropdown.show { display: block; }
+
+.site-nav__dropdown-wrap {
+    position: relative;
+}
+.site-nav__dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.7rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: 7px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: background 0.13s ease, color 0.13s ease;
+    width: 100%;
+    font-family: 'Inter', sans-serif;
+}
+.site-nav__dropdown-item i {
+    font-size: 0.9rem;
+    opacity: 0.7;
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+}
+.site-nav__dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+}
+.site-nav__dropdown-item--danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: #f87171;
+}
+.site-nav__dropdown-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    margin: 0.3rem 0.4rem;
 }
 
-/* === Navbar === */
-nav {
-    background-color: var(--cinza-claro);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+/* User area */
+.site-nav__user {
+    margin-left: auto;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding-left: 0.75rem;
+    border-left: 1px solid var(--border-color);
+}
+.site-nav__user-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 500;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: background 0.14s ease, color 0.14s ease;
+}
+.site-nav__user-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+.site-nav__avatar-fallback {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6B1A2A, #7D2A3F);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+}
+.site-nav__chevron {
+    font-size: 0.65rem;
+    opacity: 0.6;
+    transition: transform 0.18s ease;
+}
+.site-nav__user-btn[aria-expanded="true"] .site-nav__chevron {
+    transform: rotate(180deg);
 }
 
-nav .dropdown-menu {
-    background-color: var(--cinza-claro)
+/* Legacy nav — kept for compatibility but hidden */
+nav.navbar {
+    display: none !important;
 }
 
-nav .dropdown-item {
-    background-color: var(--cinza-claro);
-}
+/* ================================
+   Card (second definition removed — unified above)
+================================ */
 
-nav .dropdown-item:hover {
-    background-color: var(--cinza-medio);
-}
-
-/* === Card === */
-.card {
-    background-color: var(--cinza-claro);
-    border-radius: 10px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-    transition: box-shadow 0.2s ease-in-out;
-}
-
-.card:hover {
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 1); /* sombra mais escura, maior e mais espalhada */
-}
-
-/* === Datatables === */
-/* Corrige botão ativo do DataTables */
+/* ================================
+   DataTables — dark overrides
+================================ */
 .dataTables_wrapper .dataTables_paginate .page-item.active .page-link,
 .dataTables_wrapper .dataTables_paginate .page-link.active {
-    background-color: var(--cor-principal) !important;
-    color: var(--cinza-claro) !important;
-    border-color: var(--cor-principal-hover) !important;
+    background-color: var(--accent-primary) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--accent-primary-hover) !important;
     box-shadow: none !important;
 }
-
-/* Corrige estilo da tag 'error' usada por Django */
-.alert-error {
-  background-color: #f8d7da;
-  color: #842029;
-  border: 1px solid #f5c2c7;
+.dataTables_wrapper .dataTables_length select,
+.dataTables_wrapper .dataTables_filter input {
+    background-color: var(--surface-3);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: var(--text-primary);
+    border-radius: var(--border-radius-sm);
+    padding: 0.25rem 0.5rem;
 }
+.dataTables_wrapper .dataTables_length label,
+.dataTables_wrapper .dataTables_filter label,
+.dataTables_wrapper .dataTables_info {
+    color: var(--text-secondary);
+}
+.dataTables_wrapper .page-link {
+    background-color: var(--surface-raised);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+.dataTables_wrapper .page-link:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
+/* ================================
+   Corrige tag .alert-error (Django)
+================================ */
+/* already covered in alerts section above */
 
 /* === Responsividade === */
 @media (max-width: 576px) {
@@ -215,77 +670,445 @@ nav .dropdown-item:hover {
     }
 }
 
-/* =========================
-   Tabs (Bootstrap 5)
-   ========================= */
-
-/* Barra inferior das tabs */
+/* ================================
+   Tabs (Bootstrap 5) — dark theme
+================================ */
 .nav-tabs {
-    border-bottom: 2px solid var(--cor-principal);
+    border-bottom: 1px solid var(--border-color);
+    gap: 0.2rem;
 }
-
-/* Abas inativas: tira borda padrão e ajusta cor do texto */
 .nav-tabs .nav-link {
     border: none;
-    color: var(--cor-secundaria);            /* texto das abas inativas */
+    color: var(--text-secondary);
     background-color: transparent;
-    font-weight: 600;
+    font-weight: 500;
+    font-size: 0.85rem;
+    border-radius: 7px 7px 0 0;
+    padding: 0.65rem 1rem;
+    transition: color 0.14s ease, background 0.14s ease;
 }
-
-/* Hover/focus nas inativas */
 .nav-tabs .nav-link:hover,
 .nav-tabs .nav-link:focus {
-    color: var(--cor-principal);
-    background-color: rgba(184, 98, 49, 0.08); /* leve hint da cor principal */
+    color: var(--text-primary);
+    background-color: rgba(255, 255, 255, 0.05);
     border: none;
 }
-
-/* Aba ativa: usa 100% a paleta */
 .nav-tabs .nav-link.active,
 .nav-tabs .nav-item.show .nav-link {
-    color: var(--texto-claro);
-    background-color: var(--cor-principal);
+    color: var(--text-primary);
+    background-color: rgba(107, 26, 42, 0.20);
     border: none;
-    box-shadow: 0 0 0 1px var(--cor-principal); /* borda óptica para recorte */
+    border-bottom: 2px solid var(--accent-primary);
 }
-
-/* Ajuste para melhor clique em mobile */
-.nav-tabs .nav-link {
-    padding: 0.75rem 1rem;
-    border-radius: 0.5rem 0.5rem 0 0; /* cantos levemente arredondados em cima */
-}
-
-/* Acessibilidade: foco por teclado bem visível */
 .nav-tabs .nav-link:focus-visible {
-    outline: 3px solid var(--cor-terciária);
+    outline: 3px solid var(--accent-primary-glow);
     outline-offset: 2px;
 }
-
-/* Conteúdo das tabs dentro de "card" */
-.tab-card {
-    background: var(--texto-claro);
-    border: 1px solid var(--cinza-medio);
-    border-top: none;                        /* para encaixar com a barra das tabs */
-    border-radius: 0 0 10px 10px;
-    padding: 1rem;
-}
-
-/* Estado disabled (se algum dia usar) */
-.nav-tabs .nav-link.disabled,
-.nav-tabs .nav-item.show .nav-link.disabled {
-    color: var(--cinza-escuro);
+.nav-tabs .nav-link.disabled {
+    color: var(--text-muted);
     background-color: transparent;
     border: none;
-    opacity: 0.7;
+    opacity: 0.5;
     cursor: not-allowed;
+}
+.tab-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border-color);
+    border-top: none;
+    border-radius: 0 0 var(--border-radius) var(--border-radius);
+    padding: 1rem;
+    color: var(--text-primary);
 }
 
-/* === Ajuste botão primário desabilitado === */
-.btn-primary:disabled,
-.btn-primary.disabled {
-    background-color: var(--cinza-medio) !important; /* cor neutra */
-    border-color: var(--cinza-medio) !important;
-    color: var(--texto-claro) !important;
-    opacity: 0.65; /* mantém contraste de desabilitado */
-    cursor: not-allowed;
+/* ================================
+   Bootstrap global overrides
+================================ */
+
+/* Pagination */
+.page-link {
+    background-color: var(--surface-raised);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
 }
+.page-link:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+.page-item.active .page-link {
+    background-color: var(--accent-primary);
+    border-color: var(--accent-primary-hover);
+    color: var(--text-primary);
+}
+.page-item.disabled .page-link {
+    background-color: var(--surface-2);
+    color: var(--text-muted);
+}
+
+/* Dropdown (Bootstrap) dark */
+.dropdown-menu {
+    background-color: #100d0e;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+.dropdown-item {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    border-radius: 7px;
+    padding: 0.5rem 0.75rem;
+    transition: background 0.13s ease, color 0.13s ease;
+}
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+}
+.dropdown-divider {
+    border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Neutralise Bootstrap shadow-sm */
+.shadow-sm { box-shadow: none !important; }
+
+/* Text helpers — ensure contrast */
+.text-muted { color: var(--text-muted) !important; }
+.text-secondary { color: var(--text-secondary) !important; }
+
+/* ================================
+   Animations
+================================ */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.card,
+.pagina-conteudo {
+    animation: fadeInUp 0.28s ease both;
+}
+
+/* ================================
+   Theme Toggle Button
+================================ */
+.site-nav__theme-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.14s ease, color 0.14s ease;
+    flex-shrink: 0;
+    margin-right: 0.25rem;
+}
+.site-nav__theme-btn:hover {
+    background: rgba(255, 255, 255, 0.10);
+    color: var(--text-primary);
+}
+
+/* ================================
+   Light Mode — Cinnamon Ivory
+================================ */
+html[data-theme="light"] {
+    --surface-1: #F5F0E8;
+    --surface-2: #FDFBF7;
+    --surface-3: #F0EBE1;
+    --surface-raised: #E8E2D6;
+    --text-primary: #1A1410;
+    --text-secondary: #4A4540;
+    --text-muted: #8A847C;
+    --border-color: rgba(0, 0, 0, 0.08);
+    --accent-primary: #6B1A2A;
+    --accent-primary-hover: #4A0F1C;
+    --accent-primary-glow: rgba(107, 26, 42, 0.15);
+    --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.06);
+    --shadow-card-hover: 0 8px 28px rgba(0, 0, 0, 0.14);
+    /* compat vars */
+    --cinza-claro: #F0EBE1;
+    --cinza-medio: rgba(0, 0, 0, 0.08);
+    --texto-claro: #1A1410;
+    --texto-escuro: #1A1410;
+}
+
+html[data-theme="light"] body {
+    background-color: var(--surface-1);
+    color: var(--text-primary);
+}
+
+/* Navbar */
+html[data-theme="light"] .site-nav {
+    background: rgba(245, 240, 232, 0.94);
+    border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+html[data-theme="light"] .site-nav__theme-btn {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.10);
+    color: var(--text-secondary);
+}
+html[data-theme="light"] .site-nav__theme-btn:hover {
+    background: rgba(0, 0, 0, 0.09);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .site-nav__link {
+    color: var(--text-secondary);
+}
+html[data-theme="light"] .site-nav__link:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .site-nav__link.is-active {
+    background: rgba(107, 26, 42, 0.10);
+    color: var(--accent-primary);
+}
+html[data-theme="light"] .site-nav__user-btn {
+    color: var(--text-secondary);
+}
+html[data-theme="light"] .site-nav__user-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .site-nav__dropdown {
+    background: #FDFBF7;
+    border-color: rgba(0, 0, 0, 0.10);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.14);
+}
+html[data-theme="light"] .site-nav__dropdown-item {
+    color: var(--text-secondary);
+}
+html[data-theme="light"] .site-nav__dropdown-item:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .site-nav__dropdown-divider {
+    background: rgba(0, 0, 0, 0.06);
+}
+html[data-theme="light"] .site-nav__empresa-form {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.10);
+}
+html[data-theme="light"] .site-nav__user {
+    border-left-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Cards */
+html[data-theme="light"] .card {
+    background-color: var(--surface-2);
+    border-color: rgba(0, 0, 0, 0.07);
+}
+html[data-theme="light"] .card h3,
+html[data-theme="light"] .card h4,
+html[data-theme="light"] .card h5,
+html[data-theme="light"] .card h6 {
+    color: var(--text-primary);
+}
+html[data-theme="light"] .card .card-body,
+html[data-theme="light"] .card .card-title {
+    color: var(--text-primary);
+}
+html[data-theme="light"] .card .card-text {
+    color: var(--text-secondary);
+}
+
+/* Modal */
+html[data-theme="light"] .modal-content {
+    background-color: var(--surface-2);
+    border-color: rgba(0, 0, 0, 0.10);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .modal-header,
+html[data-theme="light"] .modal-footer {
+    border-color: rgba(0, 0, 0, 0.08);
+}
+html[data-theme="light"] .btn-close {
+    filter: none;
+}
+
+/* Form inputs */
+html[data-theme="light"] .form-control,
+html[data-theme="light"] .form-select {
+    background-color: #fff;
+    border-color: rgba(0, 0, 0, 0.14);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .form-control::placeholder {
+    color: var(--text-muted);
+}
+html[data-theme="light"] .form-control:focus,
+html[data-theme="light"] .form-select:focus {
+    background-color: #fff;
+    border-color: rgba(107, 26, 42, 0.50);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .form-select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%234A4540' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+}
+html[data-theme="light"] .form-select option {
+    background-color: #fff;
+    color: var(--text-primary);
+}
+html[data-theme="light"] .form-label,
+html[data-theme="light"] label {
+    color: var(--text-secondary);
+}
+html[data-theme="light"] .input-group-text {
+    background-color: var(--surface-raised);
+    border-color: rgba(0, 0, 0, 0.14);
+    color: var(--text-secondary);
+}
+
+/* Tables */
+html[data-theme="light"] .table {
+    --bs-table-border-color: rgba(0, 0, 0, 0.07);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .table th {
+    background-color: var(--surface-raised);
+    color: var(--text-secondary);
+}
+html[data-theme="light"] .table td {
+    color: var(--text-primary);
+}
+html[data-theme="light"] .table-striped > tbody > tr:nth-of-type(odd) > * {
+    --bs-table-accent-bg: rgba(0, 0, 0, 0.025);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .table-hover tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+/* Alerts */
+html[data-theme="light"] .alert-success {
+    background-color: rgba(16, 185, 129, 0.10);
+    border-color: rgba(16, 185, 129, 0.25);
+    color: #065f46;
+}
+html[data-theme="light"] .alert-danger,
+html[data-theme="light"] .alert-error {
+    background-color: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.22);
+    color: #991b1b;
+}
+html[data-theme="light"] .alert-info {
+    background-color: rgba(107, 26, 42, 0.08);
+    border-color: rgba(107, 26, 42, 0.22);
+    color: #6B1A2A;
+}
+html[data-theme="light"] .alert-warning {
+    background-color: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.22);
+    color: #92400e;
+}
+
+/* Buttons */
+html[data-theme="light"] .btn-secondary,
+html[data-theme="light"] .btn-outline-secondary {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.12);
+    color: var(--text-secondary);
+}
+html[data-theme="light"] .btn-secondary:hover,
+html[data-theme="light"] .btn-outline-secondary:hover {
+    background: rgba(0, 0, 0, 0.09);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .btn-outline-danger {
+    color: #991b1b;
+    border-color: rgba(153, 27, 27, 0.35);
+}
+html[data-theme="light"] .btn-outline-danger:hover {
+    background-color: rgba(153, 27, 27, 0.08);
+    color: #991b1b;
+}
+
+/* Login */
+html[data-theme="light"] .login-container {
+    background-color: var(--surface-1);
+}
+html[data-theme="light"] .login-card {
+    background-color: var(--surface-2);
+    border-color: rgba(0, 0, 0, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.10);
+}
+
+/* Tabs */
+html[data-theme="light"] .nav-tabs {
+    border-bottom-color: rgba(0, 0, 0, 0.10);
+}
+html[data-theme="light"] .nav-tabs .nav-link {
+    color: var(--text-secondary);
+}
+html[data-theme="light"] .nav-tabs .nav-link:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .nav-tabs .nav-link.active {
+    color: var(--accent-primary);
+    background-color: rgba(107, 26, 42, 0.08);
+    border-bottom-color: var(--accent-primary);
+}
+html[data-theme="light"] .tab-card {
+    background: var(--surface-2);
+    border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Dropdown (Bootstrap) */
+html[data-theme="light"] .dropdown-menu {
+    background-color: #FDFBF7;
+    border-color: rgba(0, 0, 0, 0.10);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+}
+html[data-theme="light"] .dropdown-item {
+    color: var(--text-secondary);
+}
+html[data-theme="light"] .dropdown-item:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .dropdown-divider {
+    border-color: rgba(0, 0, 0, 0.07);
+}
+
+/* Pagination */
+html[data-theme="light"] .page-link {
+    background-color: var(--surface-2);
+    border-color: rgba(0, 0, 0, 0.10);
+    color: var(--text-secondary);
+}
+html[data-theme="light"] .page-link:hover {
+    background-color: var(--surface-raised);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .page-item.active .page-link {
+    background-color: var(--accent-primary);
+    border-color: var(--accent-primary-hover);
+    color: #fff;
+}
+html[data-theme="light"] .page-item.disabled .page-link {
+    background-color: var(--surface-2);
+    color: var(--text-muted);
+}
+
+/* DataTables */
+html[data-theme="light"] .dataTables_wrapper .dataTables_length select,
+html[data-theme="light"] .dataTables_wrapper .dataTables_filter input {
+    background-color: #fff;
+    border-color: rgba(0, 0, 0, 0.14);
+    color: var(--text-primary);
+}
+html[data-theme="light"] .dataTables_wrapper .dataTables_length label,
+html[data-theme="light"] .dataTables_wrapper .dataTables_filter label,
+html[data-theme="light"] .dataTables_wrapper .dataTables_info {
+    color: var(--text-secondary);
+}
+
+/* Text helpers */
+html[data-theme="light"] .text-muted  { color: var(--text-muted) !important; }
+html[data-theme="light"] .text-white  { color: var(--text-primary) !important; }
+html[data-theme="light"] .text-light  { color: var(--text-secondary) !important; }
+
