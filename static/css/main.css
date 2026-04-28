@@ -527,7 +527,8 @@ label {
     background: linear-gradient(160deg, #3D1525 0%, #6B1A2A 50%, #4A0F1C 100%);
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: center;
+    align-items: center;
     padding: 3rem 3.5rem;
     position: relative;
     overflow: hidden;
@@ -588,6 +589,10 @@ label {
     color: rgba(255, 255, 255, 0.35);
     margin: 0;
     text-align: center;
+    position: absolute;
+    bottom: 1.75rem;
+    left: 0;
+    right: 0;
 }
 
 /* ── Painel direito: formulário ── */
