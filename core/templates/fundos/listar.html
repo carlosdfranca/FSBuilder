@@ -62,82 +62,83 @@
                   </td>
                   {% endif %}
                 </tr>
-
-                {% if can_manage_fundos %}
-                <!-- Modal Editar Fundo -->
-                <div class="modal fade" id="modalEditarFundo{{ fundo.id }}" tabindex="-1" aria-labelledby="modalEditarFundoLabel{{ fundo.id }}" aria-hidden="true">
-                  <div class="modal-dialog">
-                    <div class="modal-content">
-                      <form method="POST" action="{% url 'editar_fundo' fundo.id %}">
-                        {% csrf_token %}
-                        <div class="modal-header">
-                          <h5 class="modal-title" id="modalEditarFundoLabel{{ fundo.id }}">Editar Fundo</h5>
-                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-                        </div>
-                        <div class="modal-body">
-                          <div class="mb-3">
-                            <label for="nome{{ fundo.id }}" class="form-label">Nome do Fundo</label>
-                            <input type="text" name="nome" id="nome{{ fundo.id }}" value="{{ fundo.nome }}" class="form-control" required>
-                          </div>
-                          <div class="mb-3">
-                            <label for="cnpj{{ fundo.id }}" class="form-label">CNPJ</label>
-                            <input type="text" name="cnpj" id="cnpj{{ fundo.id }}" value="{{ fundo.cnpj }}" class="form-control" required>
-                          </div>
-                        </div>
-                        <div class="modal-footer">
-                          <button type="submit" class="btn btn-primary">Salvar alterações</button>
-                          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        </div>
-                      </form>
-                    </div>
-                  </div>
-                </div>
-                {% endif %}
               {% endfor %}
             </tbody>
           </table>
         </div>
+
       {% else %}
         <div class="alert alert-info mb-0">Você ainda não cadastrou nenhum fundo.</div>
-      {% endif %}
-
-      {% if can_manage_fundos %}
-      <!-- Modal Adicionar Fundo -->
-      <div class="modal fade" id="modalAdicionarFundo" tabindex="-1" aria-labelledby="modalAdicionarFundoLabel" aria-hidden="true">
-        <div class="modal-dialog">
-          <div class="modal-content">
-            <form method="POST" action="{% url 'adicionar_fundo' %}">
-              {% csrf_token %}
-              <div class="modal-header">
-                <h5 class="modal-title" id="modalAdicionarFundoLabel">Adicionar Fundo</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-              </div>
-              <div class="modal-body">
-                {% if empresa_ativa %}
-                  <input type="hidden" name="empresa_id" value="{{ empresa_ativa.id }}">
-                {% endif %}
-                <div class="mb-3">
-                  <label for="id_nome" class="form-label">Nome do Fundo</label>
-                  {{ form.nome|add_class:"form-control" }}
-                </div>
-                <div class="mb-3">
-                  <label for="id_cnpj" class="form-label">CNPJ</label>
-                  {{ form.cnpj|add_class:"form-control" }}
-                </div>
-              </div>
-              <div class="modal-footer">
-                <button type="submit" class="btn btn-primary">Salvar</button>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
       {% endif %}
 
     </div>
   </div>
 </div>
+
+{% if can_manage_fundos %}
+<!-- Modal Adicionar Fundo -->
+<div class="modal fade" id="modalAdicionarFundo" tabindex="-1" aria-labelledby="modalAdicionarFundoLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{% url 'adicionar_fundo' %}">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalAdicionarFundoLabel">Adicionar Fundo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          {% if empresa_ativa %}
+            <input type="hidden" name="empresa_id" value="{{ empresa_ativa.id }}">
+          {% endif %}
+          <div class="mb-3">
+            <label for="id_nome" class="form-label">Nome do Fundo</label>
+            {{ form.nome|add_class:"form-control" }}
+          </div>
+          <div class="mb-3">
+            <label for="id_cnpj" class="form-label">CNPJ</label>
+            {{ form.cnpj|add_class:"form-control" }}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Salvar</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modais Editar Fundo -->
+{% for fundo in fundos %}
+<div class="modal fade" id="modalEditarFundo{{ fundo.id }}" tabindex="-1" aria-labelledby="modalEditarFundoLabel{{ fundo.id }}" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{% url 'editar_fundo' fundo.id %}">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalEditarFundoLabel{{ fundo.id }}">Editar Fundo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="nome{{ fundo.id }}" class="form-label">Nome do Fundo</label>
+            <input type="text" name="nome" id="nome{{ fundo.id }}" value="{{ fundo.nome }}" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label for="cnpj{{ fundo.id }}" class="form-label">CNPJ</label>
+            <input type="text" name="cnpj" id="cnpj{{ fundo.id }}" value="{{ fundo.cnpj }}" class="form-control" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Salvar alterações</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
 
 {% endblock %}
 
