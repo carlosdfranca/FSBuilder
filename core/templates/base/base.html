@@ -19,12 +19,21 @@
     <!-- CSS personalizado -->
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
 
-    <!-- Previne FOUC: aplica tema salvo antes do primeiro render -->
+    <!-- Favicons por tema -->
+    <link rel="icon" id="favicon" type="image/png" href="{% static 'img/simbolo-logo-darkmode.png' %}">
+
+    <!-- Previne FOUC: aplica tema salvo e favicon correto antes do primeiro render -->
     <script>
         (function(){
             try {
-                var t = localStorage.getItem('cinnamon-theme');
-                if (t) document.documentElement.setAttribute('data-theme', t);
+                var t = localStorage.getItem('cinnamon-theme') || 'dark';
+                document.documentElement.setAttribute('data-theme', t);
+                var favicon = document.getElementById('favicon');
+                if (favicon) {
+                    favicon.href = t === 'light'
+                        ? '{% static "img/simbolo-logo-lightmode.png" %}'
+                        : '{% static "img/simbolo-logo-darkmode.png" %}';
+                }
             } catch(e) {}
         })();
     </script>

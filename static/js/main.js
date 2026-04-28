@@ -15,6 +15,14 @@ document.addEventListener("DOMContentLoaded", () => {
         if (themeToggle) {
             themeToggle.title = theme === 'dark' ? 'Mudar para modo claro' : 'Mudar para modo escuro';
         }
+        // Troca favicon conforme tema
+        const favicon = document.getElementById('favicon');
+        if (favicon) {
+            const base = favicon.href.substring(0, favicon.href.lastIndexOf('/') + 1);
+            favicon.href = theme === 'light'
+                ? base + 'simbolo-logo-lightmode.png'
+                : base + 'simbolo-logo-darkmode.png';
+        }
     }
 
     // Inicializa ícone conforme tema atual (já aplicado pelo script inline no <head>)

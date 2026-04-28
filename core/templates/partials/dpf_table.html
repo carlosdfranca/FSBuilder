@@ -36,9 +36,7 @@
             {% endif %}
           {% endfor %}
 
-          <tr class="border-top">
-            <td colspan="5" style="background-color: #F7F3E3; border-left: none; border-right: none;"></td>
-          </tr>
+          <tr class="table-separator"><td colspan="5"></td></tr>
         {% endif %}
       {% endfor %}
 
@@ -53,9 +51,7 @@
     {% endwith %}
 
     <!-- Separador entre seções -->
-    <tr class="border-top">
-      <td colspan="5" style="background-color: #F7F3E3; border-left: none; border-right: none;"></td>
-    </tr>
+    <tr class="table-separator"><td colspan="5"></td></tr>
 
     {# ====== PASSIVO ====== #}
     {% with secao=dpf_tabela.PASSIVO %}
@@ -81,9 +77,7 @@
             {% endif %}
           {% endfor %}
 
-          <tr class="border-top">
-            <td colspan="5" style="background-color: #F7F3E3; border-left: none; border-right: none;"></td>
-          </tr>
+          <tr class="table-separator"><td colspan="5"></td></tr>
         {% endif %}
       {% endfor %}
 
@@ -98,9 +92,7 @@
     {% endwith %}
 
     <!-- Separador entre seções -->
-    <tr class="border-top">
-      <td colspan="5" style="background-color: #F7F3E3; border-left: none; border-right: none;"></td>
-    </tr>
+    <tr class="table-separator"><td colspan="5"></td></tr>
 
     <!-- PL -->
     <tr class="table-secondary fw-bold">
@@ -112,9 +104,7 @@
     </tr>
 
     <!-- Separador entre seções -->
-    <tr class="border-top">
-      <td colspan="5" style="background-color: #F7F3E3; border-left: none; border-right: none;"></td>
-    </tr>
+    <tr class="table-separator"><td colspan="5"></td></tr>
 
     <!-- PL + PASSIVO -->
     <tr class="table-secondary fw-bold">
