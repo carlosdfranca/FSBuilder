@@ -5,27 +5,61 @@
 {% block title %}Login{% endblock %}
 
 {% block conteudo %}
-<div class="container-fluid login-container d-flex justify-content-center align-items-center">
-    <div class="login-card text-center">
-        <img src="{% static 'img/logo_empresa.png' %}" alt="Logo da Empresa" class="brand-logo" style="max-width: 160px; height: auto;">
-        <form method="POST" action="{% url 'login' %}">
-            {% csrf_token %}
-            <div class="mb-3 text-start">
-                <label for="username" class="form-label">Usuário</label>
-                <input type="text" class="form-control" id="username" name="username" required>
-            </div>
-            <div class="mb-4 text-start">
-                <label for="password" class="form-label">Senha</label>
-                <input type="password" class="form-control" id="password" name="password" required>
-            </div>
-            <button type="submit" class="btn btn-primary w-100">Entrar</button>
+<div class="login-page">
 
-            {% if form.errors %}
-            <div class="alert alert-danger mt-3 mb-0" role="alert">
-                Usuário ou senha inválidos.
-            </div>
-            {% endif %}
-        </form>
+  <!-- Painel esquerdo: branding -->
+  <div class="login-panel login-panel--brand">
+    <div class="login-brand-content">
+      <img src="{% static 'img/logo-white.png' %}" alt="Cinnamon" class="login-brand-logo">
+      <p class="login-brand-tagline">Gestão inteligente de<br>fundos de investimento</p>
+      <ul class="login-brand-features">
+        <li>
+          <i class="bi bi-bar-chart-line"></i>
+          <span>Demonstrações financeiras automatizadas</span>
+        </li>
+        <li>
+          <i class="bi bi-shield-check"></i>
+          <span>Controle de acesso por perfil</span>
+        </li>
+        <li>
+          <i class="bi bi-file-earmark-text"></i>
+          <span>Relatórios e exportações em tempo real</span>
+        </li>
+      </ul>
     </div>
+    <p class="login-brand-copy">&copy; {{ "now"|date:"Y" }} Cinnamon. Todos os direitos reservados.</p>
+  </div>
+
+  <!-- Painel direito: formulário -->
+  <div class="login-panel login-panel--form">
+    <div class="login-form-wrapper">
+      <img src="{% static 'img/logo-dark.png' %}" alt="Cinnamon" class="login-form-logo site-nav__logo--dark">
+      <img src="{% static 'img/logo-white.png' %}" alt="Cinnamon" class="login-form-logo site-nav__logo--light">
+
+      <h2 class="login-form-title">Bem-vindo de volta</h2>
+      <p class="login-form-subtitle">Acesse sua conta para continuar</p>
+
+      <form method="POST" action="{% url 'login' %}">
+        {% csrf_token %}
+        <div class="mb-3">
+          <label for="username" class="form-label">Usuário</label>
+          <input type="text" class="form-control" id="username" name="username" placeholder="Digite seu usuário" required autofocus>
+        </div>
+        <div class="mb-4">
+          <label for="password" class="form-label">Senha</label>
+          <input type="password" class="form-control" id="password" name="password" placeholder="••••••••" required>
+        </div>
+
+        {% if form.errors %}
+        <div class="alert alert-danger mb-3" role="alert">
+          <i class="bi bi-exclamation-circle me-2"></i>Usuário ou senha inválidos.
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary w-100 login-btn">Entrar</button>
+      </form>
+    </div>
+  </div>
+
 </div>
 {% endblock %}
