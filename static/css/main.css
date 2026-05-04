@@ -549,7 +549,7 @@ label {
     margin-top: 1rem;
 }
 .login-brand-logo {
-    height: 72px;
+    height: 96px;
     width: auto;
     object-fit: contain;
     filter: brightness(0) invert(1);
@@ -612,7 +612,7 @@ label {
     gap: 0;
 }
 .login-form-logo {
-    height: 60px;
+    height: 80px;
     width: auto;
     object-fit: contain;
     margin-bottom: 2.5rem;
