@@ -26,7 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Inicializa ícone conforme tema atual (já aplicado pelo script inline no <head>)
-    const currentTheme = html.getAttribute('data-theme') || 'dark';
+    const currentTheme = html.getAttribute('data-theme') || 'light';
     applyTheme(currentTheme);
 
     if (themeToggle) {
