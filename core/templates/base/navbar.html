@@ -1,39 +1,47 @@
 {% load static %}
 
-<nav class="navbar navbar-expand-lg border-bottom px-4 py-2 mb-3">
-  <!-- Branding -->
-  <div class="navbar-brand fw-bold text-dark d-flex align-items-center">
-    <img src="{% static 'img/logo_empresa.png' %}" alt="Logo" class="me-2" style="height: 32px;">
-  </div>
+<nav class="site-nav">
+  <div class="site-nav__inner">
 
-  <!-- Links principais -->
-  <div class="ms-2">
-    <a href="{% url 'demonstracao_financeira' %}" class="nav-link px-3 text-dark">
-      Demonstração Financeira
+    <!-- Brand -->
+    <a href="/" class="site-nav__brand">
+      <img src="{% static 'img/logo-dark.png' %}" alt="Cinnamon" class="site-nav__logo site-nav__logo--dark">
+      <img src="{% static 'img/logo-white.png' %}" alt="Cinnamon" class="site-nav__logo site-nav__logo--light">
     </a>
-  </div>
-  <div class="ms-1">
-    <a href="{% url 'listar_fundos' %}" class="nav-link px-3 text-dark">
-      Fundos
-    </a>
-  </div>
 
-  <!-- Link Gerenciar Usuários (quem PODE VER: globais ou MASTER/ADMIN) -->
-  {% if user_can_view_company_users %}
-  <div class="ms-1">
-    <a href="{% url 'gerenciar_usuarios' %}" class="nav-link px-3 text-dark">
-      Gerenciar Usuários
-    </a>
-  </div>
-  {% endif %}
+    <!-- Links principais -->
+    <div class="site-nav__links">
+      <ul class="site-nav__menu">
+        <li>
+          <a href="{% url 'demonstracao_financeira' %}" class="site-nav__link">
+            <i class="bi bi-bar-chart-line"></i> Demonstração Financeira
+          </a>
+        </li>
+        <li>
+          <a href="{% url 'listar_fundos' %}" class="site-nav__link">
+            <i class="bi bi-briefcase"></i> Fundos
+          </a>
+        </li>
+        {% if user_can_view_company_users %}
+        <li>
+          <a href="{% url 'gerenciar_usuarios' %}" class="site-nav__link">
+            <i class="bi bi-people"></i> Usuários
+          </a>
+        </li>
+        {% endif %}
+      </ul>
+    </div>
 
-  <!-- Seletor de Empresa: SOMENTE para usuários globais -->
-  <div class="ms-3 d-flex align-items-center">
+    <!-- Seletor de Empresa (somente global) -->
     {% if user_is_global and empresas_disponiveis %}
-      <form method="POST" action="{% url 'trocar_empresa_ativa' %}" class="d-flex align-items-center">
+    <div class="site-nav__empresa">
+      <form method="POST" action="{% url 'trocar_empresa_ativa' %}" class="site-nav__empresa-form">
         {% csrf_token %}
-        <label for="empresa_id" class="me-2 mb-0">Empresa:</label>
-        <select name="empresa_id" id="empresa_id" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Selecionar empresa ativa">
+        <i class="bi bi-building site-nav__empresa-icon"></i>
+        <select name="empresa_id" id="empresa_id"
+                class="site-nav__empresa-select"
+                onchange="this.form.submit()"
+                aria-label="Selecionar empresa ativa">
           <option value="">-- selecione --</option>
           {% for emp in empresas_disponiveis %}
             <option value="{{ emp.id }}" {% if empresa_ativa and empresa_ativa.id == emp.id %}selected{% endif %}>
@@ -41,37 +49,55 @@
             </option>
           {% endfor %}
         </select>
+        <i class="bi bi-chevron-down site-nav__empresa-chevron"></i>
       </form>
+    </div>
     {% endif %}
-  </div>
 
-  <!-- Menu usuário -->
-  <div class="ms-auto dropdown">
-    <a href="#" class="d-flex align-items-center text-dark text-decoration-none dropdown-toggle"
-       id="perfilDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-      <i class="bi bi-person-circle me-2"></i> {{ request.user.first_name|default:request.user.username }}
-    </a>
-    <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="perfilDropdown">
-      {% if request.user.is_staff %}
-      <li>
-        <a class="dropdown-item d-flex justify-content-between align-items-center" href="{% url 'admin:index' %}">
-          Painel Admin <i class="bi bi-database-fill-gear ms-2"></i>
-        </a>
-      </li>
-      {% endif %}
-      <li>
-        <a class="dropdown-item d-flex justify-content-between align-items-center" href="{% url 'editar_perfil' %}">
-          Editar Perfil <i class="bi bi-person-fill-gear ms-2"></i>
-        </a>
-      </li>
-      <li>
-        <form method="POST" action="{% url 'logout' %}" id="logout-form">
-          {% csrf_token %}
-          <button type="submit" class="dropdown-item d-flex justify-content-between align-items-center text-danger w-100">
-            Sair <i class="bi bi-box-arrow-right ms-2"></i>
-          </button>
-        </form>
-      </li>
-    </ul>
+    <!-- Usuário -->
+    <div class="site-nav__user site-nav__dropdown-wrap">
+
+      <!-- Theme toggle -->
+      <button id="theme-toggle" class="site-nav__theme-btn" aria-label="Alternar tema" title="Mudar para modo claro">
+        <i id="theme-icon" class="bi bi-sun-fill"></i>
+      </button>
+
+      <button class="site-nav__user-btn"
+              data-dropdown="userDropdown"
+              aria-expanded="false"
+              aria-haspopup="true"
+              type="button">
+        <span class="site-nav__avatar-fallback">
+          {{ request.user.first_name|default:request.user.username|slice:":2"|upper }}
+        </span>
+        <span>{{ request.user.first_name|default:request.user.username }}</span>
+        <i class="bi bi-chevron-down site-nav__chevron"></i>
+      </button>
+
+      <ul class="site-nav__dropdown" id="userDropdown" role="menu">
+        {% if request.user.is_staff %}
+        <li>
+          <a class="site-nav__dropdown-item" href="{% url 'admin:index' %}">
+            <i class="bi bi-database-fill-gear"></i> Painel Admin
+          </a>
+        </li>
+        {% endif %}
+        <li>
+          <a class="site-nav__dropdown-item" href="{% url 'editar_perfil' %}">
+            <i class="bi bi-person-fill-gear"></i> Editar Perfil
+          </a>
+        </li>
+        <li><div class="site-nav__dropdown-divider"></div></li>
+        <li>
+          <form method="POST" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="site-nav__dropdown-item site-nav__dropdown-item--danger">
+              <i class="bi bi-box-arrow-right"></i> Sair
+            </button>
+          </form>
+        </li>
+      </ul>
+    </div>
+
   </div>
 </nav>
