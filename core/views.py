@@ -20,6 +20,7 @@ from .forms import FundoForm
 
 # Camadas novas (core)
 from core.export.df_excel import criar_aba_dpf, criar_aba_dre, criar_aba_dmpl, criar_aba_dfc
+from core.export.df_docx import build_docx_context, gerar_docx
 from core.processing.import_service import import_balancete, import_mec
 from core.processing.dre_service import gerar_dados_dre
 from core.processing.dpf_service import gerar_dados_dpf
@@ -416,6 +417,86 @@ def exportar_dfs_excel(request, fundo_id, data_atual, data_anterior):
         )
 
     wb.save(response)
+    return response
+
+
+@login_required
+@company_can_download_data
+def exportar_dfs_docx(request, fundo_id, data_atual, data_anterior):
+    """
+    Exporta todas as Demonstrações Financeiras (DPF, DRE, DMPL e DFC)
+    como documento Word (.docx), usando o template modelo_df.docx.
+    """
+    zerar_anterior = data_anterior == "ZERADO"
+
+    try:
+        data_atual = datetime.strptime(data_atual, "%Y-%m-%d").date()
+        data_anterior = None if zerar_anterior else datetime.strptime(data_anterior, "%Y-%m-%d").date()
+    except ValueError:
+        messages.error(request, "Datas inválidas para exportação.")
+        return redirect("demonstracao_financeira")
+
+    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
+    fundo = get_object_or_404(fundo_qs, id=fundo_id)
+
+    dre_tabela, resultado_exercicio, resultado_exercicio_anterior = gerar_dados_dre(
+        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
+    )
+    dpf_tabela, _metricas_dpf = gerar_dados_dpf(
+        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
+    )
+
+    pl_atual = (dpf_tabela["PL"]["TOTAL_PL"]["ATUAL"] or 0) + (resultado_exercicio or 0)
+    pl_anterior = (dpf_tabela["PL"]["TOTAL_PL"]["ANTERIOR"] or 0) + (resultado_exercicio_anterior or 0)
+    total_pl_passivo_atual = pl_atual + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ATUAL"] or 0)
+    total_pl_passivo_anterior = pl_anterior + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ANTERIOR"] or 0)
+
+    dpf_tabela = annotate_percents(dpf_tabela, pl_atual, pl_anterior)
+
+    dados_dmpl = gerar_dados_dmpl(
+        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
+    )
+    dfc_tabela, variacao_atual, variacao_ant = gerar_tabela_dfc(
+        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
+    )
+
+    if zerar_anterior:
+        resultado_exercicio_anterior = 0
+        variacao_ant = 0
+
+    context = build_docx_context(
+        fundo=fundo,
+        data_atual=data_atual,
+        data_anterior=data_anterior,
+        dre_tabela=dre_tabela,
+        dpf_tabela=dpf_tabela,
+        dados_dmpl=dados_dmpl,
+        dfc_tabela=dfc_tabela,
+        resultado_exercicio=resultado_exercicio,
+        resultado_exercicio_anterior=resultado_exercicio_anterior,
+        pl_ajustado_atual=pl_atual,
+        pl_ajustado_anterior=pl_anterior,
+        total_pl_passivo_atual=total_pl_passivo_atual,
+        total_pl_passivo_anterior=total_pl_passivo_anterior,
+        variacao_atual=variacao_atual,
+        variacao_ant=variacao_ant,
+    )
+
+    buffer = gerar_docx(context)
+
+    response = HttpResponse(
+        buffer,
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    nome_curto = "_".join(str(fundo.nome).replace("-", "").split())
+    if data_anterior:
+        response["Content-Disposition"] = (
+            f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{data_anterior.strftime('%Y%m%d')}_{nome_curto}.docx"
+        )
+    else:
+        response["Content-Disposition"] = (
+            f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{nome_curto}.docx"
+        )
     return response
 
 # ===========================

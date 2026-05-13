@@ -18,6 +18,7 @@ urlpatterns = [
     path("importar-mec/", importar_mec_view, name="importar_mec"),
     path('dre-resultado/<int:fundo_id>/<str:data_atual>/<str:data_anterior>/', df_resultado, name='dre_resultado'),
     path("dre-resultado/<int:fundo_id>/<str:data_atual>/<str:data_anterior>/exportar/", exportar_dfs_excel, name="exportar_dfs_excel"),
+    path("dre-resultado/<int:fundo_id>/<str:data_atual>/<str:data_anterior>/exportar-docx/", exportar_dfs_docx, name="exportar_dfs_docx"),
 
 
     # Fundos
