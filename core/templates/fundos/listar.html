@@ -145,6 +145,21 @@
 {% block scripts %}
 <script>
   document.addEventListener("DOMContentLoaded", function () {
+    // Inicializar DataTables na tabela de fundos
+    $('#tabela-fundos').DataTable({
+      language: {
+        url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json'
+      },
+      pageLength: 25,
+      order: [[0, 'asc']], // Ordenar por nome (primeira coluna)
+      columnDefs: [
+        {% if can_manage_fundos %}
+        { orderable: false, targets: [2, 3] } // Desabilitar ordenação nas colunas de ação
+        {% endif %}
+      ]
+    });
+
+    // Máscara de CNPJ
     const cnpjInputs = document.querySelectorAll('input[id="id_cnpj"], input[id^="cnpj"]'); 
     cnpjInputs.forEach(function (input) {
       IMask(input, { mask: '00.000.000/0000-00' });

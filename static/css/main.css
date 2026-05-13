@@ -1017,7 +1017,7 @@ nav.navbar {
 .dataTables_wrapper .dataTables_paginate .page-item.active .page-link,
 .dataTables_wrapper .dataTables_paginate .page-link.active {
     background-color: var(--accent-primary) !important;
-    color: var(--text-primary) !important;
+    color: #FFFFFF !important;
     border-color: var(--accent-primary-hover) !important;
     box-shadow: none !important;
 }
@@ -2010,6 +2010,8 @@ html[data-theme="light"] .dataTables_wrapper .dataTables_filter input { backgrou
 html[data-theme="light"] .dataTables_wrapper .dataTables_length label,
 html[data-theme="light"] .dataTables_wrapper .dataTables_filter label,
 html[data-theme="light"] .dataTables_wrapper .dataTables_info { color: var(--text-secondary); }
+html[data-theme="light"] .dataTables_wrapper .dataTables_paginate .page-item.active .page-link,
+html[data-theme="light"] .dataTables_wrapper .dataTables_paginate .page-link.active { color: #FFFFFF !important; }
 
 /* Navbar legacy */
 html[data-theme="light"] .navbar-custom { background-color: var(--surface-3); }
