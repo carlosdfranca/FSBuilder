@@ -27,12 +27,12 @@
         </div>
       </div>
 
-      <div class="col-md-3 text-end d-flex flex-column gap-2 align-items-end">
+      <div class="col-md-3 d-flex flex-row gap-2 justify-content-end align-items-start">
         <a href="{% url 'exportar_dfs_excel' fundo.id data_atual_str data_anterior_str %}" class="btn btn-success">
-          Baixar Demonstração Financeira <i class="bi bi-file-earmark-excel-fill ms-2"></i>
+          Exportar Excel <i class="bi bi-file-earmark-excel-fill ms-2"></i>
         </a>
-        <a href="{% url 'exportar_dfs_docx' fundo.id data_atual_str data_anterior_str %}" class="btn btn-primary">
-          Baixar Demonstração Financeira <i class="bi bi-file-earmark-word-fill ms-2"></i>
+        <a href="{% url 'exportar_dfs_docx' fundo.id data_atual_str data_anterior_str %}" class="btn btn-word">
+          Exportar Word <i class="bi bi-file-earmark-word-fill ms-2"></i>
         </a>
       </div>
     </div>
