@@ -146,49 +146,22 @@ def gerenciar_usuarios(request, empresa: Empresa):
 @login_required
 @_company_can_manage
 @transaction.atomic
-def empresa_usuario_adicionar(request, empresa: Empresa):
-    if request.method != "POST":
-        return redirect("gerenciar_usuarios")
-
-    username = request.POST.get("username") or ""
-    first_name = request.POST.get("first_name") or ""
-    email = request.POST.get("email") or ""
-    role_value = request.POST.get("role") or Membership.Role.MEMBER
-    p1 = request.POST.get("password1") or ""
-    p2 = request.POST.get("password2") or ""
-
-    if p1 != p2 or not p1:
-        messages.error(request, "Senhas inválidas.")
-        return redirect("gerenciar_usuarios")
-
-    if not _pode_atribuir_role(request.user, empresa, role_value):
-        messages.error(request, "Você não tem permissão para atribuir este papel.")
-        return redirect("gerenciar_usuarios")
-
-    if Usuario.objects.filter(username=username).exists():
-        messages.error(request, "Já existe um usuário com esse username.")
-        return redirect("gerenciar_usuarios")
-
-    usuario = Usuario(username=username, first_name=first_name, email=email)
-    usuario.set_password(p1)
-    usuario.save()
-
-    memb, created = Membership.objects.get_or_create(
-        empresa=empresa, usuario=usuario, defaults={"role": role_value}
-    )
-    if not created:
-        memb.role = role_value
-        memb.is_active = True
-        memb.save()
-
-    messages.success(request, f"Usuário {usuario} adicionado à empresa {empresa.nome}.")
-    return redirect("gerenciar_usuarios")
+# DEPRECATED: Método antigo removido - Use o sistema de convites
+# def empresa_usuario_adicionar(request, empresa: Empresa):
+#     """DEPRECATED: Use o sistema de convites por email (convidar_usuario)"""
+#     pass
 
 
 @login_required
 @_company_can_manage
 @transaction.atomic
 def empresa_usuario_editar(request, empresa: Empresa, membership_id: int):
+    """
+    Edita apenas o ROLE (papel) do usuário na empresa.
+    Dados pessoais (nome, email, senha) devem ser alterados pelo próprio usuário em 'Editar Perfil'.
+    
+    IMPORTANTE: Usuários MASTER não podem ter o papel alterado (apenas BackOffice).
+    """
     memb = get_object_or_404(
         Membership.objects.select_related("usuario", "empresa"),
         id=membership_id, empresa=empresa
@@ -196,40 +169,41 @@ def empresa_usuario_editar(request, empresa: Empresa, membership_id: int):
     if request.method != "POST":
         return redirect("gerenciar_usuarios")
 
+    # BLOQUEIA EDIÇÃO DE MASTER - apenas BackOffice pode alterar
+    if memb.role == Membership.Role.MASTER:
+        messages.error(
+            request, 
+            "Usuários MASTER não podem ter o papel alterado pela interface. "
+            "Entre em contato com o BackOffice."
+        )
+        return redirect("gerenciar_usuarios")
+
     if not _pode_alterar_ou_excluir(request.user, empresa, memb):
         messages.error(request, "Você não tem permissão para editar este usuário.")
         return redirect("gerenciar_usuarios")
 
-    first_name = request.POST.get("first_name") or memb.usuario.first_name
-    email = request.POST.get("email") or memb.usuario.email
-    new_role = request.POST.get("role") or memb.role
-    p1 = request.POST.get("password1") or ""
-    p2 = request.POST.get("password2") or ""
-
-    if (p1 or p2) and p1 != p2:
-        messages.error(request, "As senhas não coincidem.")
+    new_role = request.POST.get("role")
+    
+    if not new_role:
+        messages.error(request, "Papel não informado.")
+        return redirect("gerenciar_usuarios")
+    
+    # BLOQUEIA ATRIBUIÇÃO DE MASTER - apenas BackOffice pode criar
+    if new_role == Membership.Role.MASTER:
+        messages.error(
+            request,
+            "O papel MASTER é criado apenas pelo BackOffice. Entre em contato com o suporte."
+        )
         return redirect("gerenciar_usuarios")
 
     if not _pode_atribuir_role(request.user, empresa, new_role):
         messages.error(request, "Você não tem permissão para atribuir este papel.")
         return redirect("gerenciar_usuarios")
 
-    usuario = memb.usuario
-    usuario.first_name = first_name
-    usuario.email = email
-    if p1:
-        usuario.set_password(p1)
-    usuario.save()
-
-    was_master = memb.role == Membership.Role.MASTER
     memb.role = new_role
     memb.save()
 
-    if was_master and new_role != Membership.Role.MASTER:
-        if not Membership.objects.filter(empresa=empresa, role=Membership.Role.MASTER, is_active=True).exists():
-            messages.warning(request, "Atenção: a empresa está sem MASTER. Defina um MASTER.")
-
-    messages.success(request, "Usuário atualizado com sucesso.")
+    messages.success(request, f"Papel do usuário alterado para {memb.get_role_display()} com sucesso.")
     return redirect("gerenciar_usuarios")
 
 
@@ -248,8 +222,13 @@ def empresa_usuario_excluir(request, empresa: Empresa, membership_id: int):
     if not _pode_alterar_ou_excluir(request.user, empresa, memb):
         return HttpResponseForbidden("Você não tem permissão para excluir este usuário.")
 
-    if empresa.master_id == memb.usuario_id and memb.role == Membership.Role.MASTER:
-        messages.error(request, "Transfira o MASTER para outro usuário antes de remover este.")
+    # BLOQUEIA REMOÇÃO DE MASTER - apenas BackOffice pode remover
+    if memb.role == Membership.Role.MASTER:
+        messages.error(
+            request, 
+            "Usuários MASTER não podem ser removidos pela interface. "
+            "Entre em contato com o BackOffice."
+        )
         return redirect("gerenciar_usuarios")
 
     memb.is_active = False

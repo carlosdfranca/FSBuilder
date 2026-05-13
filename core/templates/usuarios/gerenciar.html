@@ -24,29 +24,13 @@
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h4 class="mb-0">Usuários da empresa: <span class="fw-bold">{{ empresa.nome }}</span></h4>
         {% if can_manage %}
-          <div class="btn-group">
-            <!-- Botão principal: Convidar por Email (NOVO) -->
+          <div class="d-flex gap-2">
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalConvidarUsuario">
               <i class="bi bi-envelope-plus me-1"></i> Convidar Usuário
             </button>
-            
-            <!-- Dropdown com opções adicionais -->
-            <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
-              <span class="visually-hidden">Mais opções</span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-              <li>
-                <a class="dropdown-item" href="{% url 'listar_convites' %}">
-                  <i class="bi bi-list-ul me-2"></i> Ver Convites
-                </a>
-              </li>
-              <li><hr class="dropdown-divider"></li>
-              <li>
-                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalAddUser">
-                  <i class="bi bi-person-plus me-2"></i> Criar Diretamente (antigo)
-                </a>
-              </li>
-            </ul>
+            <a href="{% url 'listar_convites' %}" class="btn btn-outline-primary">
+              <i class="bi bi-list-ul me-1"></i> Ver Convites
+            </a>
           </div>
         {% endif %}
       </div>
@@ -84,14 +68,26 @@
 
                 {% if can_manage %}
                 <td class="text-center">
-                  <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalEditUser{{ m.id }}">
-                    <i class="bi bi-pencil"></i>
-                  </button>
+                  {% if m.role == "MASTER" %}
+                    <button class="btn btn-sm btn-outline-secondary" disabled title="MASTER não pode ser editado pela interface">
+                      <i class="bi bi-lock-fill"></i>
+                    </button>
+                  {% else %}
+                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalEditUser{{ m.id }}">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                  {% endif %}
                 </td>
                 <td class="text-center">
-                  <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalDeleteUser{{ m.id }}">
-                    <i class="bi bi-trash3"></i>
-                  </button>
+                  {% if m.role == "MASTER" %}
+                    <button class="btn btn-sm btn-outline-danger" disabled title="MASTER não pode ser removido pela interface">
+                      <i class="bi bi-lock-fill"></i>
+                    </button>
+                  {% else %}
+                    <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalDeleteUser{{ m.id }}">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  {% endif %}
                 </td>
                 {% endif %}
               </tr>
@@ -113,45 +109,49 @@
       <form method="POST" action="{% url 'empresa_usuario_editar' m.id %}">
         {% csrf_token %}
         <div class="modal-header">
-          <h5 class="modal-title" id="modalEditUserLabel{{ m.id }}">Editar Usuário</h5>
+          <h5 class="modal-title" id="modalEditUserLabel{{ m.id }}">Alterar Papel do Usuário</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-3">
-            <label class="form-label">Nome</label>
-            <input type="text" name="first_name" class="form-control" value="{{ m.usuario.first_name }}">
+          <div class="info-box mb-3">
+            <div class="info-box__icon">
+              <i class="bi bi-info-circle"></i>
+            </div>
+            <div class="info-box__content">
+              <strong>Informações pessoais:</strong>
+              <p class="mb-0 mt-1">O usuário pode alterar seu próprio nome, email e senha em <strong>"Editar Perfil"</strong>.</p>
+            </div>
           </div>
+          
           <div class="mb-3">
-            <label class="form-label">Email</label>
-            <input type="email" name="email" class="form-control" value="{{ m.usuario.email }}">
+            <label class="form-label">Usuário</label>
+            <input type="text" class="form-control" value="{{ m.usuario.get_full_name|default:m.usuario.username }}" disabled>
           </div>
+          
           <div class="mb-3">
-            <label class="form-label">Papel na empresa</label>
-            <select name="role" class="form-select">
-              {% if can_assign_master %}
-                <option value="MASTER" {% if m.role == "MASTER" %}selected{% endif %}>MASTER</option>
-              {% endif %}
-              <option value="ADMIN" {% if m.role == "ADMIN" %}selected{% endif %}>ADMIN</option>
-              <option value="MEMBER" {% if m.role == "MEMBER" %}selected{% endif %}>MEMBER</option>
-              <option value="VIEWER" {% if m.role == "VIEWER" %}selected{% endif %}>VIEWER</option>
+            <label class="form-label">Papel na empresa <span class="text-danger">*</span></label>
+            <select name="role" class="form-select" required {% if m.role == "MASTER" %}disabled{% endif %}>
+              <option value="ADMIN" {% if m.role == "ADMIN" %}selected{% endif %}>ADMIN (gerencia usuários)</option>
+              <option value="MEMBER" {% if m.role == "MEMBER" %}selected{% endif %}>MEMBER (acesso padrão)</option>
+              <option value="VIEWER" {% if m.role == "VIEWER" %}selected{% endif %}>VIEWER (somente leitura)</option>
             </select>
-            {% if not can_assign_master and m.role == "MASTER" %}
-              <div class="form-text text-danger">Apenas MASTER ou Global Admin pode alterar o MASTER.</div>
+            {% if m.role == "MASTER" %}
+              <div class="form-text text-warning">
+                <i class="bi bi-shield-lock-fill me-1"></i>
+                Este usuário é MASTER da empresa e não pode ter o papel alterado.
+              </div>
+            {% else %}
+              <div class="form-text">O papel MASTER é criado apenas pelo BackOffice.</div>
             {% endif %}
-          </div>
-          <hr>
-          <div class="mb-3">
-            <label class="form-label">Nova senha (opcional)</label>
-            <input type="password" name="password1" class="form-control" autocomplete="new-password">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Confirmar nova senha</label>
-            <input type="password" name="password2" class="form-control" autocomplete="new-password">
           </div>
         </div>
         <div class="modal-footer">
-          <button type="submit" class="btn btn-primary">Salvar</button>
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          {% if m.role == "MASTER" %}
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+          {% else %}
+            <button type="submit" class="btn btn-primary">Salvar</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          {% endif %}
         </div>
       </form>
     </div>
@@ -223,11 +223,11 @@
             <label class="form-label">Papel na empresa <span class="text-danger">*</span></label>
             <select name="role" class="form-select" required>
               <option value="" disabled selected>Selecione...</option>
-              {% if can_assign_master %}<option value="MASTER">MASTER (administra tudo)</option>{% endif %}
               <option value="ADMIN">ADMIN (gerencia usuários)</option>
               <option value="MEMBER">MEMBER (acesso padrão)</option>
               <option value="VIEWER">VIEWER (somente leitura)</option>
             </select>
+            <div class="form-text">O papel MASTER é criado apenas pelo BackOffice.</div>
           </div>
           
           <div class="warning-box">
@@ -247,66 +247,6 @@
   </div>
 </div>
 
-<!-- Modal Adicionar Usuário (ANTIGO - mantido como fallback) -->
-<div class="modal fade" id="modalAddUser" tabindex="-1" aria-labelledby="modalAddUserLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <form method="POST" action="{% url 'empresa_usuario_adicionar' %}">
-        {% csrf_token %}
-        <div class="modal-header">
-          <h5 class="modal-title" id="modalAddUserLabel">Novo Usuário (Criação Direta)</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-        </div>
-        <div class="modal-body">
-          <div class="warning-box warning-box--deprecated mb-3">
-            <i class="bi bi-exclamation-triangle"></i>
-            <div>
-              <strong>Método antigo:</strong> Este método cria o usuário diretamente sem validação de email.
-              Recomendamos usar <strong>"Convidar Usuário"</strong> para um fluxo mais seguro.
-            </div>
-          </div>
-          
-          <div class="mb-3">
-            <label class="form-label">Username</label>
-            <input type="text" name="username" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Nome</label>
-            <input type="text" name="first_name" class="form-control">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Email</label>
-            <input type="email" name="email" class="form-control">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Papel na empresa</label>
-            <select name="role" class="form-select">
-              {% if can_assign_master %}<option value="MASTER">MASTER</option>{% endif %}
-              <option value="ADMIN">ADMIN</option>
-              <option value="MEMBER">MEMBER</option>
-              <option value="VIEWER">VIEWER</option>
-            </select>
-            {% if not can_assign_master %}
-              <div class="form-text">Apenas MASTER ou Global Admin pode criar/promover MASTER.</div>
-            {% endif %}
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Senha</label>
-            <input type="password" name="password1" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Confirmar senha</label>
-            <input type="password" name="password2" class="form-control" required>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="submit" class="btn btn-primary">Salvar</button>
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
 {% endif %}
 
 <style>

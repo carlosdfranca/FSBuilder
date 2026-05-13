@@ -96,9 +96,10 @@ def _validar_pode_atribuir_role(convidante: Usuario, empresa: Empresa, role: str
     Valida se o convidante pode atribuir a role especificada.
     
     Regras:
-    - Global ADMIN: pode atribuir qualquer role
-    - MASTER: pode atribuir qualquer role
-    - ADMIN: pode atribuir apenas MEMBER e VIEWER (não pode criar MASTER ou ADMIN)
+    - MASTER: NÃO pode ser atribuído por ninguém (apenas BackOffice via admin/shell)
+    - Global ADMIN: pode atribuir ADMIN, MEMBER, VIEWER
+    - MASTER: pode atribuir ADMIN, MEMBER, VIEWER
+    - ADMIN: pode atribuir apenas MEMBER e VIEWER (não pode criar ADMIN)
     
     Args:
         convidante: Usuário que está criando o convite
@@ -111,7 +112,13 @@ def _validar_pode_atribuir_role(convidante: Usuario, empresa: Empresa, role: str
     Raises:
         PermissionDenied: Se não pode atribuir a role
     """
-    # Global admin pode tudo
+    # NINGUÉM pode atribuir MASTER pela interface - apenas BackOffice
+    if role == Membership.Role.MASTER:
+        raise PermissionDenied(
+            _("O papel MASTER é criado apenas pelo BackOffice. Entre em contato com o suporte.")
+        )
+    
+    # Global admin pode atribuir qualquer role (exceto MASTER, bloqueado acima)
     if convidante.is_platform_admin():
         return True
     
@@ -123,15 +130,15 @@ def _validar_pode_atribuir_role(convidante: Usuario, empresa: Empresa, role: str
             is_active=True
         )
         
-        # MASTER pode atribuir qualquer role
+        # MASTER pode atribuir ADMIN, MEMBER, VIEWER (não pode atribuir MASTER)
         if membership.role == Membership.Role.MASTER:
             return True
         
-        # ADMIN não pode criar MASTER ou ADMIN
+        # ADMIN não pode criar ADMIN (apenas MEMBER e VIEWER)
         if membership.role == Membership.Role.ADMIN:
-            if role in {Membership.Role.MASTER, Membership.Role.ADMIN}:
+            if role == Membership.Role.ADMIN:
                 raise PermissionDenied(
-                    _("Admin não pode convidar usuários com role MASTER ou ADMIN.")
+                    _("Admin não pode convidar usuários com role ADMIN. Apenas MEMBER ou VIEWER.")
                 )
             return True
         
