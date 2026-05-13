@@ -1,5 +1,5 @@
 # usuarios/context_processors.py
-from usuarios.models import Empresa, Membership, Usuario
+from usuarios.models import Empresa, Membership, Usuario, Convite
 
 def _empresas_do_usuario(user):
     if not user.is_authenticated:
@@ -53,6 +53,14 @@ def empresas_contexto(request):
     # Quem PODE GERENCIAR (CRUD)?
     user_can_manage_company_users = is_global_admin or (role in {Membership.Role.MASTER, Membership.Role.ADMIN})
 
+    # Contagem de convites pendentes (apenas se tiver empresa ativa e puder ver usuários)
+    convites_pendentes_count = 0
+    if empresa_ativa and user_can_view_company_users:
+        convites_pendentes_count = Convite.objects.filter(
+            empresa=empresa_ativa,
+            status=Convite.Status.PENDING
+        ).count()
+
     return {
         "empresa_ativa": empresa_ativa,
         "empresas_disponiveis": empresas,
@@ -60,4 +68,5 @@ def empresas_contexto(request):
         "user_is_global_admin": is_global_admin,
         "user_can_view_company_users": user_can_view_company_users,
         "user_can_manage_company_users": user_can_manage_company_users,
+        "convites_pendentes_count": convites_pendentes_count,
     }

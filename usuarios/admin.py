@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Usuario, Empresa, Membership
+from django.utils.html import format_html
+from django.urls import reverse
+from .models import Usuario, Empresa, Membership, Convite
 
 # ----- Inlines -----
 class MembershipInline(admin.TabularInline):
@@ -57,3 +59,94 @@ class MembershipAdmin(admin.ModelAdmin):
     autocomplete_fields = ("usuario", "empresa")
     readonly_fields = ("criado_em", "atualizado_em")
     ordering = ("empresa", "usuario")
+
+
+# ----- Convite -----
+@admin.register(Convite)
+class ConviteAdmin(admin.ModelAdmin):
+    list_display = (
+        "email",
+        "empresa",
+        "role",
+        "status_badge",
+        "convidado_por",
+        "criado_em",
+        "expira_em",
+        "tentativas_envio",
+    )
+    list_filter = ("status", "role", "empresa", "criado_em")
+    search_fields = (
+        "email",
+        "empresa__nome",
+        "convidado_por__username",
+        "convidado_por__first_name",
+        "usuario_criado__username",
+    )
+    autocomplete_fields = ("empresa", "convidado_por", "usuario_criado")
+    readonly_fields = (
+        "token",
+        "criado_em",
+        "aceito_em",
+        "cancelado_em",
+        "ultimo_envio_em",
+        "ip_address",
+        "user_agent",
+        "link_aceite_display",
+    )
+    ordering = ("-criado_em",)
+    
+    fieldsets = (
+        ("Informações do Convite", {
+            "fields": ("empresa", "email", "role", "status")
+        }),
+        ("Token e Segurança", {
+            "fields": ("token", "link_aceite_display")
+        }),
+        ("Rastreamento", {
+            "fields": ("convidado_por", "usuario_criado")
+        }),
+        ("Datas", {
+            "fields": ("criado_em", "expira_em", "aceito_em", "cancelado_em")
+        }),
+        ("Envio de Email", {
+            "fields": ("tentativas_envio", "ultimo_envio_em")
+        }),
+        ("Audit", {
+            "fields": ("ip_address", "user_agent"),
+            "classes": ("collapse",)
+        }),
+    )
+    
+    def status_badge(self, obj):
+        """Exibe o status com cor."""
+        colors = {
+            Convite.Status.PENDING: "#ffc107",  # amarelo
+            Convite.Status.ACCEPTED: "#28a745",  # verde
+            Convite.Status.EXPIRED: "#dc3545",  # vermelho
+            Convite.Status.CANCELLED: "#6c757d",  # cinza
+        }
+        color = colors.get(obj.status, "#6c757d")
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 10px; '
+            'border-radius: 3px; font-weight: bold;">{}</span>',
+            color,
+            obj.get_status_display()
+        )
+    status_badge.short_description = "Status"
+    
+    def link_aceite_display(self, obj):
+        """Exibe o link de aceite (apenas para visualização)."""
+        if obj.token:
+            link = obj.get_link_aceite()
+            return format_html(
+                '<a href="{}" target="_blank">{}</a>',
+                link,
+                link
+            )
+        return "-"
+    link_aceite_display.short_description = "Link de Aceite"
+    
+    def has_add_permission(self, request):
+        """Desabilita criação via admin (usar sistema de convites)."""
+        return False
+
