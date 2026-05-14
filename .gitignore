@@ -136,6 +136,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Docker (apenas para dev local, não sobe para produção)
+docker-compose.yml
+docker-compose.override.yml
+
 # Spyder project settings
 .spyderproject
 .spyproject

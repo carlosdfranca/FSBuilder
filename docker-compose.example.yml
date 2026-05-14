@@ -1,0 +1,36 @@
+﻿# ========================================
+# Docker Compose - APENAS PARA DEV LOCAL
+# ========================================
+# 
+# Este arquivo é apenas EXEMPLO para desenvolvimento local no Windows.
+# NÃO é usado em produção.
+# 
+# Para usar:
+# 1. Copie este arquivo: cp docker-compose.example.yml docker-compose.yml
+# 2. Inicie o Redis: docker-compose up -d redis
+# 
+# Em produção (Ubuntu VPS):
+# - Instale Redis direto: sudo apt install redis-server
+# - Configure Celery como serviço systemd (veja docs de deploy)
+# ========================================
+
+version: '3.8'
+
+services:
+  # ===== Redis (Celery Broker) =====
+  redis:
+    image: redis:7-alpine
+    container_name: cinnamon-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  redis_data:

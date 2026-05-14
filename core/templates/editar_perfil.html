@@ -9,36 +9,163 @@
     {% if messages %}
     <div class="mt-3">
       {% for message in messages %}
-        <div class="alert alert-{{ message.tags  }} alert-dismissible fade show" role="alert">
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
           {{ message }}
           <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
         </div>
       {% endfor %}
     </div>
-  {% endif %}
-    <div class="card p-4">
-        <h4 class="mb-4">Editar Perfil</h4>
+    {% endif %}
 
-        <form method="POST">
-            {% csrf_token %}
-
-            <div class="mb-3">
-                <label for="first_name" class="form-label">Nome</label>
-                <input type="text" class="form-control" id="first_name" name="first_name" value="{{ request.user.first_name }}">
+    <div class="card">
+        <div class="card-body p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="mb-0"><i class="bi bi-person-circle me-2"></i>Editar Perfil</h4>
             </div>
 
-            <div class="mb-3">
-                <label for="email" class="form-label">E-mail</label>
-                <input type="email" class="form-control" id="email" name="email" value="{{ request.user.email }}">
+            <!-- Info Box de Segurança -->
+            <div class="info-box mb-4">
+                <div class="info-box__icon">
+                    <i class="bi bi-shield-lock"></i>
+                </div>
+                <div class="info-box__content">
+                    <strong>Informações de Segurança</strong>
+                    <p class="mb-0">Alterações no e-mail ou senha afetam seu acesso ao sistema. A senha deve ter no mínimo 8 caracteres e não pode ser totalmente numérica.</p>
+                </div>
             </div>
 
-            <div class="mb-3">
-                <label for="password" class="form-label">Nova Senha (opcional)</label>
-                <input type="password" class="form-control" id="password" name="password">
-            </div>
+            <form method="POST">
+                {% csrf_token %}
 
-            <button type="submit" class="btn btn-primary">Salvar alterações</button>
-        </form>
+                <!-- Seção: Informações da Conta -->
+                <div class="form-section mb-4">
+                    <div class="form-section__header">
+                        <div class="form-section__icon form-section__icon--amber">
+                            <i class="bi bi-person"></i>
+                        </div>
+                        <div>
+                            <h5 class="form-section__title">Informações da Conta</h5>
+                            <p class="form-section__subtitle">Gerencie suas informações pessoais</p>
+                        </div>
+                    </div>
+                    <div class="form-section__body">
+                        <!-- Username (read-only) -->
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Nome de Usuário</label>
+                            <input type="text" class="form-control" id="username" value="{{ request.user.username }}" disabled>
+                            <div class="form-text">O nome de usuário não pode ser alterado.</div>
+                        </div>
+
+                        <div class="row">
+                            <!-- Nome -->
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.first_name.id_for_label }}" class="form-label required">{{ form.first_name.label }}</label>
+                                {{ form.first_name }}
+                                {% if form.first_name.errors %}
+                                    {% for error in form.first_name.errors %}
+                                        <div class="text-danger mt-1"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</div>
+                                    {% endfor %}
+                                {% endif %}
+                                {% if form.first_name.help_text %}
+                                    <div class="form-text">{{ form.first_name.help_text }}</div>
+                                {% endif %}
+                            </div>
+
+                            <!-- Sobrenome -->
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.last_name.id_for_label }}" class="form-label required">{{ form.last_name.label }}</label>
+                                {{ form.last_name }}
+                                {% if form.last_name.errors %}
+                                    {% for error in form.last_name.errors %}
+                                        <div class="text-danger mt-1"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</div>
+                                    {% endfor %}
+                                {% endif %}
+                                {% if form.last_name.help_text %}
+                                    <div class="form-text">{{ form.last_name.help_text }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- E-mail -->
+                        <div class="mb-3">
+                            <label for="{{ form.email.id_for_label }}" class="form-label required">{{ form.email.label }}</label>
+                            {{ form.email }}
+                            {% if form.email.errors %}
+                                {% for error in form.email.errors %}
+                                    <div class="text-danger mt-1"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</div>
+                                {% endfor %}
+                            {% endif %}
+                            {% if form.email.help_text %}
+                                <div class="form-text">{{ form.email.help_text }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Seção: Alterar Senha -->
+                <div class="form-section mb-4">
+                    <div class="form-section__header">
+                        <div class="form-section__icon form-section__icon--green">
+                            <i class="bi bi-key"></i>
+                        </div>
+                        <div>
+                            <h5 class="form-section__title">Alterar Senha</h5>
+                            <p class="form-section__subtitle">Deixe em branco para manter a senha atual</p>
+                        </div>
+                    </div>
+                    <div class="form-section__body">
+                        <div class="row">
+                            <!-- Nova Senha -->
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.password1.id_for_label }}" class="form-label">{{ form.password1.label }}</label>
+                                {{ form.password1 }}
+                                {% if form.password1.errors %}
+                                    {% for error in form.password1.errors %}
+                                        <div class="text-danger mt-1"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</div>
+                                    {% endfor %}
+                                {% endif %}
+                                {% if form.password1.help_text %}
+                                    <div class="form-text">{{ form.password1.help_text }}</div>
+                                {% endif %}
+                            </div>
+
+                            <!-- Confirmar Nova Senha -->
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.password2.id_for_label }}" class="form-label">{{ form.password2.label }}</label>
+                                {{ form.password2 }}
+                                {% if form.password2.errors %}
+                                    {% for error in form.password2.errors %}
+                                        <div class="text-danger mt-1"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</div>
+                                    {% endfor %}
+                                {% endif %}
+                                {% if form.password2.help_text %}
+                                    <div class="form-text">{{ form.password2.help_text }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Erros não relacionados a campos específicos -->
+                {% if form.non_field_errors %}
+                    <div class="alert alert-danger mb-3">
+                        {% for error in form.non_field_errors %}
+                            <div><i class="bi bi-exclamation-triangle me-1"></i>{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <!-- Botões de Ação -->
+                <div class="form-actions">
+                    <a href="{% url 'demonstracao_financeira' %}" class="btn btn-outline-secondary me-2">
+                        <i class="bi bi-x-circle me-1"></i>Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle me-1"></i>Salvar Alterações
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 {% endblock %}

@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
@@ -16,7 +17,7 @@ from usuarios.permissions import (
     company_can_download_data
 )
 
-from .forms import FundoForm
+from .forms import FundoForm, EditarPerfilForm
 
 # Camadas novas (core)
 from core.export.df_excel import criar_aba_dpf, criar_aba_dre, criar_aba_dmpl, criar_aba_dfc
@@ -606,20 +607,19 @@ def editar_perfil(request):
     user = request.user
 
     if request.method == "POST":
-        user.first_name = request.POST.get("first_name") or user.first_name
-        user.email = request.POST.get("email") or user.email
+        form = EditarPerfilForm(request.POST, instance=user)
+        if form.is_valid():
+            user = form.save()
+            messages.success(request, "Perfil atualizado com sucesso!")
 
-        nova_senha = request.POST.get("password")
-        if nova_senha:
-            user.set_password(nova_senha)
+            # Se a senha foi alterada, manter o usuário logado
+            if form.cleaned_data.get('password1'):
+                update_session_auth_hash(request, user)
 
-        user.save()
-        messages.success(request, "Perfil atualizado com sucesso!")
+            return redirect("editar_perfil")
+        else:
+            messages.error(request, "Por favor, corrija os erros abaixo.")
+    else:
+        form = EditarPerfilForm(instance=user)
 
-        if nova_senha:
-            from django.contrib.auth import update_session_auth_hash
-            update_session_auth_hash(request, user)
-
-        return redirect("editar_perfil")
-
-    return render(request, "editar_perfil.html")
+    return render(request, "editar_perfil.html", {'form': form})
