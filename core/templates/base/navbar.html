@@ -9,8 +9,36 @@
       <img src="{% static 'img/logo-white.png' %}" alt="Cinnamon" class="site-nav__logo site-nav__logo--light">
     </a>
 
+    <!-- Mobile hamburger toggle -->
+    <button class="site-nav__toggle" aria-label="Toggle menu" aria-expanded="false">
+      <i class="bi bi-list"></i>
+    </button>
+
     <!-- Links principais -->
     <div class="site-nav__links">
+      
+      <!-- Seletor de Empresa (somente global) - versão mobile dentro do menu -->
+      {% if user_is_global and empresas_disponiveis %}
+      <div class="site-nav__empresa site-nav__empresa--mobile">
+        <form method="POST" action="{% url 'trocar_empresa_ativa' %}" class="site-nav__empresa-form">
+          {% csrf_token %}
+          <i class="bi bi-building site-nav__empresa-icon"></i>
+          <select name="empresa_id" id="empresa_id_mobile"
+                  class="site-nav__empresa-select"
+                  onchange="this.form.submit()"
+                  aria-label="Selecionar empresa ativa">
+            <option value="">-- selecione --</option>
+            {% for emp in empresas_disponiveis %}
+              <option value="{{ emp.id }}" {% if empresa_ativa and empresa_ativa.id == emp.id %}selected{% endif %}>
+                {{ emp.nome }}
+              </option>
+            {% endfor %}
+          </select>
+          <i class="bi bi-chevron-down site-nav__empresa-chevron"></i>
+        </form>
+      </div>
+      {% endif %}
+      
       <ul class="site-nav__menu">
         <li>
           <a href="{% url 'demonstracao_financeira' %}" class="site-nav__link">
@@ -37,9 +65,9 @@
       </ul>
     </div>
 
-    <!-- Seletor de Empresa (somente global) -->
+    <!-- Seletor de Empresa (somente global) - versão desktop -->
     {% if user_is_global and empresas_disponiveis %}
-    <div class="site-nav__empresa">
+    <div class="site-nav__empresa site-nav__empresa--desktop">
       <form method="POST" action="{% url 'trocar_empresa_ativa' %}" class="site-nav__empresa-form">
         {% csrf_token %}
         <i class="bi bi-building site-nav__empresa-icon"></i>
