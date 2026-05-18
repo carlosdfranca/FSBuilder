@@ -7,6 +7,7 @@ from .models import (
     BalanceteItem,
     MecItem,
 )
+from .admin_mixins import TenantScopedAdminMixin
 
 
 @admin.register(Fundo)
@@ -33,16 +34,24 @@ class GrupoPequenoAdmin(admin.ModelAdmin):
 
 
 @admin.register(MapeamentoContas)
-class MapeamentoContasAdmin(admin.ModelAdmin):
-    list_display = ("conta", "grupo_pequeno", "get_grupao", "descricao")
-    list_filter = ("grupo_pequeno__grupao", "grupo_pequeno")
-    search_fields = ("conta", "descricao", "grupo_pequeno__nome", "grupo_pequeno__grupao__nome")
-    ordering = ("grupo_pequeno__grupao__nome", "grupo_pequeno__nome", "conta")
+class MapeamentoContasAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+    list_display = ("conta", "empresa", "grupo_pequeno",)
+    list_filter = ("empresa", )
+    search_fields = ("empresa__nome", )
+    ordering = ("empresa", "grupo_pequeno__grupao__nome", "grupo_pequeno__nome", "conta")
     autocomplete_fields = ("grupo_pequeno",)
 
     @admin.display(ordering="grupo_pequeno__grupao__nome", description="Grupão")
     def get_grupao(self, obj):
         return obj.grupo_pequeno.grupao.nome if obj.grupo_pequeno else "—"
+    
+    def save_model(self, request, obj, form, change):
+        # Auto-atribuir empresa se não estiver definida (para usuários não-globais)
+        if not obj.empresa_id and not request.user.has_global_scope():
+            empresa = getattr(request, "empresa_ativa", None)
+            if empresa:
+                obj.empresa = empresa
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(BalanceteItem)

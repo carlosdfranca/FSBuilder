@@ -88,7 +88,14 @@ class GrupoPequeno(models.Model):
 # MAPA DE CONTAS
 # =========================
 class MapeamentoContas(models.Model):
-    conta = models.CharField(max_length=30, unique=True)
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="mapeamentos_contas",
+        db_index=True,
+        help_text="Empresa (tenant) proprietária deste mapeamento."
+    )
+    conta = models.CharField(max_length=30)
     grupo_pequeno = models.ForeignKey(
         GrupoPequeno,
         on_delete=models.PROTECT,
@@ -101,10 +108,19 @@ class MapeamentoContas(models.Model):
     class Meta:
         verbose_name = "Mapeamento de CC"
         verbose_name_plural = "Mapeamentos de CC"
-        ordering = ["grupo_pequeno", "conta"]
+        ordering = ["empresa", "grupo_pequeno", "conta"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["empresa", "conta"],
+                name="uq_mapeamento_empresa_conta"
+            )
+        ]
+        indexes = [
+            models.Index(fields=["empresa", "conta"], name="idx_map_empresa_conta"),
+        ]
     
     def __str__(self):
-        return f"{self.conta}"
+        return f"{self.conta} - {self.empresa.nome}"
 
 
 # =================================================

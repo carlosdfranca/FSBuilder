@@ -49,10 +49,17 @@ def import_balancete(*, fundo_id: int, data_referencia: date, rows: List) -> Imp
     if not rows:
         return ImportReport(imported=0, updated=0, ignored=0, errors=[])
 
-    # Cache de contas conhecidas
+    # Obter fundo para acessar empresa (tenant)
+    from df.models import Fundo
+    fundo = Fundo.objects.select_related("empresa").get(id=fundo_id)
+
+    # Cache de contas conhecidas para esta empresa
     contas = {r.conta for r in rows if getattr(r, "conta", None)}
     mapa_by_conta: Dict[str, MapeamentoContas] = {
-        m.conta: m for m in MapeamentoContas.objects.filter(conta__in=list(contas))
+        m.conta: m for m in MapeamentoContas.objects.filter(
+            empresa=fundo.empresa,
+            conta__in=list(contas)
+        )
     }
 
     imported = updated = ignored = 0
