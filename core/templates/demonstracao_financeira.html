@@ -49,9 +49,11 @@
     const selectFundo = document.getElementById("select-fundo");
     const container = document.getElementById("df-container");
     const datasPorFundo = {{ fundos_datas|safe }};
+    const prazosPorFundo = {{ fundos_prazos|safe }};
 
     function renderConteudo(fundoId) {
       const datas = datasPorFundo[fundoId] || [];
+      const prazoInfo = prazosPorFundo[fundoId] || null;
       let htmlDatas = "";
 
       if (!datas.length) {
@@ -62,6 +64,47 @@
         let options = datas
           .map(d => `<option value="${d}">${new Date(d).toLocaleDateString('pt-BR')}</option>`)
           .join("");
+        
+        // Gerar alerta de prazo se houver data de vencimento
+        let alertaPrazo = "";
+        if (prazoInfo) {
+          const dataVenc = new Date(prazoInfo.data_vencimento);
+          const dataFormatada = `${String(dataVenc.getDate()).padStart(2, '0')}/${String(dataVenc.getMonth() + 1).padStart(2, '0')}`;
+          const dias = prazoInfo.dias_restantes;
+          const status = prazoInfo.status;
+          
+          let alertClass = "";
+          let icone = "";
+          let mensagem = "";
+          
+          if (status === "ok") {
+            alertClass = "alert-success";
+            icone = "✓";
+            mensagem = `Faltam <strong>${dias} dias</strong> para o vencimento da DF (${dataFormatada})`;
+          } else if (status === "aviso") {
+            alertClass = "alert-warning";
+            icone = "⚠";
+            mensagem = `Faltam <strong>${dias} dias</strong> para o vencimento da DF (${dataFormatada})`;
+          } else if (status === "urgente") {
+            alertClass = "alert-danger";
+            icone = "🚨";
+            mensagem = `<strong>URGENTE:</strong> Faltam <strong>${dias} dias</strong> para o vencimento da DF (${dataFormatada})`;
+          } else if (status === "vencida") {
+            alertClass = "alert-danger";
+            icone = "🚨";
+            mensagem = `<strong>DF VENCIDA</strong> há <strong>${dias} dias</strong> (vencimento em ${dataFormatada})`;
+          }
+          
+          alertaPrazo = `
+            <div class="alert ${alertClass} mb-3" role="alert">
+              <div class="d-flex align-items-center">
+                <span class="me-2" style="font-size: 1.2rem;">${icone}</span>
+                <div>${mensagem}</div>
+              </div>
+            </div>
+          `;
+        }
+        
         htmlDatas = `
           <div class="card shadow rounded p-4 mb-4">
             <div class="row justify-content-center">
@@ -70,6 +113,8 @@
                 <p class="text-muted small mb-4">
                   Escolha as duas datas de balancete que deseja comparar.
                 </p>
+                
+                ${alertaPrazo}
 
                 <div class="row mb-4">
                   <div class="col-md-6 mb-3 mb-md-0">

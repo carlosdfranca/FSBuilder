@@ -35,8 +35,9 @@
           <table class="table table-striped table-hover align-middle" id="tabela-fundos">
             <thead>
               <tr>
-                <th scope="col" style="width: 55%;">Nome</th>
-                <th scope="col" style="width: 25%;">CNPJ</th>
+                <th scope="col" style="width: 45%;">Nome</th>
+                <th scope="col" style="width: 20%;">CNPJ</th>
+                <th scope="col" style="width: 15%;" class="text-center">Vencimento DF</th>
                 {% if can_manage_fundos %}
                   <th scope="col" style="width: 10%;" class="text-center">Editar</th>
                   <th scope="col" style="width: 10%;" class="text-center">Excluir</th>
@@ -48,6 +49,13 @@
                 <tr>
                   <td class="fw-bold">{{ fundo.nome }}</td>
                   <td>{{ fundo.cnpj }}</td>
+                  <td class="text-center">
+                    {% if fundo.data_vencimento_df %}
+                      {{ fundo.data_vencimento_df|date:"d/m" }}
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
 
                   {% if can_manage_fundos %}
                   <td class="text-center">
@@ -98,6 +106,20 @@
             <label for="id_cnpj" class="form-label">CNPJ</label>
             {{ form.cnpj|add_class:"form-control" }}
           </div>
+          <div class="mb-3">
+            <label class="form-label">Data de Vencimento da DF <small class="text-muted">(opcional)</small></label>
+            <div class="row">
+              <div class="col-6">
+                <label for="id_dia_vencimento_df" class="form-label small text-muted">Dia</label>
+                {{ form.dia_vencimento_df|add_class:"form-control" }}
+              </div>
+              <div class="col-6">
+                <label for="id_mes_vencimento_df" class="form-label small text-muted">Mês</label>
+                {{ form.mes_vencimento_df|add_class:"form-control" }}
+              </div>
+            </div>
+            <div class="form-text">Informe o dia e mês do vencimento anual da DF (repete todos os anos)</div>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="submit" class="btn btn-primary">Salvar</button>
@@ -128,6 +150,20 @@
             <label for="cnpj{{ fundo.id }}" class="form-label">CNPJ</label>
             <input type="text" name="cnpj" id="cnpj{{ fundo.id }}" value="{{ fundo.cnpj }}" class="form-control" required>
           </div>
+          <div class="mb-3">
+            <label class="form-label">Data de Vencimento da DF <small class="text-muted">(opcional)</small></label>
+            <div class="row">
+              <div class="col-6">
+                <label for="dia_vencimento_df{{ fundo.id }}" class="form-label small text-muted">Dia</label>
+                <input type="number" name="dia_vencimento_df" id="dia_vencimento_df{{ fundo.id }}" value="{% if fundo.data_vencimento_df %}{{ fundo.data_vencimento_df.day }}{% endif %}" class="form-control" min="1" max="31" placeholder="Ex: 15">
+              </div>
+              <div class="col-6">
+                <label for="mes_vencimento_df{{ fundo.id }}" class="form-label small text-muted">Mês</label>
+                <input type="number" name="mes_vencimento_df" id="mes_vencimento_df{{ fundo.id }}" value="{% if fundo.data_vencimento_df %}{{ fundo.data_vencimento_df.month }}{% endif %}" class="form-control" min="1" max="12" placeholder="Ex: 3">
+              </div>
+            </div>
+            <div class="form-text">Informe o dia e mês do vencimento anual da DF (repete todos os anos)</div>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="submit" class="btn btn-primary">Salvar alterações</button>
@@ -154,7 +190,9 @@
       order: [[0, 'asc']], // Ordenar por nome (primeira coluna)
       columnDefs: [
         {% if can_manage_fundos %}
-        { orderable: false, targets: [2, 3] } // Desabilitar ordenação nas colunas de ação
+        { orderable: false, targets: [3, 4] } // Desabilitar ordenação nas colunas de ação
+        {% else %}
+        { orderable: true, targets: [2] } // Permitir ordenação na coluna de vencimento
         {% endif %}
       ]
     });
