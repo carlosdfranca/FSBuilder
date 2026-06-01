@@ -52,8 +52,13 @@
         </li>
         {% if user_can_view_company_users %}
         <li>
-          <a href="{% url 'gerenciar_usuarios' %}" class="site-nav__link">
+          <a href="{% url 'gerenciar_usuarios' %}" class="site-nav__link" style="position: relative;">
             <i class="bi bi-people"></i> Usuários
+            {% if convites_pendentes_count > 0 %}
+            <span class="badge bg-warning text-dark ms-1" style="font-size: 0.7rem; vertical-align: super;" title="Convites pendentes">
+              {{ convites_pendentes_count }}
+            </span>
+            {% endif %}
           </a>
         </li>
         {% endif %}

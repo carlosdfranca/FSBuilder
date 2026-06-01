@@ -1,0 +1,58 @@
+═══════════════════════════════════════════════════════════════════════════
+                            🎯 FSBuilder
+                 Plataforma de Demonstrações Financeiras
+═══════════════════════════════════════════════════════════════════════════
+
+VOCÊ FOI CONVIDADO!
+
+Olá,
+
+{{ convidante_nome }} ({{ convidante_role }}) convidou você para participar 
+da empresa {{ empresa.nome }} na plataforma FSBuilder.
+
+───────────────────────────────────────────────────────────────────────────
+📋 INFORMAÇÕES DO CONVITE
+───────────────────────────────────────────────────────────────────────────
+
+Seu papel será: {{ role_display }}
+Empresa: {{ empresa.nome }}
+
+───────────────────────────────────────────────────────────────────────────
+🏢 SOBRE O FSBUILDER
+───────────────────────────────────────────────────────────────────────────
+
+O FSBuilder é a plataforma especializada em demonstrações financeiras para 
+fundos de investimento, oferecendo ferramentas profissionais para gestão e 
+análise de dados contábeis.
+
+───────────────────────────────────────────────────────────────────────────
+✅ ACEITAR CONVITE
+───────────────────────────────────────────────────────────────────────────
+
+Para aceitar este convite e criar sua conta, acesse o link abaixo:
+
+{{ link_aceite }}
+
+───────────────────────────────────────────────────────────────────────────
+⏱️ ATENÇÃO - PRAZO DE VALIDADE
+───────────────────────────────────────────────────────────────────────────
+
+Este convite expira em: {{ convite.expira_em|date:"d/m/Y às H:i" }}
+({{ dias_validade }} dias a partir do envio)
+
+───────────────────────────────────────────────────────────────────────────
+📝 PRÓXIMOS PASSOS
+───────────────────────────────────────────────────────────────────────────
+
+1. Clique no link acima para aceitar o convite
+2. Complete seu cadastro (username, nome e senha)
+3. Acesse a plataforma e comece a trabalhar!
+
+───────────────────────────────────────────────────────────────────────────
+
+Se você não esperava este convite, pode ignorá-lo com segurança.
+Nenhuma ação será tomada se você não clicar no link acima.
+
+═══════════════════════════════════════════════════════════════════════════
+© {{ "now"|date:"Y" }} FSBuilder. Todos os direitos reservados.
+═══════════════════════════════════════════════════════════════════════════

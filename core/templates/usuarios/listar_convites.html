@@ -1,0 +1,369 @@
+{% extends "base/base.html" %}
+{% load static %}
+
+{% block title %}Convites - {{ empresa_nome }}{% endblock %}
+
+{% block conteudo %}
+{% include 'base/navbar.html' %}
+
+<div class="container py-4">
+  {% if messages %}
+    <div class="mb-3">
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-body">
+      <!-- Header -->
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h4 class="mb-0">Convites de Usuários</h4>
+          <small class="text-muted">{{ empresa_nome }}</small>
+        </div>
+        <a href="{% url 'gerenciar_usuarios' %}" class="btn-back">
+          <i class="bi bi-arrow-left"></i>
+        </a>
+      </div>
+
+      <!-- Estatísticas -->
+      <div class="stats-grid mb-4">
+        <div class="stat-card">
+          <div class="stat-value">{{ stats.total }}</div>
+          <div class="stat-label">Total</div>
+        </div>
+        <div class="stat-card stat-card--pending">
+          <div class="stat-value">{{ stats.pendentes }}</div>
+          <div class="stat-label">Pendentes</div>
+        </div>
+        <div class="stat-card stat-card--success">
+          <div class="stat-value">{{ stats.aceitos }}</div>
+          <div class="stat-label">Aceitos</div>
+        </div>
+        <div class="stat-card stat-card--expired">
+          <div class="stat-value">{{ stats.expirados }}</div>
+          <div class="stat-label">Expirados</div>
+        </div>
+        <div class="stat-card stat-card--cancelled">
+          <div class="stat-value">{{ stats.cancelados }}</div>
+          <div class="stat-label">Cancelados</div>
+        </div>
+      </div>
+
+      <!-- Filtros -->
+      <div class="mb-3 d-flex gap-2 flex-wrap">
+        <a href="?status=todos" class="btn btn-sm {% if status_filter == 'todos' %}btn-primary{% else %}btn-ghost-ds{% endif %}">
+          Todos
+        </a>
+        <a href="?status=pending" class="btn btn-sm {% if status_filter == 'pending' %}btn-primary{% else %}btn-ghost-ds{% endif %}">
+          <i class="bi bi-clock"></i> Pendentes
+        </a>
+        <a href="?status=accepted" class="btn btn-sm {% if status_filter == 'accepted' %}btn-primary{% else %}btn-ghost-ds{% endif %}">
+          <i class="bi bi-check-circle"></i> Aceitos
+        </a>
+        <a href="?status=expired" class="btn btn-sm {% if status_filter == 'expired' %}btn-primary{% else %}btn-ghost-ds{% endif %}">
+          <i class="bi bi-x-circle"></i> Expirados
+        </a>
+        <a href="?status=cancelled" class="btn btn-sm {% if status_filter == 'cancelled' %}btn-primary{% else %}btn-ghost-ds{% endif %}">
+          <i class="bi bi-dash-circle"></i> Cancelados
+        </a>
+      </div>
+                
+      <!-- Tabela -->
+      {% if convites %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead>
+            <tr>
+              {% if is_global and empresa_nome == "Todas as Empresas" %}
+              <th>Empresa</th>
+              {% endif %}
+              <th>Email</th>
+              <th>Papel</th>
+              <th>Status</th>
+              <th>Convidado por</th>
+              <th>Criado em</th>
+              <th>Expira em</th>
+              <th class="text-center">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for convite in convites %}
+            <tr>
+              {% if is_global and empresa_nome == "Todas as Empresas" %}
+              <td>
+                <span class="badge-empresa">{{ convite.empresa.nome|truncatechars:25 }}</span>
+              </td>
+              {% endif %}
+              <td>
+                <div class="d-flex flex-column">
+                  <span class="fw-semibold">{{ convite.email }}</span>
+                  {% if convite.tentativas_envio > 1 %}
+                  <small class="text-muted">
+                    <i class="bi bi-arrow-repeat"></i> {{ convite.tentativas_envio }} envios
+                  </small>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                {% if convite.role == 'MASTER' %}
+                <span class="badge bg-dark">MASTER</span>
+                {% elif convite.role == 'ADMIN' %}
+                <span class="badge bg-primary">ADMIN</span>
+                {% elif convite.role == 'MEMBER' %}
+                <span class="badge bg-success">MEMBER</span>
+                {% else %}
+                <span class="badge bg-info">VIEWER</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if convite.status == 'PENDING' %}
+                <span class="status-badge status-badge--pending">
+                  <i class="bi bi-clock"></i> Pendente
+                </span>
+                {% elif convite.status == 'ACCEPTED' %}
+                <span class="status-badge status-badge--accepted">
+                  <i class="bi bi-check-circle-fill"></i> Aceito
+                </span>
+                {% elif convite.status == 'EXPIRED' %}
+                <span class="status-badge status-badge--expired">
+                  <i class="bi bi-x-circle-fill"></i> Expirado
+                </span>
+                {% elif convite.status == 'CANCELLED' %}
+                <span class="status-badge status-badge--cancelled">
+                  <i class="bi bi-dash-circle-fill"></i> Cancelado
+                </span>
+                {% endif %}
+              </td>
+              <td>
+                {% if convite.convidado_por %}
+                <span class="text-muted">
+                  {{ convite.convidado_por.get_full_name|default:convite.convidado_por.username }}
+                </span>
+                {% else %}
+                <em class="text-muted">Sistema</em>
+                {% endif %}
+              </td>
+              <td>
+                <span class="text-muted">{{ convite.criado_em|date:"d/m/Y H:i" }}</span>
+              </td>
+              <td>
+                <div class="d-flex flex-column">
+                  <span class="text-muted">{{ convite.expira_em|date:"d/m/Y H:i" }}</span>
+                  {% if convite.status == 'PENDING' and convite.expira_em|timeuntil %}
+                  <small class="text-warning">
+                    <i class="bi bi-hourglass-split"></i> {{ convite.expira_em|timeuntil }}
+                  </small>
+                  {% endif %}
+                </div>
+              </td>
+              <td class="text-center">
+                <div class="d-flex gap-1 justify-content-center">
+                  {% if convite.status == 'PENDING' %}
+                  <form method="post" action="{% url 'reenviar_convite' convite.id %}" style="display:inline;" 
+                        onsubmit="return confirm('Reenviar convite para {{ convite.email }}?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-icon-ds btn-icon-ds--blue" title="Reenviar">
+                      <i class="bi bi-arrow-repeat"></i>
+                    </button>
+                  </form>
+                  <form method="post" action="{% url 'cancelar_convite' convite.id %}" style="display:inline;" 
+                        onsubmit="return confirm('Cancelar convite para {{ convite.email }}?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-icon-ds btn-icon-ds--red" title="Cancelar">
+                      <i class="bi bi-x-lg"></i>
+                    </button>
+                  </form>
+                  {% elif convite.status == 'EXPIRED' %}
+                  <form method="post" action="{% url 'reenviar_convite' convite.id %}" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-icon-ds btn-icon-ds--blue" title="Reenviar">
+                      <i class="bi bi-arrow-repeat"></i>
+                    </button>
+                  </form>
+                  {% elif convite.status == 'ACCEPTED' and convite.usuario_criado %}
+                  <span class="text-success" title="Convite aceito">
+                    <i class="bi bi-check-circle-fill"></i>
+                  </span>
+                  {% else %}
+                  <span class="text-muted">—</span>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <i class="bi bi-inbox empty-state__icon"></i>
+        <h5 class="empty-state__title">Nenhum convite encontrado</h5>
+        <p class="empty-state__text">
+          {% if empresa_nome == "Todas as Empresas" %}
+          Não há convites registrados no sistema.
+          {% else %}
+          Não há convites para {{ empresa_nome }}.
+          {% endif %}
+        </p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<style>
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  padding: 1.5rem;
+  background: var(--surface-3);
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--border-color);
+}
+
+.stat-card {
+  text-align: center;
+  padding: 1rem;
+  border-radius: var(--border-radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(107, 26, 42, 0.4);
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.stat-card--pending .stat-value {
+  color: #fbbf24;
+}
+
+.stat-card--success .stat-value {
+  color: var(--status-active);
+}
+
+.stat-card--expired .stat-value {
+  color: #ef4444;
+}
+
+.stat-card--cancelled .stat-value {
+  color: var(--text-secondary);
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid;
+}
+
+.status-badge--pending {
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.3);
+  color: #fbbf24;
+}
+
+.status-badge--accepted {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: var(--status-active);
+}
+
+.status-badge--expired {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.status-badge--cancelled {
+  background: rgba(173, 173, 177, 0.1);
+  border-color: rgba(173, 173, 177, 0.3);
+  color: var(--text-secondary);
+}
+
+/* Badge Empresa */
+.badge-empresa {
+  display: inline-block;
+  padding: 0.35rem 0.65rem;
+  background: rgba(107, 26, 42, 0.15);
+  border: 1px solid rgba(107, 26, 42, 0.35);
+  color: #C47080;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+}
+
+.empty-state__icon {
+  font-size: 4rem;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+  display: block;
+}
+
+.empty-state__title {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.empty-state__text {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .stat-value {
+    font-size: 1.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+{% endblock %}

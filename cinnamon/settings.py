@@ -28,7 +28,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'usuarios', 
     'df',
-
+    'django_celery_beat',  # Celery periodic tasks
     'widget_tweaks',
 ]
 
@@ -154,3 +154,66 @@ CSRF_COOKIE_SECURE = True
 
 
 AUTH_USER_MODEL = 'usuarios.Usuario'
+
+# ===== EMAIL CONFIGURATION =====
+# Método de envio: 'graph' (Microsoft Graph API OAuth2) ou 'smtp' (tradicional)
+EMAIL_SEND_METHOD = config('EMAIL_SEND_METHOD', default='smtp')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@fsbuilder.com')
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
+# Microsoft Graph API (OAuth2) - Recomendado para Microsoft 365
+AZURE_TENANT_ID = config('AZURE_TENANT_ID', default='')
+AZURE_CLIENT_ID = config('AZURE_CLIENT_ID', default='')
+AZURE_CLIENT_SECRET = config('AZURE_CLIENT_SECRET', default='')
+
+# SMTP Configuration (fallback/desenvolvimento)
+EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST = config('EMAIL_HOST', default='localhost')
+EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+
+# ===== CELERY CONFIGURATION =====
+# Broker (Redis)
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
+
+# Serialização
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+
+# Timezone
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = False
+
+# Task settings
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutos
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutos
+
+# Retry configuration
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
+# ===== CONVITE CONFIGURATION =====
+CONVITE_EXPIRACAO_DIAS = config('CONVITE_EXPIRACAO_DIAS', default=7, cast=int)
+CONVITE_MAX_REENVIOS = config('CONVITE_MAX_REENVIOS', default=3, cast=int)
+CONVITE_ENVIO_SINCRONO = config('CONVITE_ENVIO_SINCRONO', default=False, cast=bool)  # Para dev/tests
+
+# Base URL do site (usado em links de email)
+BASE_URL = config('BASE_URL', default='http://localhost:8000')
+
+# ===== CELERY BEAT SCHEDULE =====
+# Configuração de tasks periódicas
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'expirar-convites-antigos': {
+        'task': 'usuarios.tasks.expirar_convites_antigos',
+        'schedule': crontab(hour=3, minute=0),  # Todo dia às 3am
+    },
+}
+
+

@@ -24,9 +24,14 @@
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h4 class="mb-0">Usuários da empresa: <span class="fw-bold">{{ empresa.nome }}</span></h4>
         {% if can_manage %}
-          <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAddUser">
-            <i class="bi bi-person-plus me-1"></i> Novo Usuário
-          </button>
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalConvidarUsuario">
+              <i class="bi bi-envelope-plus me-1"></i> Convidar Usuário
+            </button>
+            <a href="{% url 'listar_convites' %}" class="btn btn-outline-primary">
+              <i class="bi bi-list-ul me-1"></i> Ver Convites
+            </a>
+          </div>
         {% endif %}
       </div>
       <div class="table-responsive">
@@ -63,14 +68,26 @@
 
                 {% if can_manage %}
                 <td class="text-center">
-                  <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalEditUser{{ m.id }}">
-                    <i class="bi bi-pencil"></i>
-                  </button>
+                  {% if m.role == "MASTER" %}
+                    <button class="btn btn-sm btn-outline-secondary" disabled title="MASTER não pode ser editado pela interface">
+                      <i class="bi bi-lock-fill"></i>
+                    </button>
+                  {% else %}
+                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalEditUser{{ m.id }}">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                  {% endif %}
                 </td>
                 <td class="text-center">
-                  <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalDeleteUser{{ m.id }}">
-                    <i class="bi bi-trash3"></i>
-                  </button>
+                  {% if m.role == "MASTER" %}
+                    <button class="btn btn-sm btn-outline-danger" disabled title="MASTER não pode ser removido pela interface">
+                      <i class="bi bi-lock-fill"></i>
+                    </button>
+                  {% else %}
+                    <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalDeleteUser{{ m.id }}">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  {% endif %}
                 </td>
                 {% endif %}
               </tr>
@@ -92,45 +109,49 @@
       <form method="POST" action="{% url 'empresa_usuario_editar' m.id %}">
         {% csrf_token %}
         <div class="modal-header">
-          <h5 class="modal-title" id="modalEditUserLabel{{ m.id }}">Editar Usuário</h5>
+          <h5 class="modal-title" id="modalEditUserLabel{{ m.id }}">Alterar Papel do Usuário</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-3">
-            <label class="form-label">Nome</label>
-            <input type="text" name="first_name" class="form-control" value="{{ m.usuario.first_name }}">
+          <div class="info-box mb-3">
+            <div class="info-box__icon">
+              <i class="bi bi-info-circle"></i>
+            </div>
+            <div class="info-box__content">
+              <strong>Informações pessoais:</strong>
+              <p class="mb-0 mt-1">O usuário pode alterar seu próprio nome, email e senha em <strong>"Editar Perfil"</strong>.</p>
+            </div>
           </div>
+          
           <div class="mb-3">
-            <label class="form-label">Email</label>
-            <input type="email" name="email" class="form-control" value="{{ m.usuario.email }}">
+            <label class="form-label">Usuário</label>
+            <input type="text" class="form-control" value="{{ m.usuario.get_full_name|default:m.usuario.username }}" disabled>
           </div>
+          
           <div class="mb-3">
-            <label class="form-label">Papel na empresa</label>
-            <select name="role" class="form-select">
-              {% if can_assign_master %}
-                <option value="MASTER" {% if m.role == "MASTER" %}selected{% endif %}>MASTER</option>
-              {% endif %}
-              <option value="ADMIN" {% if m.role == "ADMIN" %}selected{% endif %}>ADMIN</option>
-              <option value="MEMBER" {% if m.role == "MEMBER" %}selected{% endif %}>MEMBER</option>
-              <option value="VIEWER" {% if m.role == "VIEWER" %}selected{% endif %}>VIEWER</option>
+            <label class="form-label">Papel na empresa <span class="text-danger">*</span></label>
+            <select name="role" class="form-select" required {% if m.role == "MASTER" %}disabled{% endif %}>
+              <option value="ADMIN" {% if m.role == "ADMIN" %}selected{% endif %}>ADMIN (gerencia usuários)</option>
+              <option value="MEMBER" {% if m.role == "MEMBER" %}selected{% endif %}>MEMBER (acesso padrão)</option>
+              <option value="VIEWER" {% if m.role == "VIEWER" %}selected{% endif %}>VIEWER (somente leitura)</option>
             </select>
-            {% if not can_assign_master and m.role == "MASTER" %}
-              <div class="form-text text-danger">Apenas MASTER ou Global Admin pode alterar o MASTER.</div>
+            {% if m.role == "MASTER" %}
+              <div class="form-text text-warning">
+                <i class="bi bi-shield-lock-fill me-1"></i>
+                Este usuário é MASTER da empresa e não pode ter o papel alterado.
+              </div>
+            {% else %}
+              <div class="form-text">O papel MASTER é criado apenas pelo BackOffice.</div>
             {% endif %}
-          </div>
-          <hr>
-          <div class="mb-3">
-            <label class="form-label">Nova senha (opcional)</label>
-            <input type="password" name="password1" class="form-control" autocomplete="new-password">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Confirmar nova senha</label>
-            <input type="password" name="password2" class="form-control" autocomplete="new-password">
           </div>
         </div>
         <div class="modal-footer">
-          <button type="submit" class="btn btn-primary">Salvar</button>
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          {% if m.role == "MASTER" %}
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+          {% else %}
+            <button type="submit" class="btn btn-primary">Salvar</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          {% endif %}
         </div>
       </form>
     </div>
@@ -165,58 +186,141 @@
 </div>
 {% endfor %}
 
-<!-- Modal Adicionar Usuário -->
-<div class="modal fade" id="modalAddUser" tabindex="-1" aria-labelledby="modalAddUserLabel" aria-hidden="true">
+<!-- Modal Convidar Usuário (NOVO) -->
+<div class="modal fade" id="modalConvidarUsuario" tabindex="-1" aria-labelledby="modalConvidarUsuarioLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
-      <form method="POST" action="{% url 'empresa_usuario_adicionar' %}">
+      <form method="POST" action="{% url 'convidar_usuario' %}">
         {% csrf_token %}
         <div class="modal-header">
-          <h5 class="modal-title" id="modalAddUserLabel">Novo Usuário</h5>
+          <h5 class="modal-title" id="modalConvidarUsuarioLabel">
+            <i class="bi bi-envelope-plus me-2"></i> Convidar Usuário por Email
+          </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-3">
-            <label class="form-label">Username</label>
-            <input type="text" name="username" class="form-control" required>
+          <div class="info-box mb-3">
+            <div class="info-box__icon">
+              <i class="bi bi-info-circle"></i>
+            </div>
+            <div class="info-box__content">
+              <strong>Como funciona:</strong>
+              <ol class="mb-0 mt-1 ps-3">
+                <li>O usuário receberá um email com link único</li>
+                <li>Ele completará o cadastro (username, nome, senha)</li>
+                <li>Entrará automaticamente na plataforma</li>
+              </ol>
+            </div>
           </div>
+          
           <div class="mb-3">
-            <label class="form-label">Nome</label>
-            <input type="text" name="first_name" class="form-control">
+            <label class="form-label">Email <span class="text-danger">*</span></label>
+            <input type="email" name="email" class="form-control" placeholder="usuario@exemplo.com" required>
+            <small class="form-text text-muted">O convite será enviado para este endereço.</small>
           </div>
+          
           <div class="mb-3">
-            <label class="form-label">Email</label>
-            <input type="email" name="email" class="form-control">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Papel na empresa</label>
-            <select name="role" class="form-select">
-              {% if can_assign_master %}<option value="MASTER">MASTER</option>{% endif %}
-              <option value="ADMIN">ADMIN</option>
-              <option value="MEMBER">MEMBER</option>
-              <option value="VIEWER">VIEWER</option>
+            <label class="form-label">Papel na empresa <span class="text-danger">*</span></label>
+            <select name="role" class="form-select" required>
+              <option value="" disabled selected>Selecione...</option>
+              <option value="ADMIN">ADMIN (gerencia usuários)</option>
+              <option value="MEMBER">MEMBER (acesso padrão)</option>
+              <option value="VIEWER">VIEWER (somente leitura)</option>
             </select>
-            {% if not can_assign_master %}
-              <div class="form-text">Apenas MASTER ou Global Admin pode criar/promover MASTER.</div>
-            {% endif %}
+            <div class="form-text">O papel MASTER é criado apenas pelo BackOffice.</div>
           </div>
-          <div class="mb-3">
-            <label class="form-label">Senha</label>
-            <input type="password" name="password1" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Confirmar senha</label>
-            <input type="password" name="password2" class="form-control" required>
+          
+          <div class="warning-box">
+            <i class="bi bi-clock-history"></i>
+            <span>O convite expira em 7 dias. Você pode reenviá-lo se necessário.</span>
           </div>
         </div>
         <div class="modal-footer">
-          <button type="submit" class="btn btn-primary">Salvar</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-send me-1"></i> Enviar Convite
+          </button>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
         </div>
       </form>
     </div>
   </div>
 </div>
+
 {% endif %}
+
+<style>
+/* Info Box - Modal de Convite */
+.info-box {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: rgba(107, 26, 42, 0.08);
+  border: 1px solid rgba(107, 26, 42, 0.25);
+  border-radius: var(--border-radius-sm, 8px);
+  color: var(--text-primary);
+}
+
+.info-box__icon {
+  flex-shrink: 0;
+  font-size: 1.2rem;
+  color: #C47080;
+}
+
+.info-box__content {
+  flex: 1;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.info-box__content strong {
+  color: var(--text-primary);
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.info-box__content ol {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+/* Warning Box */
+.warning-box {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: var(--border-radius-sm, 8px);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.warning-box i {
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  color: #fbbf24;
+}
+
+.warning-box span {
+  color: var(--text-secondary);
+}
+
+.warning-box--deprecated {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.warning-box--deprecated div {
+  flex: 1;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.warning-box--deprecated strong {
+  color: var(--text-primary);
+}
+</style>
 
 {% endblock %}
