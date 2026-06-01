@@ -1,0 +1,107 @@
+{% extends 'base/base.html' %}
+{% load static %}
+{% load widget_tweaks %}
+
+{% block title %}Convidar Usuário{% endblock %}
+
+{% block conteudo %}
+{% include 'base/navbar.html' %}
+
+<div class="container py-4">
+  {% if messages %}
+    <div class="mb-3">
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-body">
+      <!-- Header -->
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h4 class="mb-0">Convidar Novo Usuário</h4>
+          <small class="text-muted">{{ empresa.nome }}</small>
+        </div>
+        <a href="{% url 'gerenciar_usuarios' %}" class="btn btn-outline-secondary">
+          <i class="bi bi-arrow-left me-1"></i> Voltar
+        </a>
+      </div>
+
+      <!-- Formulário -->
+      <form method="POST" action="{% url 'convidar_usuario' %}">
+        {% csrf_token %}
+        
+        <div class="row">
+          <div class="col-md-8">
+            <div class="mb-3">
+              <label for="{{ form.email.id_for_label }}" class="form-label">
+                Email do usuário <span class="text-danger">*</span>
+              </label>
+              {{ form.email|add_class:"form-control"|attr:"placeholder:email@exemplo.com" }}
+              {% if form.email.errors %}
+                <div class="invalid-feedback d-block">
+                  {{ form.email.errors.0 }}
+                </div>
+              {% endif %}
+              <small class="form-text text-muted">
+                O usuário receberá um email com um link para aceitar o convite.
+              </small>
+            </div>
+          </div>
+
+          <div class="col-md-4">
+            <div class="mb-3">
+              <label for="{{ form.role.id_for_label }}" class="form-label">
+                Papel <span class="text-danger">*</span>
+              </label>
+              {{ form.role|add_class:"form-select" }}
+              {% if form.role.errors %}
+                <div class="invalid-feedback d-block">
+                  {{ form.role.errors.0 }}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Descrição dos papéis -->
+        <div class="alert alert-info">
+          <strong>Papéis disponíveis:</strong>
+          <ul class="mb-0 mt-2">
+            <li><strong>Administrador:</strong> Acesso total, pode gerenciar usuários e configurações</li>
+            <li><strong>Membro:</strong> Acesso de leitura e escrita aos dados da empresa</li>
+            <li><strong>Visualizador:</strong> Apenas visualização, sem permissões de edição</li>
+          </ul>
+        </div>
+
+        <!-- Botões de ação -->
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <a href="{% url 'gerenciar_usuarios' %}" class="btn btn-secondary">
+            <i class="bi bi-x-circle me-1"></i> Cancelar
+          </a>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-envelope-plus me-1"></i> Enviar Convite
+          </button>
+        </div>
+      </form>
+
+      <!-- Informações adicionais -->
+      <div class="mt-4 pt-3 border-top">
+        <h6 class="text-muted mb-2">
+          <i class="bi bi-info-circle me-1"></i> Informações importantes:
+        </h6>
+        <ul class="text-muted small">
+          <li>O convite expira em 7 dias</li>
+          <li>Você pode reenviar ou cancelar convites pendentes na lista de convites</li>
+          <li>O usuário será automaticamente vinculado à empresa após aceitar o convite</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

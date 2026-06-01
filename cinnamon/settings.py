@@ -156,15 +156,23 @@ CSRF_COOKIE_SECURE = True
 AUTH_USER_MODEL = 'usuarios.Usuario'
 
 # ===== EMAIL CONFIGURATION =====
-# Backend de email (use console para desenvolvimento, SMTP para produção)
+# Método de envio: 'graph' (Microsoft Graph API OAuth2) ou 'smtp' (tradicional)
+EMAIL_SEND_METHOD = config('EMAIL_SEND_METHOD', default='smtp')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@fsbuilder.com')
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
+# Microsoft Graph API (OAuth2) - Recomendado para Microsoft 365
+AZURE_TENANT_ID = config('AZURE_TENANT_ID', default='')
+AZURE_CLIENT_ID = config('AZURE_CLIENT_ID', default='')
+AZURE_CLIENT_SECRET = config('AZURE_CLIENT_SECRET', default='')
+
+# SMTP Configuration (fallback/desenvolvimento)
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
 EMAIL_HOST = config('EMAIL_HOST', default='localhost')
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
 EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
-DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@fsbuilder.com')
-SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 # ===== CELERY CONFIGURATION =====
 # Broker (Redis)

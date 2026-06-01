@@ -7,7 +7,6 @@ Tasks assíncronas:
 """
 
 from celery import shared_task
-from django.core.mail import send_mail, EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.conf import settings
 from django.utils import timezone
@@ -41,6 +40,7 @@ def enviar_email_convite_async(self, convite_id: int):
         dict: Resultado do envio (sucesso, tentativas, etc)
     """
     from usuarios.models import Convite
+    from usuarios.email_service import send_email, EmailBackendError
     
     try:
         convite = Convite.objects.select_related(
@@ -110,39 +110,39 @@ def enviar_email_convite_async(self, convite_id: int):
         # Configura email
         subject = f"Convite para {convite.empresa.nome} - FSBuilder"
         from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@fsbuilder.com')
-        recipient_list = [convite.email]
+        recipient_email = convite.email
         
-        # Cria email multipart (HTML + plain text)
-        email = EmailMultiAlternatives(
+        # Envia email usando o novo serviço
+        send_email(
+            to_email=recipient_email,
             subject=subject,
-            body=text_message,
-            from_email=from_email,
-            to=recipient_list
+            html_content=html_message,
+            text_content=text_message,
+            from_email=from_email
         )
-        email.attach_alternative(html_message, "text/html")
-        
-        # Envia
-        email.send(fail_silently=False)
         
         logger.info(
             f"Email de convite enviado com sucesso: Convite {convite_id} | "
-            f"Para: {convite.email} | Tentativa: {self.request.retries + 1}"
+            f"Email: {recipient_email} | Tentativa: {self.request.retries + 1}"
         )
         
         return {
             'success': True,
             'convite_id': convite_id,
-            'email': convite.email,
+            'email': recipient_email,
             'tentativas': self.request.retries + 1
         }
         
     except Convite.DoesNotExist:
-        logger.error(f"Convite {convite_id} não encontrado ao tentar enviar email.")
+        logger.error(f"Convite {convite_id} não encontrado")
         return {
             'success': False,
-            'reason': 'convite_nao_encontrado'
+            'reason': 'convite_nao_existe'
         }
-        
+    except EmailBackendError as e:
+        logger.error(f"Erro no backend de email: {e}")
+        # Re-raise para trigger o retry automático
+        raise
     except Exception as exc:
         logger.error(
             f"Erro ao enviar email de convite {convite_id}: {str(exc)} | "
@@ -162,17 +162,117 @@ def enviar_email_convite_sync(convite_id: int):
     Returns:
         dict: Resultado do envio
     """
-    # Chama a mesma lógica, mas sem o decorator @shared_task
-    # Simula o objeto self.request para manter compatibilidade
-    class FakeRequest:
-        retries = 0
+    from usuarios.models import Convite
+    from usuarios.email_service import send_email, EmailBackendError
+    from django.template.loader import render_to_string
     
-    class FakeSelf:
-        request = FakeRequest()
-        max_retries = 0
-    
-    # Remove o decorator e executa a função diretamente
-    return enviar_email_convite_async.__wrapped__(FakeSelf(), convite_id)
+    try:
+        convite = Convite.objects.select_related(
+            'empresa', 'convidado_por'
+        ).get(id=convite_id)
+        
+        # Valida se convite está pendente
+        if convite.status != Convite.Status.PENDING:
+            logger.info(
+                f"Convite {convite_id} não está pendente (status: {convite.status}). "
+                f"Email não enviado."
+            )
+            return {
+                'success': False,
+                'reason': 'status_invalido',
+                'status': convite.status
+            }
+        
+        # Valida se não expirou
+        if timezone.now() > convite.expira_em:
+            logger.info(f"Convite {convite_id} já expirou. Email não enviado.")
+            convite.marcar_expirado()
+            return {
+                'success': False,
+                'reason': 'expirado'
+            }
+        
+        # Prepara contexto para o template
+        base_url = getattr(settings, 'BASE_URL', 'http://localhost:8000')
+        link_aceite = convite.get_link_aceite(base_url)
+        
+        # Determina nome e papel do convidante
+        convidante_nome = "Administrador"
+        convidante_role = "Administrador"
+        
+        if convite.convidado_por:
+            convidante_nome = convite.convidado_por.get_full_name() or convite.convidado_por.username
+            
+            # Tenta pegar o role do Membership na empresa
+            membership = convite.convidado_por.memberships.filter(
+                empresa=convite.empresa, 
+                is_active=True
+            ).first()
+            
+            if membership:
+                convidante_role = membership.get_role_display()
+            elif hasattr(convite.convidado_por, 'global_role') and convite.convidado_por.global_role:
+                convidante_role = "Administrador Global"
+        
+        context = {
+            'convite': convite,
+            'empresa': convite.empresa,
+            'convidante': convite.convidado_por,
+            'convidante_nome': convidante_nome,
+            'convidante_role': convidante_role,
+            'role_display': convite.get_role_display(),
+            'link_aceite': link_aceite,
+            'expira_em': convite.expira_em,
+            'BASE_URL': base_url
+        }
+        
+        # Renderiza templates HTML e texto
+        html_content = render_to_string('emails/convite.html', context)
+        text_content = render_to_string('emails/convite.txt', context)
+        
+        # Configura email
+        subject = f"Convite para {convite.empresa.nome} - FSBuilder"
+        from_email = settings.DEFAULT_FROM_EMAIL
+        to_email = convite.email
+        
+        # Envia email usando o novo serviço
+        send_email(
+            to_email=to_email,
+            subject=subject,
+            html_content=html_content,
+            text_content=text_content,
+            from_email=from_email
+        )
+        
+        logger.info(f"Email de convite enviado com sucesso (SYNC): Convite {convite_id}")
+        
+        return {
+            'success': True,
+            'convite_id': convite_id,
+            'email': to_email,
+            'tentativas': 1
+        }
+        
+    except Convite.DoesNotExist:
+        logger.error(f"Convite {convite_id} não encontrado")
+        return {
+            'success': False,
+            'reason': 'convite_nao_existe'
+        }
+    except EmailBackendError as e:
+        logger.exception(f"Erro no backend de email: {e}")
+        return {
+            'success': False,
+            'reason': 'erro_envio',
+            'error': str(e)
+        }
+    except Exception as e:
+        logger.exception(f"Erro ao enviar email (SYNC): {e}")
+        return {
+            'success': False,
+            'reason': 'erro_envio',
+            'error': str(e)
+        }
 
 
 @shared_task
