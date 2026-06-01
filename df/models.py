@@ -16,6 +16,12 @@ class Fundo(models.Model):
     )
     nome = models.CharField(max_length=255)
     cnpj = models.CharField(max_length=20)
+    data_vencimento_df = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Data de Vencimento da DF",
+        help_text="Data de vencimento anual da DF (apenas dia e mês são considerados, repete anualmente)"
+    )
 
     class Meta:
         verbose_name = "Fundo"

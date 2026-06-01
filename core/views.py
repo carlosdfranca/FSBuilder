@@ -4,6 +4,8 @@ from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
+from datetime import date
+import json
 
 from df.models import Fundo, BalanceteItem
 from usuarios.models import Empresa, Membership
@@ -73,6 +75,9 @@ def demonstracao_financeira(request):
 
     # Agrupar as datas disponíveis por fundo (substitui fundos_anos)
     fundos_datas = {}
+    fundos_prazos = {}  # Informações sobre prazo de vencimento da DF
+    hoje = date.today()
+    
     for fundo in fundos:
         datas_qs = (
             BalanceteItem.objects.filter(fundo=fundo)
@@ -83,10 +88,34 @@ def demonstracao_financeira(request):
         # Converter para strings únicas
         datas_formatadas = sorted({d.isoformat() for d in datas_qs if d}, reverse=True)
         fundos_datas[fundo.id] = datas_formatadas
+        
+        # Calcular dias até vencimento da DF
+        if fundo.data_vencimento_df:
+            # Usar o dia/mês do vencimento com o ano atual
+            vencimento_este_ano = date(hoje.year, fundo.data_vencimento_df.month, fundo.data_vencimento_df.day)
+            dias_restantes = (vencimento_este_ano - hoje).days
+            
+            # Determinar status baseado em dias restantes
+            if dias_restantes > 30:
+                status = "ok"  # Verde
+            elif dias_restantes >= 15:
+                status = "aviso"  # Amarelo
+            elif dias_restantes >= 0:
+                status = "urgente"  # Vermelho urgente
+            else:
+                status = "vencida"  # Vermelho vencida
+                dias_restantes = abs(dias_restantes)  # Converter para positivo para exibição
+            
+            fundos_prazos[fundo.id] = {
+                "data_vencimento": fundo.data_vencimento_df.isoformat(),  # Converter para string
+                "dias_restantes": dias_restantes,
+                "status": status
+            }
 
     return render(request, "demonstracao_financeira.html", {
         "fundos": fundos,
-        "fundos_datas": fundos_datas,
+        "fundos_datas": json.dumps(fundos_datas),
+        "fundos_prazos": json.dumps(fundos_prazos),
         "can_enviar_balancete": _can_manage_fundos(request),
     })
 
