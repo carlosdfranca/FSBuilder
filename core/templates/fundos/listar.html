@@ -121,79 +121,103 @@
           <hr class="my-4">
 
           <!-- Configuração de DFs -->
-          <h6 class="text-muted mb-3">Tipos de DF</h6>
-          <div class="row mb-3">
+          <p class="fw-semibold mb-3">Tipos de DF</p>
+          <div class="row g-3 mb-3">
             <div class="col-6">
-              <div class="form-check">
-                {{ form.tem_trimestral }}
-                <label class="form-check-label" for="id_tem_trimestral">
-                  <strong>DF Trimestral</strong>
-                  <br><small class="text-muted">4 vencimentos por ano</small>
-                </label>
+              <div class="df-card border rounded-3 p-3 h-100" data-color="primary" style="cursor:pointer; transition: all .15s ease;">
+                <div class="d-flex align-items-center gap-3">
+                  <div class="rounded-2 p-2 bg-primary bg-opacity-10 flex-shrink-0">
+                    <i class="bi bi-calendar3 text-primary fs-5"></i>
+                  </div>
+                  <div class="flex-grow-1">
+                    <div class="fw-bold small">DF TRIMESTRAL</div>
+                    <div class="text-muted" style="font-size: .75rem;">4 vencimentos por ano</div>
+                  </div>
+                  <input type="checkbox" name="tem_trimestral" id="id_tem_trimestral" class="form-check-input flex-shrink-0">
+                </div>
               </div>
             </div>
             <div class="col-6">
-              <div class="form-check">
-                {{ form.tem_anual }}
-                <label class="form-check-label" for="id_tem_anual">
-                  <strong>DF Anual</strong>
-                  <br><small class="text-muted">1 vencimento por ano</small>
-                </label>
+              <div class="df-card border rounded-3 p-3 h-100" data-color="success" style="cursor:pointer; transition: all .15s ease;">
+                <div class="d-flex align-items-center gap-3">
+                  <div class="rounded-2 p-2 bg-success bg-opacity-10 flex-shrink-0">
+                    <i class="bi bi-calendar-check text-success fs-5"></i>
+                  </div>
+                  <div class="flex-grow-1">
+                    <div class="fw-bold small">DF ANUAL</div>
+                    <div class="text-muted" style="font-size: .75rem;">1 vencimento por ano</div>
+                  </div>
+                  <input type="checkbox" name="tem_anual" id="id_tem_anual" class="form-check-input flex-shrink-0">
+                </div>
               </div>
             </div>
           </div>
-          <p class="text-muted small mb-3">
-            <i class="bi bi-info-circle"></i>
-            Períodos <strong>Transitória</strong> e <strong>Encerramento</strong> são criados manualmente na página de períodos do fundo.
+          <p class="text-muted small mb-0">
+            <i class="bi bi-info-circle me-1"></i>Períodos <strong>Transitória</strong> e <strong>Encerramento</strong> são criados manualmente na página de períodos do fundo.
           </p>
 
           <!-- Vencimentos Trimestrais -->
           <div id="config-trimestral" style="display: none;">
-            <h6 class="text-muted mt-4 mb-3">Vencimentos Trimestrais</h6>
-            <div class="row g-3">
-              <div class="col-md-6">
-                <label class="form-label fw-bold">1º Trimestre</label>
-                <div class="row">
-                  <div class="col-6">{{ form.trim1_dia }}</div>
-                  <div class="col-6">{{ form.trim1_mes }}</div>
+            <div class="border border-primary border-opacity-25 rounded-3 p-3 mt-3" style="background: rgba(var(--bs-primary-rgb),.03);">
+              <div class="d-flex align-items-center gap-2 mb-3">
+                <i class="bi bi-calendar3 text-primary"></i>
+                <span class="fw-semibold text-primary small">DATAS DE VENCIMENTO TRIMESTRAIS</span>
+              </div>
+              <div class="row g-2">
+                <div class="col-6 col-md-3">
+                  <div class="border rounded-2 p-2 bg-white text-center">
+                    <div class="text-primary fw-semibold mb-2" style="font-size:.7rem; letter-spacing:.05em;">1º TRIMESTRE</div>
+                    <div class="d-flex align-items-center gap-1 justify-content-center">
+                      {{ form.trim1_dia }}<span class="text-muted small">/</span>{{ form.trim1_mes }}
+                    </div>
+                  </div>
+                </div>
+                <div class="col-6 col-md-3">
+                  <div class="border rounded-2 p-2 bg-white text-center">
+                    <div class="text-primary fw-semibold mb-2" style="font-size:.7rem; letter-spacing:.05em;">2º TRIMESTRE</div>
+                    <div class="d-flex align-items-center gap-1 justify-content-center">
+                      {{ form.trim2_dia }}<span class="text-muted small">/</span>{{ form.trim2_mes }}
+                    </div>
+                  </div>
+                </div>
+                <div class="col-6 col-md-3">
+                  <div class="border rounded-2 p-2 bg-white text-center">
+                    <div class="text-primary fw-semibold mb-2" style="font-size:.7rem; letter-spacing:.05em;">3º TRIMESTRE</div>
+                    <div class="d-flex align-items-center gap-1 justify-content-center">
+                      {{ form.trim3_dia }}<span class="text-muted small">/</span>{{ form.trim3_mes }}
+                    </div>
+                  </div>
+                </div>
+                <div class="col-6 col-md-3">
+                  <div class="border rounded-2 p-2 bg-white text-center">
+                    <div class="text-primary fw-semibold mb-2" style="font-size:.7rem; letter-spacing:.05em;">4º TRIMESTRE</div>
+                    <div class="d-flex align-items-center gap-1 justify-content-center">
+                      {{ form.trim4_dia }}<span class="text-muted small">/</span>{{ form.trim4_mes }}
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div class="col-md-6">
-                <label class="form-label fw-bold">2º Trimestre</label>
-                <div class="row">
-                  <div class="col-6">{{ form.trim2_dia }}</div>
-                  <div class="col-6">{{ form.trim2_mes }}</div>
-                </div>
-              </div>
-              <div class="col-md-6">
-                <label class="form-label fw-bold">3º Trimestre</label>
-                <div class="row">
-                  <div class="col-6">{{ form.trim3_dia }}</div>
-                  <div class="col-6">{{ form.trim3_mes }}</div>
-                </div>
-              </div>
-              <div class="col-md-6">
-                <label class="form-label fw-bold">4º Trimestre</label>
-                <div class="row">
-                  <div class="col-6">{{ form.trim4_dia }}</div>
-                  <div class="col-6">{{ form.trim4_mes }}</div>
-                </div>
-              </div>
+              <p class="text-muted mb-0 mt-2" style="font-size:.75rem;">
+                <i class="bi bi-info-circle me-1"></i>Informe o dia e mês de vencimento de cada trimestre. Ex: <strong>31 / 03</strong> para 31 de março.
+              </p>
             </div>
           </div>
 
           <!-- Vencimento Anual -->
           <div id="config-anual" style="display: none;">
-            <h6 class="text-muted mt-4 mb-3">Vencimento Anual</h6>
-            <div class="row">
-              <div class="col-6">
-                <label class="form-label">Dia</label>
-                {{ form.anual_dia }}
+            <div class="border border-success border-opacity-25 rounded-3 p-3 mt-3" style="background: rgba(var(--bs-success-rgb),.03);">
+              <div class="d-flex align-items-center gap-2 mb-3">
+                <i class="bi bi-calendar-check text-success"></i>
+                <span class="fw-semibold text-success small">DATA DE VENCIMENTO ANUAL</span>
               </div>
-              <div class="col-6">
-                <label class="form-label">Mês</label>
+              <div class="d-flex align-items-center gap-2" style="max-width: 150px;">
+                {{ form.anual_dia }}
+                <span class="text-muted fw-bold">/</span>
                 {{ form.anual_mes }}
               </div>
+              <p class="text-muted mb-0 mt-2" style="font-size:.75rem;">
+                <i class="bi bi-info-circle me-1"></i>Ex: <strong>31 / 12</strong> para 31 de dezembro.
+              </p>
             </div>
           </div>
         </div>
@@ -232,81 +256,94 @@
           <hr class="my-4">
 
           <!-- Configuração de DFs -->
-          <h6 class="text-muted mb-3">Tipos de DF</h6>
-          <div class="row mb-3">
+          <p class="fw-semibold mb-3">Tipos de DF</p>
+          <div class="row g-3 mb-3">
             <div class="col-6">
-              <div class="form-check">
-                <input type="checkbox" name="tem_trimestral" id="tem_trimestral{{ fundo.id }}" class="form-check-input checkbox-trimestral" data-fundo-id="{{ fundo.id }}" {% if fundo.config_trimestral %}checked{% endif %}>
-                <label class="form-check-label" for="tem_trimestral{{ fundo.id }}">
-                  <strong>DF Trimestral</strong>
-                  <br><small class="text-muted">4 vencimentos por ano</small>
-                </label>
+              <div class="df-card border rounded-3 p-3 h-100 {% if fundo.config_trimestral %}df-card-active-primary{% endif %}" data-color="primary" style="cursor:pointer; transition: all .15s ease;">
+                <div class="d-flex align-items-center gap-3">
+                  <div class="rounded-2 p-2 bg-primary bg-opacity-10 flex-shrink-0">
+                    <i class="bi bi-calendar3 text-primary fs-5"></i>
+                  </div>
+                  <div class="flex-grow-1">
+                    <div class="fw-bold small">DF TRIMESTRAL</div>
+                    <div class="text-muted" style="font-size: .75rem;">4 vencimentos por ano</div>
+                  </div>
+                  <input type="checkbox" name="tem_trimestral" id="tem_trimestral{{ fundo.id }}" class="form-check-input flex-shrink-0 checkbox-trimestral" data-fundo-id="{{ fundo.id }}" {% if fundo.config_trimestral %}checked{% endif %}>
+                </div>
               </div>
             </div>
             <div class="col-6">
-              <div class="form-check">
-                <input type="checkbox" name="tem_anual" id="tem_anual{{ fundo.id }}" class="form-check-input checkbox-anual" data-fundo-id="{{ fundo.id }}" {% if fundo.config_anual %}checked{% endif %}>
-                <label class="form-check-label" for="tem_anual{{ fundo.id }}">
-                  <strong>DF Anual</strong>
-                  <br><small class="text-muted">1 vencimento por ano</small>
-                </label>
+              <div class="df-card border rounded-3 p-3 h-100 {% if fundo.config_anual %}df-card-active-success{% endif %}" data-color="success" style="cursor:pointer; transition: all .15s ease;">
+                <div class="d-flex align-items-center gap-3">
+                  <div class="rounded-2 p-2 bg-success bg-opacity-10 flex-shrink-0">
+                    <i class="bi bi-calendar-check text-success fs-5"></i>
+                  </div>
+                  <div class="flex-grow-1">
+                    <div class="fw-bold small">DF ANUAL</div>
+                    <div class="text-muted" style="font-size: .75rem;">1 vencimento por ano</div>
+                  </div>
+                  <input type="checkbox" name="tem_anual" id="tem_anual{{ fundo.id }}" class="form-check-input flex-shrink-0 checkbox-anual" data-fundo-id="{{ fundo.id }}" {% if fundo.config_anual %}checked{% endif %}>
+                </div>
               </div>
             </div>
           </div>
-          <p class="text-muted small mb-3">
-            <i class="bi bi-info-circle"></i>
-            Períodos <strong>Transitória</strong> e <strong>Encerramento</strong> são criados manualmente na página de períodos do fundo.
+          <p class="text-muted small mb-0">
+            <i class="bi bi-info-circle me-1"></i>Períodos <strong>Transitória</strong> e <strong>Encerramento</strong> são criados manualmente na página de períodos do fundo.
           </p>
 
           <!-- Vencimentos Trimestrais -->
           {% with ct=fundo.config_trimestral %}
           <div id="config-trimestral{{ fundo.id }}" class="config-trimestral-section" style="{% if ct %}display: block;{% else %}display: none;{% endif %}">
-            <h6 class="text-muted mt-4 mb-3">Vencimentos Trimestrais</h6>
-            <div class="row g-3">
-              <div class="col-md-6">
-                <label class="form-label fw-bold">1º Trimestre</label>
-                <div class="row">
-                  <div class="col-6">
-                    <input type="number" name="trim1_dia" class="form-control form-control-sm" placeholder="Dia" min="1" max="31" value="{% if ct %}{{ ct.trim1_dia }}{% endif %}">
+            <div class="border border-primary border-opacity-25 rounded-3 p-3 mt-3" style="background: rgba(var(--bs-primary-rgb),.03);">
+              <div class="d-flex align-items-center gap-2 mb-3">
+                <i class="bi bi-calendar3 text-primary"></i>
+                <span class="fw-semibold text-primary small">DATAS DE VENCIMENTO TRIMESTRAIS</span>
+              </div>
+              <div class="row g-2">
+                <div class="col-6 col-md-3">
+                  <div class="border rounded-2 p-2 bg-white text-center">
+                    <div class="text-primary fw-semibold mb-2" style="font-size:.7rem; letter-spacing:.05em;">1º TRIMESTRE</div>
+                    <div class="d-flex align-items-center gap-1 justify-content-center">
+                      <input type="number" name="trim1_dia" class="form-control form-control-sm text-center" placeholder="DD" min="1" max="31" value="{% if ct %}{{ ct.trim1_dia }}{% endif %}" style="width:52px;">
+                      <span class="text-muted small">/</span>
+                      <input type="number" name="trim1_mes" class="form-control form-control-sm text-center" placeholder="MM" min="1" max="12" value="{% if ct %}{{ ct.trim1_mes }}{% endif %}" style="width:52px;">
+                    </div>
                   </div>
-                  <div class="col-6">
-                    <input type="number" name="trim1_mes" class="form-control form-control-sm" placeholder="Mês" min="1" max="12" value="{% if ct %}{{ ct.trim1_mes }}{% endif %}">
+                </div>
+                <div class="col-6 col-md-3">
+                  <div class="border rounded-2 p-2 bg-white text-center">
+                    <div class="text-primary fw-semibold mb-2" style="font-size:.7rem; letter-spacing:.05em;">2º TRIMESTRE</div>
+                    <div class="d-flex align-items-center gap-1 justify-content-center">
+                      <input type="number" name="trim2_dia" class="form-control form-control-sm text-center" placeholder="DD" min="1" max="31" value="{% if ct %}{{ ct.trim2_dia }}{% endif %}" style="width:52px;">
+                      <span class="text-muted small">/</span>
+                      <input type="number" name="trim2_mes" class="form-control form-control-sm text-center" placeholder="MM" min="1" max="12" value="{% if ct %}{{ ct.trim2_mes }}{% endif %}" style="width:52px;">
+                    </div>
+                  </div>
+                </div>
+                <div class="col-6 col-md-3">
+                  <div class="border rounded-2 p-2 bg-white text-center">
+                    <div class="text-primary fw-semibold mb-2" style="font-size:.7rem; letter-spacing:.05em;">3º TRIMESTRE</div>
+                    <div class="d-flex align-items-center gap-1 justify-content-center">
+                      <input type="number" name="trim3_dia" class="form-control form-control-sm text-center" placeholder="DD" min="1" max="31" value="{% if ct %}{{ ct.trim3_dia }}{% endif %}" style="width:52px;">
+                      <span class="text-muted small">/</span>
+                      <input type="number" name="trim3_mes" class="form-control form-control-sm text-center" placeholder="MM" min="1" max="12" value="{% if ct %}{{ ct.trim3_mes }}{% endif %}" style="width:52px;">
+                    </div>
+                  </div>
+                </div>
+                <div class="col-6 col-md-3">
+                  <div class="border rounded-2 p-2 bg-white text-center">
+                    <div class="text-primary fw-semibold mb-2" style="font-size:.7rem; letter-spacing:.05em;">4º TRIMESTRE</div>
+                    <div class="d-flex align-items-center gap-1 justify-content-center">
+                      <input type="number" name="trim4_dia" class="form-control form-control-sm text-center" placeholder="DD" min="1" max="31" value="{% if ct %}{{ ct.trim4_dia }}{% endif %}" style="width:52px;">
+                      <span class="text-muted small">/</span>
+                      <input type="number" name="trim4_mes" class="form-control form-control-sm text-center" placeholder="MM" min="1" max="12" value="{% if ct %}{{ ct.trim4_mes }}{% endif %}" style="width:52px;">
+                    </div>
                   </div>
                 </div>
               </div>
-              <div class="col-md-6">
-                <label class="form-label fw-bold">2º Trimestre</label>
-                <div class="row">
-                  <div class="col-6">
-                    <input type="number" name="trim2_dia" class="form-control form-control-sm" placeholder="Dia" min="1" max="31" value="{% if ct %}{{ ct.trim2_dia }}{% endif %}">
-                  </div>
-                  <div class="col-6">
-                    <input type="number" name="trim2_mes" class="form-control form-control-sm" placeholder="Mês" min="1" max="12" value="{% if ct %}{{ ct.trim2_mes }}{% endif %}">
-                  </div>
-                </div>
-              </div>
-              <div class="col-md-6">
-                <label class="form-label fw-bold">3º Trimestre</label>
-                <div class="row">
-                  <div class="col-6">
-                    <input type="number" name="trim3_dia" class="form-control form-control-sm" placeholder="Dia" min="1" max="31" value="{% if ct %}{{ ct.trim3_dia }}{% endif %}">
-                  </div>
-                  <div class="col-6">
-                    <input type="number" name="trim3_mes" class="form-control form-control-sm" placeholder="Mês" min="1" max="12" value="{% if ct %}{{ ct.trim3_mes }}{% endif %}">
-                  </div>
-                </div>
-              </div>
-              <div class="col-md-6">
-                <label class="form-label fw-bold">4º Trimestre</label>
-                <div class="row">
-                  <div class="col-6">
-                    <input type="number" name="trim4_dia" class="form-control form-control-sm" placeholder="Dia" min="1" max="31" value="{% if ct %}{{ ct.trim4_dia }}{% endif %}">
-                  </div>
-                  <div class="col-6">
-                    <input type="number" name="trim4_mes" class="form-control form-control-sm" placeholder="Mês" min="1" max="12" value="{% if ct %}{{ ct.trim4_mes }}{% endif %}">
-                  </div>
-                </div>
-              </div>
+              <p class="text-muted mb-0 mt-2" style="font-size:.75rem;">
+                <i class="bi bi-info-circle me-1"></i>Informe o dia e mês de vencimento de cada trimestre. Ex: <strong>31 / 03</strong> para 31 de março.
+              </p>
             </div>
           </div>
           {% endwith %}
@@ -314,16 +351,19 @@
           <!-- Vencimento Anual -->
           {% with ca=fundo.config_anual %}
           <div id="config-anual{{ fundo.id }}" class="config-anual-section" style="{% if ca %}display: block;{% else %}display: none;{% endif %}">
-            <h6 class="text-muted mt-4 mb-3">Vencimento Anual</h6>
-            <div class="row">
-              <div class="col-6">
-                <label class="form-label">Dia</label>
-                <input type="number" name="anual_dia" class="form-control form-control-sm" placeholder="Dia" min="1" max="31" value="{% if ca %}{{ ca.anual_dia }}{% endif %}">
+            <div class="border border-success border-opacity-25 rounded-3 p-3 mt-3" style="background: rgba(var(--bs-success-rgb),.03);">
+              <div class="d-flex align-items-center gap-2 mb-3">
+                <i class="bi bi-calendar-check text-success"></i>
+                <span class="fw-semibold text-success small">DATA DE VENCIMENTO ANUAL</span>
               </div>
-              <div class="col-6">
-                <label class="form-label">Mês</label>
-                <input type="number" name="anual_mes" class="form-control form-control-sm" placeholder="Mês" min="1" max="12" value="{% if ca %}{{ ca.anual_mes }}{% endif %}">
+              <div class="d-flex align-items-center gap-2" style="max-width: 150px;">
+                <input type="number" name="anual_dia" class="form-control form-control-sm text-center" placeholder="DD" min="1" max="31" value="{% if ca %}{{ ca.anual_dia }}{% endif %}">
+                <span class="text-muted fw-bold">/</span>
+                <input type="number" name="anual_mes" class="form-control form-control-sm text-center" placeholder="MM" min="1" max="12" value="{% if ca %}{{ ca.anual_mes }}{% endif %}">
               </div>
+              <p class="text-muted mb-0 mt-2" style="font-size:.75rem;">
+                <i class="bi bi-info-circle me-1"></i>Ex: <strong>31 / 12</strong> para 31 de dezembro.
+              </p>
             </div>
           </div>
           {% endwith %}
@@ -342,66 +382,89 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+  .df-card { border-color: #dee2e6 !important; }
+  .df-card-active-primary {
+    border-color: var(--bs-primary) !important;
+    background-color: rgba(var(--bs-primary-rgb), .04) !important;
+  }
+  .df-card-active-success {
+    border-color: var(--bs-success) !important;
+    background-color: rgba(var(--bs-success-rgb), .04) !important;
+  }
+</style>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
-    // Inicializar DataTables na tabela de fundos
+    // ── DataTables ──────────────────────────────────────────
     $('#tabela-fundos').DataTable({
-      language: {
-        url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json'
-      },
+      language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json' },
       pageLength: 25,
-      order: [[0, 'asc']], // Ordenar por nome (primeira coluna)
+      order: [[0, 'asc']],
       columnDefs: [
-        {% if can_manage_fundos %}
-        { orderable: false, targets: [3, 4] } // Desabilitar ordenação nas colunas de ação
-        {% endif %}
+        {% if can_manage_fundos %}{ orderable: false, targets: [3, 4] }{% endif %}
       ]
     });
 
-    // Máscara de CNPJ
-    const cnpjInputs = document.querySelectorAll('input[id="id_cnpj"], input[id^="cnpj"]'); 
-    cnpjInputs.forEach(function (input) {
+    // ── Máscara CNPJ ────────────────────────────────────────
+    document.querySelectorAll('input[id="id_cnpj"], input[id^="cnpj"]').forEach(function (input) {
       IMask(input, { mask: '00.000.000/0000-00' });
     });
 
-    // Toggle de seções de configuração no modal de adicionar
-    const checkboxTrimestral = document.getElementById('id_tem_trimestral');
-    const checkboxAnual = document.getElementById('id_tem_anual');
-    const configTrimestral = document.getElementById('config-trimestral');
-    const configAnual = document.getElementById('config-anual');
-
-    if (checkboxTrimestral && configTrimestral) {
-      checkboxTrimestral.addEventListener('change', function() {
-        configTrimestral.style.display = this.checked ? 'block' : 'none';
-      });
+    // ── Cards de tipo de DF ─────────────────────────────────
+    function applyCardStyle(card, checked) {
+      const color = card.dataset.color || 'primary';
+      if (checked) {
+        card.classList.add(`df-card-active-${color}`);
+      } else {
+        card.classList.remove(`df-card-active-primary`, `df-card-active-success`);
+      }
     }
 
-    if (checkboxAnual && configAnual) {
-      checkboxAnual.addEventListener('change', function() {
-        configAnual.style.display = this.checked ? 'block' : 'none';
-      });
-    }
+    document.querySelectorAll('.df-card').forEach(function (card) {
+      const checkbox = card.querySelector('input[type="checkbox"]');
+      if (!checkbox) return;
 
-    // Toggle de seções de configuração nos modais de editar (por fundo)
-    document.querySelectorAll('.checkbox-trimestral').forEach(function(checkbox) {
-      const fundoId = checkbox.dataset.fundoId;
-      const configSection = document.getElementById('config-trimestral' + fundoId);
-      
-      checkbox.addEventListener('change', function() {
-        if (configSection) {
-          configSection.style.display = this.checked ? 'block' : 'none';
-        }
+      // Aplicar estado inicial
+      applyCardStyle(card, checkbox.checked);
+
+      // Clicar no card toggle o checkbox (exceto se clicou direto no checkbox)
+      card.addEventListener('click', function (e) {
+        if (e.target === checkbox) return;
+        checkbox.checked = !checkbox.checked;
+        checkbox.dispatchEvent(new Event('change'));
+      });
+
+      // Quando checkbox muda, atualiza estilo do card
+      checkbox.addEventListener('change', function () {
+        applyCardStyle(card, this.checked);
       });
     });
 
-    document.querySelectorAll('.checkbox-anual').forEach(function(checkbox) {
-      const fundoId = checkbox.dataset.fundoId;
-      const configSection = document.getElementById('config-anual' + fundoId);
-      
-      checkbox.addEventListener('change', function() {
-        if (configSection) {
-          configSection.style.display = this.checked ? 'block' : 'none';
-        }
+    // ── Toggle seções no modal Adicionar ────────────────────
+    const cbTrim = document.getElementById('id_tem_trimestral');
+    const cbAnual = document.getElementById('id_tem_anual');
+    const secTrim = document.getElementById('config-trimestral');
+    const secAnual = document.getElementById('config-anual');
+
+    cbTrim?.addEventListener('change', function () {
+      if (secTrim) secTrim.style.display = this.checked ? 'block' : 'none';
+    });
+    cbAnual?.addEventListener('change', function () {
+      if (secAnual) secAnual.style.display = this.checked ? 'block' : 'none';
+    });
+
+    // ── Toggle seções nos modais Editar ─────────────────────
+    document.querySelectorAll('.checkbox-trimestral').forEach(function (checkbox) {
+      const sec = document.getElementById('config-trimestral' + checkbox.dataset.fundoId);
+      checkbox.addEventListener('change', function () {
+        if (sec) sec.style.display = this.checked ? 'block' : 'none';
+      });
+    });
+
+    document.querySelectorAll('.checkbox-anual').forEach(function (checkbox) {
+      const sec = document.getElementById('config-anual' + checkbox.dataset.fundoId);
+      checkbox.addEventListener('change', function () {
+        if (sec) sec.style.display = this.checked ? 'block' : 'none';
       });
     });
   });

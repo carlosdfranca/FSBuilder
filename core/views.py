@@ -75,23 +75,30 @@ def demonstracao_financeira(request):
     ).order_by("nome")
     fundos = list(fundos_qs)
 
-    # Agrupar as datas disponíveis por fundo (substitui fundos_anos)
-    fundos_datas = {}
-    fundos_prazos = {}  # Informações sobre prazo de vencimento da DF
+    from core.processing.import_service import calcular_data_referencia_periodo
+    fundos_periodos = {}
+    fundos_prazos = {}
     hoje = date.today()
-    
-    for fundo in fundos:
-        datas_qs = (
-            BalanceteItem.objects.filter(fundo=fundo)
-            .order_by()
-            .values_list("data_referencia", flat=True)
-            .distinct()
-        )
-        # Converter para strings únicas
-        datas_formatadas = sorted({d.isoformat() for d in datas_qs if d}, reverse=True)
-        fundos_datas[fundo.id] = datas_formatadas
 
-        # Calcular dias até vencimento usando o próximo PeriodoDF ativo
+    for fundo in fundos:
+        periodos = PeriodoDF.objects.filter(fundo=fundo).order_by('ano', 'tipo_periodo', 'trimestre')
+        periodos_data = []
+        for p in periodos:
+            data_ref_calculada = calcular_data_referencia_periodo(p)
+            periodos_data.append({
+                'id': p.id,
+                'nome': p.nome_exibicao,
+                'tipo': p.tipo_periodo,
+                'ano': p.ano,
+                'trimestre': p.trimestre,
+                'status': p.status,
+                'tem_balancete': p.balancete_items.exists(),
+                'data_referencia': p.data_referencia.isoformat() if p.data_referencia else None,
+                'data_referencia_calculada': data_ref_calculada.isoformat() if data_ref_calculada else None,
+                'data_vencimento': p.data_vencimento.isoformat() if p.data_vencimento else None,
+            })
+        fundos_periodos[str(fundo.id)] = periodos_data
+
         proximo_periodo = (
             PeriodoDF.objects.filter(fundo=fundo, data_vencimento__gte=hoje)
             .exclude(status="finalizada")
@@ -101,25 +108,25 @@ def demonstracao_financeira(request):
         if proximo_periodo:
             dias_restantes = (proximo_periodo.data_vencimento - hoje).days
             if dias_restantes > 30:
-                status = "ok"
+                status_prazo = "ok"
             elif dias_restantes >= 15:
-                status = "aviso"
+                status_prazo = "aviso"
             elif dias_restantes >= 0:
-                status = "urgente"
+                status_prazo = "urgente"
             else:
-                status = "vencida"
+                status_prazo = "vencida"
                 dias_restantes = abs(dias_restantes)
 
-            fundos_prazos[fundo.id] = {
+            fundos_prazos[str(fundo.id)] = {
                 "data_vencimento": proximo_periodo.data_vencimento.isoformat(),
                 "dias_restantes": dias_restantes,
-                "status": status,
+                "status": status_prazo,
                 "periodo_nome": proximo_periodo.nome_exibicao,
             }
 
     return render(request, "demonstracao_financeira.html", {
         "fundos": fundos,
-        "fundos_datas": json.dumps(fundos_datas),
+        "fundos_periodos": json.dumps(fundos_periodos),
         "fundos_prazos": json.dumps(fundos_prazos),
         "can_enviar_balancete": _can_manage_fundos(request),
     })
@@ -224,43 +231,96 @@ def controle_emissoes(request):
 
 
 # ===============================
-# IMPORTAR BALANCETE (com data_referencia)
+# IMPORTAR BALANCETE (orientado a período)
 # ===============================
 @login_required
 @company_can_manage_fundos
 def importar_balancete_view(request):
-    if request.method == "POST":
-        fundo_id = request.POST.get("fundo_id")
-        data_str = request.POST.get("data_referencia")
-        arquivo_balancete = request.FILES.get("arquivo_balancete")
+    if request.method != "POST":
+        return redirect("demonstracao_financeira")
 
-        if not data_str:
-            messages.error(request, "Selecione a data de referência do balancete.")
+    fundo_id = request.POST.get("fundo_id")
+    periodo_df_id = request.POST.get("periodo_df_id")
+    saldo_anterior_mode = request.POST.get("saldo_anterior_mode", "zerado")
+    periodo_anterior_id = request.POST.get("periodo_anterior_id")
+    arquivo_balancete = request.FILES.get("arquivo_balancete")
+    arquivo_saldo_anterior = request.FILES.get("arquivo_saldo_anterior")
+
+    fundo_qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
+    fundo = get_object_or_404(fundo_qs, id=fundo_id)
+
+    if not periodo_df_id:
+        messages.error(request, "Selecione o período da DF.")
+        return redirect("demonstracao_financeira")
+
+    periodo = get_object_or_404(PeriodoDF, id=periodo_df_id, fundo=fundo)
+
+    from core.processing.import_service import (
+        calcular_data_referencia_periodo,
+        calcular_data_referencia_periodo_anterior,
+    )
+    data_referencia = calcular_data_referencia_periodo(periodo)
+
+    if not arquivo_balancete:
+        messages.error(request, "Selecione o arquivo do balancete (Saldo Final).")
+        return redirect("demonstracao_financeira")
+
+    try:
+        rows = parse_excel(arquivo_balancete)
+        report = import_balancete(
+            fundo_id=fundo.id,
+            data_referencia=data_referencia,
+            rows=rows,
+            periodo_df_id=periodo.id,
+        )
+    except BalanceteSchemaError as e:
+        messages.error(request, f"Planilha inválida: faltam colunas {', '.join(e.missing_columns)}")
+        return redirect("demonstracao_financeira")
+    except Exception as e:
+        messages.error(request, f"Erro ao importar balancete: {e}")
+        return redirect("demonstracao_financeira")
+
+    periodo.data_referencia = data_referencia
+
+    if saldo_anterior_mode == "zerado":
+        periodo.data_anterior = None
+        periodo.save()
+    elif saldo_anterior_mode == "clone":
+        if not periodo_anterior_id:
+            messages.error(request, "Selecione o período de origem para o clone.")
             return redirect("demonstracao_financeira")
-
-        try:
-            data_referencia = datetime.strptime(data_str, "%Y-%m-%d").date()
-        except ValueError:
-            messages.error(request, "Data inválida.")
+        periodo_origem = get_object_or_404(PeriodoDF, id=periodo_anterior_id, fundo=fundo)
+        if not periodo_origem.data_referencia:
+            messages.error(request, f"O período '{periodo_origem.nome_exibicao}' ainda não possui balancete importado.")
             return redirect("demonstracao_financeira")
-
-        fundo_qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
-        fundo = get_object_or_404(fundo_qs, id=fundo_id)
-
+        periodo.data_anterior = periodo_origem.data_referencia
+        periodo.save()
+    elif saldo_anterior_mode == "spreadsheet":
+        if not arquivo_saldo_anterior:
+            messages.error(request, "Selecione o arquivo do saldo anterior.")
+            return redirect("demonstracao_financeira")
+        data_anterior = calcular_data_referencia_periodo_anterior(periodo)
+        if not data_anterior:
+            messages.error(request, "Não foi possível determinar a data do saldo anterior para este tipo de período.")
+            return redirect("demonstracao_financeira")
         try:
-            rows = parse_excel(arquivo_balancete)
-            report = import_balancete(fundo_id=fundo.id, data_referencia=data_referencia, rows=rows)
+            rows_ant = parse_excel(arquivo_saldo_anterior)
+            import_balancete(fundo_id=fundo.id, data_referencia=data_anterior, rows=rows_ant)
         except BalanceteSchemaError as e:
-            messages.error(request, f"Planilha inválida: faltam colunas {', '.join(e.missing_columns)}")
+            messages.error(request, f"Planilha do saldo anterior inválida: faltam colunas {', '.join(e.missing_columns)}")
             return redirect("demonstracao_financeira")
         except Exception as e:
-            messages.error(request, f"Erro ao importar balancete: {e}")
+            messages.error(request, f"Erro ao importar saldo anterior: {e}")
             return redirect("demonstracao_financeira")
+        periodo.data_anterior = data_anterior
+        periodo.save()
+    else:
+        periodo.save()
 
-        if report.errors:
-            messages.warning(request, f"Balancete importado com erros. {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados.")
-        else:
-            messages.success(request, f"Balancete importado: {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados.")
+    if report.errors:
+        messages.warning(request, f"Balancete importado com avisos. {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados.")
+    else:
+        messages.success(request, f"Balancete importado com sucesso para '{periodo.nome_exibicao}': {report.imported} inseridos, {report.updated} atualizados.")
 
     return redirect("demonstracao_financeira")
 
@@ -357,27 +417,23 @@ def annotate_percents(dpf: dict, pl_atual_val: float, pl_ant_val: float) -> dict
 
 @login_required
 @company_can_view_data
-def df_resultado(request, fundo_id, data_atual, data_anterior):
-    """
-    data_atual e data_anterior chegam como STRING da URL (YYYY-MM-DD ou 'ZERADO').
-    Aqui a gente:
-      - converte para date só em variáveis separadas
-      - mantém as strings originais para usar nas URLs de exportação
-    """
-    zerar_anterior = (data_anterior == "ZERADO")
+def df_resultado(request, periodo_df_id):
+    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
+    periodo = get_object_or_404(
+        PeriodoDF.objects.select_related("fundo"),
+        id=periodo_df_id,
+        fundo__in=fundo_qs,
+    )
+    fundo = periodo.fundo
 
-    # 1) Converte strings da URL para objetos date para usar nos services
-    try:
-        data_atual_date = datetime.strptime(data_atual, "%Y-%m-%d").date()
-        data_anterior_date = None if zerar_anterior else datetime.strptime(data_anterior, "%Y-%m-%d").date()
-    except ValueError:
-        messages.error(request, "Formato de data inválido.")
+    if not periodo.data_referencia:
+        messages.error(request, f"O período '{periodo.nome_exibicao}' ainda não possui balancete importado.")
         return redirect("demonstracao_financeira")
 
-    # 2) Busca fundo (ajuste aqui se você usa escopo por empresa)
-    fundo = get_object_or_404(Fundo, id=fundo_id)
+    data_atual_date = periodo.data_referencia
+    data_anterior_date = periodo.data_anterior
+    zerar_anterior = data_anterior_date is None
 
-    # 3) Chama os serviços passando os OBJETOS date + flag zerar_anterior
     dre_tabela, resultado_exercicio, resultado_exercicio_anterior = gerar_dados_dre(
         fundo_id=fundo.id,
         data_atual=data_atual_date,
@@ -403,7 +459,6 @@ def df_resultado(request, fundo_id, data_atual, data_anterior):
         zerar_anterior=zerar_anterior,
     )
 
-    # === PL ajustado ===
     pl_atual = (dpf_tabela["PL"]["TOTAL_PL"]["ATUAL"] or 0) + (resultado_exercicio or 0)
     pl_anterior = (dpf_tabela["PL"]["TOTAL_PL"]["ANTERIOR"] or 0) + (resultado_exercicio_anterior or 0)
     total_pl_passivo_atual = pl_atual + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ATUAL"] or 0)
@@ -411,18 +466,11 @@ def df_resultado(request, fundo_id, data_atual, data_anterior):
 
     dpf_tabela = annotate_percents(dpf_tabela, pl_atual, pl_anterior)
 
-    # 4) Strings para URL de exportação (NÃO vamos mais chamar strftime no template)
-    data_atual_str = data_atual  # já vem da URL como 'YYYY-MM-DD'
-    data_anterior_str = "ZERADO" if zerar_anterior else data_anterior  # também string
-
-    # 5) Monta contexto: datas como date para o template usar |date,
-    # e *_str para as URLs
     context = {
         "fundo": fundo,
+        "periodo": periodo,
         "data_atual": data_atual_date,
         "data_anterior": data_anterior_date,
-        "data_atual_str": data_atual_str,
-        "data_anterior_str": data_anterior_str,
         "zerar_anterior": zerar_anterior,
         "dre_tabela": dre_tabela,
         "dpf_tabela": dpf_tabela,
@@ -436,7 +484,6 @@ def df_resultado(request, fundo_id, data_atual, data_anterior):
         "total_pl_passivo_anterior": total_pl_passivo_anterior,
         "variacao_atual": variacao_caixa_atual,
         "variacao_ant": 0 if zerar_anterior else variacao_caixa_ant,
-        # ... demais coisas que você já passa hoje
     }
 
     return render(request, "df_resultado.html", context)
@@ -446,32 +493,23 @@ def df_resultado(request, fundo_id, data_atual, data_anterior):
 
 @login_required
 @company_can_download_data
-def exportar_dfs_excel(request, fundo_id, data_atual, data_anterior):
-    """
-    Exporta todas as Demonstrações Financeiras (DPF, DRE, DMPL e DFC)
-    comparando duas datas específicas de balancete.
-    """
-    # =====================
-    # Conversão das datas
-    # =====================
-    zerar_anterior = data_anterior == "ZERADO"
+def exportar_dfs_excel(request, periodo_df_id):
+    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
+    periodo = get_object_or_404(
+        PeriodoDF.objects.select_related("fundo"),
+        id=periodo_df_id,
+        fundo__in=fundo_qs,
+    )
+    fundo = periodo.fundo
 
-    try:
-        data_atual = datetime.strptime(data_atual, "%Y-%m-%d").date()
-        data_anterior = None if zerar_anterior else datetime.strptime(data_anterior, "%Y-%m-%d").date()
-    except ValueError:
-        messages.error(request, "Datas inválidas para exportação.")
+    if not periodo.data_referencia:
+        messages.error(request, f"O período '{periodo.nome_exibicao}' ainda não possui balancete importado.")
         return redirect("demonstracao_financeira")
 
-    # =====================
-    # Fundo
-    # =====================
-    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
-    fundo = get_object_or_404(fundo_qs, id=fundo_id)
+    data_atual = periodo.data_referencia
+    data_anterior = periodo.data_anterior
+    zerar_anterior = data_anterior is None
 
-    # =====================
-    # Gerar dados das DFs
-    # =====================
     dre_tabela, resultado_exercicio, resultado_exercicio_anterior = gerar_dados_dre(
         fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
     )
@@ -479,7 +517,6 @@ def exportar_dfs_excel(request, fundo_id, data_atual, data_anterior):
         fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
     )
 
-    # === PL ajustado ===
     pl_atual = (dpf_tabela["PL"]["TOTAL_PL"]["ATUAL"] or 0) + (resultado_exercicio or 0)
     pl_anterior = (dpf_tabela["PL"]["TOTAL_PL"]["ANTERIOR"] or 0) + (resultado_exercicio_anterior or 0)
     total_pl_passivo_atual = pl_atual + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ATUAL"] or 0)
@@ -494,94 +531,52 @@ def exportar_dfs_excel(request, fundo_id, data_atual, data_anterior):
         fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
     )
 
-    # =====================
-    # Criar o workbook
-    # =====================
     wb = Workbook()
+    criar_aba_dpf(wb, fundo, data_atual, data_anterior, dpf_tabela, pl_atual, pl_anterior, total_pl_passivo_atual, total_pl_passivo_anterior)
+    criar_aba_dre(wb, fundo, data_atual, data_anterior, dre_tabela, resultado_exercicio, resultado_exercicio_anterior)
+    criar_aba_dmpl(wb, fundo, data_atual, data_anterior, dados_dmpl, resultado_exercicio, resultado_exercicio_anterior, pl_atual, pl_anterior)
+    criar_aba_dfc(wb, fundo, data_atual, data_anterior, dfc_tabela, variacao_atual, variacao_ant)
 
-    # Aba DPF
-    criar_aba_dpf(
-        wb, fundo,
-        data_atual, data_anterior,
-        dpf_tabela,
-        pl_atual, pl_anterior,
-        total_pl_passivo_atual, total_pl_passivo_anterior
-    )
-
-    # Aba DRE
-    criar_aba_dre(
-        wb, fundo,
-        data_atual, data_anterior,
-        dre_tabela,
-        resultado_exercicio, resultado_exercicio_anterior
-    )
-
-    # Aba DMPL
-    criar_aba_dmpl(
-        wb, fundo,
-        data_atual, data_anterior,
-        dados_dmpl,
-        resultado_exercicio, resultado_exercicio_anterior,
-        pl_atual, pl_anterior
-    )
-
-    # Aba DFC
-    criar_aba_dfc(
-        wb, fundo,
-        data_atual, data_anterior,
-        dfc_tabela,
-        variacao_atual, variacao_ant
-    )
-
-    # =====================
-    # Exportar o arquivo Excel
-    # =====================
-    response = HttpResponse(
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     nome_curto = "_".join(str(fundo.nome).replace("-", "").split())
     if data_anterior:
-        response["Content-Disposition"] = (
-            f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{data_anterior.strftime('%Y%m%d')}_{nome_curto}.xlsx"
-        )
+        response["Content-Disposition"] = f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{data_anterior.strftime('%Y%m%d')}_{nome_curto}.xlsx"
     else:
-        response["Content-Disposition"] = (
-            f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{nome_curto}.xlsx"
-        )
+        response["Content-Disposition"] = f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{nome_curto}.xlsx"
 
     wb.save(response)
-    
-    # Registrar histórico de emissão
+
     HistoricoEmissaoDF.objects.create(
         fundo=fundo,
         empresa=fundo.empresa,
         usuario=request.user if request.user.is_authenticated else None,
         data_referencia_df=data_atual,
         data_anterior_df=data_anterior,
-        tipo_exportacao='excel'
+        tipo_exportacao='excel',
+        periodo_df=periodo,
     )
-    
+
     return response
 
 
 @login_required
 @company_can_download_data
-def exportar_dfs_docx(request, fundo_id, data_atual, data_anterior):
-    """
-    Exporta todas as Demonstrações Financeiras (DPF, DRE, DMPL e DFC)
-    como documento Word (.docx), usando o template modelo_df.docx.
-    """
-    zerar_anterior = data_anterior == "ZERADO"
+def exportar_dfs_docx(request, periodo_df_id):
+    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
+    periodo = get_object_or_404(
+        PeriodoDF.objects.select_related("fundo"),
+        id=periodo_df_id,
+        fundo__in=fundo_qs,
+    )
+    fundo = periodo.fundo
 
-    try:
-        data_atual = datetime.strptime(data_atual, "%Y-%m-%d").date()
-        data_anterior = None if zerar_anterior else datetime.strptime(data_anterior, "%Y-%m-%d").date()
-    except ValueError:
-        messages.error(request, "Datas inválidas para exportação.")
+    if not periodo.data_referencia:
+        messages.error(request, f"O período '{periodo.nome_exibicao}' ainda não possui balancete importado.")
         return redirect("demonstracao_financeira")
 
-    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
-    fundo = get_object_or_404(fundo_qs, id=fundo_id)
+    data_atual = periodo.data_referencia
+    data_anterior = periodo.data_anterior
+    zerar_anterior = data_anterior is None
 
     dre_tabela, resultado_exercicio, resultado_exercicio_anterior = gerar_dados_dre(
         fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
@@ -608,7 +603,7 @@ def exportar_dfs_docx(request, fundo_id, data_atual, data_anterior):
         resultado_exercicio_anterior = 0
         variacao_ant = 0
 
-    context = build_docx_context(
+    docx_context = build_docx_context(
         fundo=fundo,
         data_atual=data_atual,
         data_anterior=data_anterior,
@@ -626,7 +621,7 @@ def exportar_dfs_docx(request, fundo_id, data_atual, data_anterior):
         variacao_ant=variacao_ant,
     )
 
-    buffer = gerar_docx(context)
+    buffer = gerar_docx(docx_context)
 
     response = HttpResponse(
         buffer,
@@ -634,24 +629,20 @@ def exportar_dfs_docx(request, fundo_id, data_atual, data_anterior):
     )
     nome_curto = "_".join(str(fundo.nome).replace("-", "").split())
     if data_anterior:
-        response["Content-Disposition"] = (
-            f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{data_anterior.strftime('%Y%m%d')}_{nome_curto}.docx"
-        )
+        response["Content-Disposition"] = f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{data_anterior.strftime('%Y%m%d')}_{nome_curto}.docx"
     else:
-        response["Content-Disposition"] = (
-            f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{nome_curto}.docx"
-        )
-    
-    # Registrar histórico de emissão
+        response["Content-Disposition"] = f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{nome_curto}.docx"
+
     HistoricoEmissaoDF.objects.create(
         fundo=fundo,
         empresa=fundo.empresa,
         usuario=request.user if request.user.is_authenticated else None,
         data_referencia_df=data_atual,
         data_anterior_df=data_anterior,
-        tipo_exportacao='word'
+        tipo_exportacao='word',
+        periodo_df=periodo,
     )
-    
+
     return response
 
 # ===========================
