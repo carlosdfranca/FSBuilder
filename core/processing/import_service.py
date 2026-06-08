@@ -38,20 +38,28 @@ def _to_decimal(v: Optional[float]) -> Optional[Decimal]:
 # BALANCETE (com data_referencia + só saldo_atual)
 # ============================================================
 @transaction.atomic
-def import_balancete(*, fundo_id: int, data_referencia: date, rows: List) -> ImportReport:
+def import_balancete(*, fundo_id: int, data_referencia: date, rows: List, periodo_df_id: int = None) -> ImportReport:
     """
     Importa linhas canônicas (BalanceteRowDTO) para BalanceteItem:
     - grava apenas o saldo atual
     - usa data_referencia (não mais 'ano')
     - ignora completamente saldo_anterior
     - idempotente (update_or_create)
+    - Opcionalmente vincula ao PeriodoDF (periodo_df_id)
     """
     if not rows:
         return ImportReport(imported=0, updated=0, ignored=0, errors=[])
 
     # Obter fundo para acessar empresa (tenant)
-    from df.models import Fundo
+    from df.models import Fundo, PeriodoDF
     fundo = Fundo.objects.select_related("empresa").get(id=fundo_id)
+
+    # Validar PeriodoDF se fornecido
+    periodo_df = None
+    if periodo_df_id:
+        periodo_df = PeriodoDF.objects.filter(id=periodo_df_id, fundo=fundo).first()
+        if not periodo_df:
+            raise ValueError(f"PeriodoDF {periodo_df_id} não encontrado ou não pertence ao fundo {fundo_id}")
 
     # Cache de contas conhecidas para esta empresa
     contas = {r.conta for r in rows if getattr(r, "conta", None)}
@@ -84,6 +92,7 @@ def import_balancete(*, fundo_id: int, data_referencia: date, rows: List) -> Imp
             defaults = {
                 "saldo_final": _to_decimal(r.saldo_atual),
                 "data_referencia": data_referencia,
+                "periodo_df_id": periodo_df_id,
             }
             _, created = BalanceteItem.objects.update_or_create(
                 fundo_id=fundo_id,
@@ -99,17 +108,37 @@ def import_balancete(*, fundo_id: int, data_referencia: date, rows: List) -> Imp
         except Exception as e:
             errors.append(ImportErrorItem(idx, str(e), raw=r.raw))
 
+    # Atualizar data_referencia do período se fornecido e não definida
+    if periodo_df and not periodo_df.data_referencia:
+        periodo_df.data_referencia = data_referencia
+        periodo_df.save()
+
+    # Atualizar status do período se fornecido
+    if periodo_df:
+        from df.services.periodo_service import atualizar_status_automatico
+        atualizar_status_automatico(periodo_df)
+
     return ImportReport(imported=imported, updated=updated, ignored=ignored, errors=errors)
 
 
 @transaction.atomic
-def import_mec(*, fundo_id: int, rows: List) -> ImportReport:
+def import_mec(*, fundo_id: int, rows: List, periodo_df_id: int = None) -> ImportReport:
     """
     Importa linhas canônicas (MecRowDTO) para MecItem:
     - idempotente (update_or_create por fundo+data_posicao)
+    - Opcionalmente vincula ao PeriodoDF (periodo_df_id)
     """
     if not rows:
         return ImportReport(imported=0, updated=0, ignored=0, errors=[])
+
+    # Validar PeriodoDF se fornecido
+    periodo_df = None
+    if periodo_df_id:
+        from df.models import Fundo, PeriodoDF
+        fundo = Fundo.objects.get(id=fundo_id)
+        periodo_df = PeriodoDF.objects.filter(id=periodo_df_id, fundo=fundo).first()
+        if not periodo_df:
+            raise ValueError(f"PeriodoDF {periodo_df_id} não encontrado ou não pertence ao fundo {fundo_id}")
 
     imported = updated = ignored = 0
     errors: List[ImportErrorItem] = []
@@ -126,6 +155,7 @@ def import_mec(*, fundo_id: int, rows: List) -> ImportReport:
             "pl": _to_decimal(r.pl),
             "qtd_cotas": _to_decimal(r.qtd_cotas),
             "cota": _to_decimal(r.cota),
+            "periodo_df_id": periodo_df_id,
         }
         _, created = MecItem.objects.update_or_create(
             fundo_id=fundo_id,
@@ -136,5 +166,10 @@ def import_mec(*, fundo_id: int, rows: List) -> ImportReport:
             imported += 1
         else:
             updated += 1
+
+    # Atualizar status do período se fornecido
+    if periodo_df:
+        from df.services.periodo_service import atualizar_status_automatico
+        atualizar_status_automatico(periodo_df)
 
     return ImportReport(imported=imported, updated=updated, ignored=ignored, errors=errors)

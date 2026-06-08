@@ -35,9 +35,9 @@
           <table class="table table-striped table-hover align-middle" id="tabela-fundos">
             <thead>
               <tr>
-                <th scope="col" style="width: 45%;">Nome</th>
-                <th scope="col" style="width: 20%;">CNPJ</th>
-                <th scope="col" style="width: 15%;" class="text-center">Vencimento DF</th>
+                <th scope="col" style="width: 30%;">Nome</th>
+                <th scope="col" style="width: 18%;">CNPJ</th>
+                <th scope="col" style="width: 32%;">DFs Configuradas</th>
                 {% if can_manage_fundos %}
                   <th scope="col" style="width: 10%;" class="text-center">Editar</th>
                   <th scope="col" style="width: 10%;" class="text-center">Excluir</th>
@@ -49,12 +49,20 @@
                 <tr>
                   <td class="fw-bold">{{ fundo.nome }}</td>
                   <td>{{ fundo.cnpj }}</td>
-                  <td class="text-center">
-                    {% if fundo.data_vencimento_df %}
-                      {{ fundo.data_vencimento_df|date:"d/m" }}
-                    {% else %}
-                      <span class="text-muted">—</span>
-                    {% endif %}
+                  <td>
+                    {% with configs=fundo.configuracoes_df.all %}
+                      {% if configs %}
+                        {% for config in configs %}
+                          {% if config.tipo == 'trimestral' %}
+                            <span class="badge bg-primary">Trimestral</span>
+                          {% elif config.tipo == 'anual' %}
+                            <span class="badge bg-success">Anual</span>
+                          {% endif %}
+                        {% endfor %}
+                      {% else %}
+                        <span class="text-muted">Nenhuma DF configurada</span>
+                      {% endif %}
+                    {% endwith %}
                   </td>
 
                   {% if can_manage_fundos %}
@@ -86,7 +94,7 @@
 {% if can_manage_fundos %}
 <!-- Modal Adicionar Fundo -->
 <div class="modal fade" id="modalAdicionarFundo" tabindex="-1" aria-labelledby="modalAdicionarFundoLabel" aria-hidden="true">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <form method="POST" action="{% url 'adicionar_fundo' %}">
         {% csrf_token %}
@@ -98,27 +106,95 @@
           {% if empresa_ativa %}
             <input type="hidden" name="empresa_id" value="{{ empresa_ativa.id }}">
           {% endif %}
+          
+          <!-- Informações Básicas -->
+          <h6 class="text-muted mb-3">Informações Básicas</h6>
           <div class="mb-3">
-            <label for="id_nome" class="form-label">Nome do Fundo</label>
+            <label for="id_nome" class="form-label">Nome do Fundo *</label>
             {{ form.nome|add_class:"form-control" }}
           </div>
           <div class="mb-3">
-            <label for="id_cnpj" class="form-label">CNPJ</label>
+            <label for="id_cnpj" class="form-label">CNPJ *</label>
             {{ form.cnpj|add_class:"form-control" }}
           </div>
-          <div class="mb-3">
-            <label class="form-label">Data de Vencimento da DF <small class="text-muted">(opcional)</small></label>
-            <div class="row">
-              <div class="col-6">
-                <label for="id_dia_vencimento_df" class="form-label small text-muted">Dia</label>
-                {{ form.dia_vencimento_df|add_class:"form-control" }}
-              </div>
-              <div class="col-6">
-                <label for="id_mes_vencimento_df" class="form-label small text-muted">Mês</label>
-                {{ form.mes_vencimento_df|add_class:"form-control" }}
+
+          <hr class="my-4">
+
+          <!-- Configuração de DFs -->
+          <h6 class="text-muted mb-3">Tipos de DF</h6>
+          <div class="row mb-3">
+            <div class="col-6">
+              <div class="form-check">
+                {{ form.tem_trimestral }}
+                <label class="form-check-label" for="id_tem_trimestral">
+                  <strong>DF Trimestral</strong>
+                  <br><small class="text-muted">4 vencimentos por ano</small>
+                </label>
               </div>
             </div>
-            <div class="form-text">Informe o dia e mês do vencimento anual da DF (repete todos os anos)</div>
+            <div class="col-6">
+              <div class="form-check">
+                {{ form.tem_anual }}
+                <label class="form-check-label" for="id_tem_anual">
+                  <strong>DF Anual</strong>
+                  <br><small class="text-muted">1 vencimento por ano</small>
+                </label>
+              </div>
+            </div>
+          </div>
+          <p class="text-muted small mb-3">
+            <i class="bi bi-info-circle"></i>
+            Períodos <strong>Transitória</strong> e <strong>Encerramento</strong> são criados manualmente na página de períodos do fundo.
+          </p>
+
+          <!-- Vencimentos Trimestrais -->
+          <div id="config-trimestral" style="display: none;">
+            <h6 class="text-muted mt-4 mb-3">Vencimentos Trimestrais</h6>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label fw-bold">1º Trimestre</label>
+                <div class="row">
+                  <div class="col-6">{{ form.trim1_dia }}</div>
+                  <div class="col-6">{{ form.trim1_mes }}</div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-bold">2º Trimestre</label>
+                <div class="row">
+                  <div class="col-6">{{ form.trim2_dia }}</div>
+                  <div class="col-6">{{ form.trim2_mes }}</div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-bold">3º Trimestre</label>
+                <div class="row">
+                  <div class="col-6">{{ form.trim3_dia }}</div>
+                  <div class="col-6">{{ form.trim3_mes }}</div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-bold">4º Trimestre</label>
+                <div class="row">
+                  <div class="col-6">{{ form.trim4_dia }}</div>
+                  <div class="col-6">{{ form.trim4_mes }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Vencimento Anual -->
+          <div id="config-anual" style="display: none;">
+            <h6 class="text-muted mt-4 mb-3">Vencimento Anual</h6>
+            <div class="row">
+              <div class="col-6">
+                <label class="form-label">Dia</label>
+                {{ form.anual_dia }}
+              </div>
+              <div class="col-6">
+                <label class="form-label">Mês</label>
+                {{ form.anual_mes }}
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
@@ -133,7 +209,7 @@
 <!-- Modais Editar Fundo -->
 {% for fundo in fundos %}
 <div class="modal fade" id="modalEditarFundo{{ fundo.id }}" tabindex="-1" aria-labelledby="modalEditarFundoLabel{{ fundo.id }}" aria-hidden="true">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <form method="POST" action="{% url 'editar_fundo' fundo.id %}">
         {% csrf_token %}
@@ -142,28 +218,115 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
         <div class="modal-body">
+          <!-- Informações Básicas -->
+          <h6 class="text-muted mb-3">Informações Básicas</h6>
           <div class="mb-3">
-            <label for="nome{{ fundo.id }}" class="form-label">Nome do Fundo</label>
+            <label for="nome{{ fundo.id }}" class="form-label">Nome do Fundo *</label>
             <input type="text" name="nome" id="nome{{ fundo.id }}" value="{{ fundo.nome }}" class="form-control" required>
           </div>
           <div class="mb-3">
-            <label for="cnpj{{ fundo.id }}" class="form-label">CNPJ</label>
+            <label for="cnpj{{ fundo.id }}" class="form-label">CNPJ *</label>
             <input type="text" name="cnpj" id="cnpj{{ fundo.id }}" value="{{ fundo.cnpj }}" class="form-control" required>
           </div>
-          <div class="mb-3">
-            <label class="form-label">Data de Vencimento da DF <small class="text-muted">(opcional)</small></label>
-            <div class="row">
-              <div class="col-6">
-                <label for="dia_vencimento_df{{ fundo.id }}" class="form-label small text-muted">Dia</label>
-                <input type="number" name="dia_vencimento_df" id="dia_vencimento_df{{ fundo.id }}" value="{% if fundo.data_vencimento_df %}{{ fundo.data_vencimento_df.day }}{% endif %}" class="form-control" min="1" max="31" placeholder="Ex: 15">
-              </div>
-              <div class="col-6">
-                <label for="mes_vencimento_df{{ fundo.id }}" class="form-label small text-muted">Mês</label>
-                <input type="number" name="mes_vencimento_df" id="mes_vencimento_df{{ fundo.id }}" value="{% if fundo.data_vencimento_df %}{{ fundo.data_vencimento_df.month }}{% endif %}" class="form-control" min="1" max="12" placeholder="Ex: 3">
+
+          <hr class="my-4">
+
+          <!-- Configuração de DFs -->
+          <h6 class="text-muted mb-3">Tipos de DF</h6>
+          <div class="row mb-3">
+            <div class="col-6">
+              <div class="form-check">
+                <input type="checkbox" name="tem_trimestral" id="tem_trimestral{{ fundo.id }}" class="form-check-input checkbox-trimestral" data-fundo-id="{{ fundo.id }}" {% if fundo.config_trimestral %}checked{% endif %}>
+                <label class="form-check-label" for="tem_trimestral{{ fundo.id }}">
+                  <strong>DF Trimestral</strong>
+                  <br><small class="text-muted">4 vencimentos por ano</small>
+                </label>
               </div>
             </div>
-            <div class="form-text">Informe o dia e mês do vencimento anual da DF (repete todos os anos)</div>
+            <div class="col-6">
+              <div class="form-check">
+                <input type="checkbox" name="tem_anual" id="tem_anual{{ fundo.id }}" class="form-check-input checkbox-anual" data-fundo-id="{{ fundo.id }}" {% if fundo.config_anual %}checked{% endif %}>
+                <label class="form-check-label" for="tem_anual{{ fundo.id }}">
+                  <strong>DF Anual</strong>
+                  <br><small class="text-muted">1 vencimento por ano</small>
+                </label>
+              </div>
+            </div>
           </div>
+          <p class="text-muted small mb-3">
+            <i class="bi bi-info-circle"></i>
+            Períodos <strong>Transitória</strong> e <strong>Encerramento</strong> são criados manualmente na página de períodos do fundo.
+          </p>
+
+          <!-- Vencimentos Trimestrais -->
+          {% with ct=fundo.config_trimestral %}
+          <div id="config-trimestral{{ fundo.id }}" class="config-trimestral-section" style="{% if ct %}display: block;{% else %}display: none;{% endif %}">
+            <h6 class="text-muted mt-4 mb-3">Vencimentos Trimestrais</h6>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label fw-bold">1º Trimestre</label>
+                <div class="row">
+                  <div class="col-6">
+                    <input type="number" name="trim1_dia" class="form-control form-control-sm" placeholder="Dia" min="1" max="31" value="{% if ct %}{{ ct.trim1_dia }}{% endif %}">
+                  </div>
+                  <div class="col-6">
+                    <input type="number" name="trim1_mes" class="form-control form-control-sm" placeholder="Mês" min="1" max="12" value="{% if ct %}{{ ct.trim1_mes }}{% endif %}">
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-bold">2º Trimestre</label>
+                <div class="row">
+                  <div class="col-6">
+                    <input type="number" name="trim2_dia" class="form-control form-control-sm" placeholder="Dia" min="1" max="31" value="{% if ct %}{{ ct.trim2_dia }}{% endif %}">
+                  </div>
+                  <div class="col-6">
+                    <input type="number" name="trim2_mes" class="form-control form-control-sm" placeholder="Mês" min="1" max="12" value="{% if ct %}{{ ct.trim2_mes }}{% endif %}">
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-bold">3º Trimestre</label>
+                <div class="row">
+                  <div class="col-6">
+                    <input type="number" name="trim3_dia" class="form-control form-control-sm" placeholder="Dia" min="1" max="31" value="{% if ct %}{{ ct.trim3_dia }}{% endif %}">
+                  </div>
+                  <div class="col-6">
+                    <input type="number" name="trim3_mes" class="form-control form-control-sm" placeholder="Mês" min="1" max="12" value="{% if ct %}{{ ct.trim3_mes }}{% endif %}">
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-bold">4º Trimestre</label>
+                <div class="row">
+                  <div class="col-6">
+                    <input type="number" name="trim4_dia" class="form-control form-control-sm" placeholder="Dia" min="1" max="31" value="{% if ct %}{{ ct.trim4_dia }}{% endif %}">
+                  </div>
+                  <div class="col-6">
+                    <input type="number" name="trim4_mes" class="form-control form-control-sm" placeholder="Mês" min="1" max="12" value="{% if ct %}{{ ct.trim4_mes }}{% endif %}">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endwith %}
+
+          <!-- Vencimento Anual -->
+          {% with ca=fundo.config_anual %}
+          <div id="config-anual{{ fundo.id }}" class="config-anual-section" style="{% if ca %}display: block;{% else %}display: none;{% endif %}">
+            <h6 class="text-muted mt-4 mb-3">Vencimento Anual</h6>
+            <div class="row">
+              <div class="col-6">
+                <label class="form-label">Dia</label>
+                <input type="number" name="anual_dia" class="form-control form-control-sm" placeholder="Dia" min="1" max="31" value="{% if ca %}{{ ca.anual_dia }}{% endif %}">
+              </div>
+              <div class="col-6">
+                <label class="form-label">Mês</label>
+                <input type="number" name="anual_mes" class="form-control form-control-sm" placeholder="Mês" min="1" max="12" value="{% if ca %}{{ ca.anual_mes }}{% endif %}">
+              </div>
+            </div>
+          </div>
+          {% endwith %}
         </div>
         <div class="modal-footer">
           <button type="submit" class="btn btn-primary">Salvar alterações</button>
@@ -191,8 +354,6 @@
       columnDefs: [
         {% if can_manage_fundos %}
         { orderable: false, targets: [3, 4] } // Desabilitar ordenação nas colunas de ação
-        {% else %}
-        { orderable: true, targets: [2] } // Permitir ordenação na coluna de vencimento
         {% endif %}
       ]
     });
@@ -201,6 +362,47 @@
     const cnpjInputs = document.querySelectorAll('input[id="id_cnpj"], input[id^="cnpj"]'); 
     cnpjInputs.forEach(function (input) {
       IMask(input, { mask: '00.000.000/0000-00' });
+    });
+
+    // Toggle de seções de configuração no modal de adicionar
+    const checkboxTrimestral = document.getElementById('id_tem_trimestral');
+    const checkboxAnual = document.getElementById('id_tem_anual');
+    const configTrimestral = document.getElementById('config-trimestral');
+    const configAnual = document.getElementById('config-anual');
+
+    if (checkboxTrimestral && configTrimestral) {
+      checkboxTrimestral.addEventListener('change', function() {
+        configTrimestral.style.display = this.checked ? 'block' : 'none';
+      });
+    }
+
+    if (checkboxAnual && configAnual) {
+      checkboxAnual.addEventListener('change', function() {
+        configAnual.style.display = this.checked ? 'block' : 'none';
+      });
+    }
+
+    // Toggle de seções de configuração nos modais de editar (por fundo)
+    document.querySelectorAll('.checkbox-trimestral').forEach(function(checkbox) {
+      const fundoId = checkbox.dataset.fundoId;
+      const configSection = document.getElementById('config-trimestral' + fundoId);
+      
+      checkbox.addEventListener('change', function() {
+        if (configSection) {
+          configSection.style.display = this.checked ? 'block' : 'none';
+        }
+      });
+    });
+
+    document.querySelectorAll('.checkbox-anual').forEach(function(checkbox) {
+      const fundoId = checkbox.dataset.fundoId;
+      const configSection = document.getElementById('config-anual' + fundoId);
+      
+      checkbox.addEventListener('change', function() {
+        if (configSection) {
+          configSection.style.display = this.checked ? 'block' : 'none';
+        }
+      });
     });
   });
 </script>

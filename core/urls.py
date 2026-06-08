@@ -14,6 +14,7 @@ urlpatterns = [
 
     # Demonstração Financeira
     path('', demonstracao_financeira, name='demonstracao_financeira'),
+    path('controle-emissoes/', controle_emissoes, name='controle_emissoes'),
     path("importar-balancete/", importar_balancete_view, name="importar_balancete"),
     path("importar-mec/", importar_mec_view, name="importar_mec"),
     path('dre-resultado/<int:fundo_id>/<str:data_atual>/<str:data_anterior>/', df_resultado, name='dre_resultado'),
@@ -26,4 +27,6 @@ urlpatterns = [
     path('fundos/adicionar/', adicionar_fundo, name='adicionar_fundo'),
     path('fundos/<int:fundo_id>/editar/', editar_fundo, name='editar_fundo'),
     path('fundos/<int:fundo_id>/excluir/', excluir_fundo, name='excluir_fundo'),
+    path('fundos/<int:fundo_id>/periodos/', gerenciar_periodos, name='gerenciar_periodos'),
+    path('fundos/<int:fundo_id>/periodos/criar/', criar_periodo_manual, name='criar_periodo_manual'),
 ]   

@@ -2,69 +2,126 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.contrib.auth.password_validation import validate_password
 from datetime import date
-from df.models import Fundo
+from df.models import Fundo, ConfiguracaoDF
 from usuarios.models import Usuario
 
 class FundoForm(forms.ModelForm):
-    # Campos customizados para dia e mês
-    dia_vencimento_df = forms.IntegerField(
+    """
+    Form para criar/editar Fundo com configuração de DFs integrada.
+    """
+    # Checkboxes para tipos recorrentes
+    tem_trimestral = forms.BooleanField(
         required=False,
-        min_value=1,
-        max_value=31,
-        label="Dia",
-        widget=forms.NumberInput(attrs={
-            'class': 'form-control',
-            'placeholder': 'Ex: 15'
-        })
+        label="DF Trimestral",
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
     )
-    mes_vencimento_df = forms.IntegerField(
+    tem_anual = forms.BooleanField(
         required=False,
-        min_value=1,
-        max_value=12,
-        label="Mês",
-        widget=forms.NumberInput(attrs={
-            'class': 'form-control',
-            'placeholder': 'Ex: 3'
-        })
+        label="DF Anual",
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
     )
-    
+
+    # Campos para vencimentos trimestrais
+    trim1_dia = forms.IntegerField(required=False, min_value=1, max_value=31, label="1º Tri - Dia", widget=forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Dia'}))
+    trim1_mes = forms.IntegerField(required=False, min_value=1, max_value=12, label="1º Tri - Mês", widget=forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Mês'}))
+    trim2_dia = forms.IntegerField(required=False, min_value=1, max_value=31, label="2º Tri - Dia", widget=forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Dia'}))
+    trim2_mes = forms.IntegerField(required=False, min_value=1, max_value=12, label="2º Tri - Mês", widget=forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Mês'}))
+    trim3_dia = forms.IntegerField(required=False, min_value=1, max_value=31, label="3º Tri - Dia", widget=forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Dia'}))
+    trim3_mes = forms.IntegerField(required=False, min_value=1, max_value=12, label="3º Tri - Mês", widget=forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Mês'}))
+    trim4_dia = forms.IntegerField(required=False, min_value=1, max_value=31, label="4º Tri - Dia", widget=forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Dia'}))
+    trim4_mes = forms.IntegerField(required=False, min_value=1, max_value=12, label="4º Tri - Mês", widget=forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Mês'}))
+
+    # Campos para vencimento anual
+    anual_dia = forms.IntegerField(required=False, min_value=1, max_value=31, label="Anual - Dia", widget=forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Dia'}))
+    anual_mes = forms.IntegerField(required=False, min_value=1, max_value=12, label="Anual - Mês", widget=forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Mês'}))
+
     class Meta:
         model = Fundo
         fields = ['nome', 'cnpj']
-    
+        widgets = {
+            'nome': forms.TextInput(attrs={'class': 'form-control'}),
+            'cnpj': forms.TextInput(attrs={'class': 'form-control'}),
+        }
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Se estiver editando e já houver data, popular os campos
-        if self.instance.pk and self.instance.data_vencimento_df:
-            self.fields['dia_vencimento_df'].initial = self.instance.data_vencimento_df.day
-            self.fields['mes_vencimento_df'].initial = self.instance.data_vencimento_df.month
-    
+
+        if self.instance.pk:
+            config_trim = self.instance.configuracoes_df.filter(tipo='trimestral').first()
+            if config_trim:
+                self.fields['tem_trimestral'].initial = True
+                for i in range(1, 5):
+                    self.fields[f'trim{i}_dia'].initial = getattr(config_trim, f'trim{i}_dia')
+                    self.fields[f'trim{i}_mes'].initial = getattr(config_trim, f'trim{i}_mes')
+
+            config_anual = self.instance.configuracoes_df.filter(tipo='anual').first()
+            if config_anual:
+                self.fields['tem_anual'].initial = True
+                self.fields['anual_dia'].initial = config_anual.anual_dia
+                self.fields['anual_mes'].initial = config_anual.anual_mes
+
     def clean(self):
         cleaned_data = super().clean()
-        dia = cleaned_data.get('dia_vencimento_df')
-        mes = cleaned_data.get('mes_vencimento_df')
-        
-        # Ambos devem ser fornecidos ou ambos vazios
-        if (dia and not mes) or (mes and not dia):
-            raise ValidationError("Por favor, informe tanto o dia quanto o mês, ou deixe ambos em branco.")
-        
-        # Se ambos fornecidos, validar e criar a data
-        if dia and mes:
+
+        if cleaned_data.get('tem_trimestral'):
+            for i in range(1, 5):
+                dia = cleaned_data.get(f'trim{i}_dia')
+                mes = cleaned_data.get(f'trim{i}_mes')
+                if not dia or not mes:
+                    raise ValidationError(f'Se DF Trimestral está ativa, todos os 4 trimestres devem ter dia e mês configurados (faltando {i}º trimestre).')
+                try:
+                    date(2000, mes, dia)
+                except ValueError:
+                    raise ValidationError(f'Data inválida para {i}º trimestre: dia {dia} não existe no mês {mes}.')
+
+        if cleaned_data.get('tem_anual'):
+            dia = cleaned_data.get('anual_dia')
+            mes = cleaned_data.get('anual_mes')
+            if not dia or not mes:
+                raise ValidationError('Se DF Anual está ativa, deve ter dia e mês configurados.')
             try:
-                # Usar ano fixo 2000 (não importa para a lógica)
-                cleaned_data['data_vencimento_df'] = date(2000, mes, dia)
+                date(2000, mes, dia)
             except ValueError:
-                raise ValidationError(f"Data inválida: dia {dia} não existe no mês {mes}.")
-        else:
-            cleaned_data['data_vencimento_df'] = None
-        
+                raise ValidationError(f'Data inválida para anual: dia {dia} não existe no mês {mes}.')
+
         return cleaned_data
-    
+
+    def save_configuracoes(self, instance):
+        """Salva os registros ConfiguracaoDF. Chamar após fundo.save() quando commit=False."""
+        if self.cleaned_data.get('tem_trimestral'):
+            defaults = {}
+            for i in range(1, 5):
+                defaults[f'trim{i}_dia'] = self.cleaned_data.get(f'trim{i}_dia')
+                defaults[f'trim{i}_mes'] = self.cleaned_data.get(f'trim{i}_mes')
+            ConfiguracaoDF.objects.update_or_create(fundo=instance, tipo='trimestral', defaults=defaults)
+        else:
+            ConfiguracaoDF.objects.filter(fundo=instance, tipo='trimestral').delete()
+
+        if self.cleaned_data.get('tem_anual'):
+            ConfiguracaoDF.objects.update_or_create(
+                fundo=instance, tipo='anual',
+                defaults={
+                    'anual_dia': self.cleaned_data.get('anual_dia'),
+                    'anual_mes': self.cleaned_data.get('anual_mes'),
+                }
+            )
+        else:
+            ConfiguracaoDF.objects.filter(fundo=instance, tipo='anual').delete()
+
+        tipos_ativos = []
+        if self.cleaned_data.get('tem_trimestral'):
+            tipos_ativos.append('trimestral')
+        if self.cleaned_data.get('tem_anual'):
+            tipos_ativos.append('anual')
+        if tipos_ativos:
+            from df.services.periodo_service import gerar_periodos_para_ano
+            from datetime import date as _date
+            gerar_periodos_para_ano(instance, _date.today().year)
+
     def save(self, commit=True):
-        instance = super().save(commit=False)
-        instance.data_vencimento_df = self.cleaned_data.get('data_vencimento_df')
+        instance = super().save(commit=commit)
         if commit:
-            instance.save()
+            self.save_configuracoes(instance)
         return instance
 
 

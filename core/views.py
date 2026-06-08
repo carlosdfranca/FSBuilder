@@ -7,7 +7,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from datetime import date
 import json
 
-from df.models import Fundo, BalanceteItem
+from df.models import Fundo, BalanceteItem, HistoricoEmissaoDF, PeriodoDF
 from usuarios.models import Empresa, Membership
 from usuarios.utils.company_scope import query_por_empresa_ativa
 from usuarios.permissions import (
@@ -20,6 +20,7 @@ from usuarios.permissions import (
 )
 
 from .forms import FundoForm, EditarPerfilForm
+from df.forms import PeriodoDFManualForm
 
 # Camadas novas (core)
 from core.export.df_excel import criar_aba_dpf, criar_aba_dre, criar_aba_dmpl, criar_aba_dfc
@@ -29,6 +30,7 @@ from core.processing.dre_service import gerar_dados_dre
 from core.processing.dpf_service import gerar_dados_dpf
 from core.processing.dmpl_service import gerar_dados_dmpl
 from core.processing.dfc_service import gerar_tabela_dfc
+from core.processing.status_service import obter_status_todos_fundos, calcular_status_periodo
 from core.upload.balancete_parser import parse_excel, BalanceteSchemaError
 from core.upload.mec_parser import parse_excel_mec, MecSchemaError
 
@@ -88,28 +90,31 @@ def demonstracao_financeira(request):
         # Converter para strings únicas
         datas_formatadas = sorted({d.isoformat() for d in datas_qs if d}, reverse=True)
         fundos_datas[fundo.id] = datas_formatadas
-        
-        # Calcular dias até vencimento da DF
-        if fundo.data_vencimento_df:
-            # Usar o dia/mês do vencimento com o ano atual
-            vencimento_este_ano = date(hoje.year, fundo.data_vencimento_df.month, fundo.data_vencimento_df.day)
-            dias_restantes = (vencimento_este_ano - hoje).days
-            
-            # Determinar status baseado em dias restantes
+
+        # Calcular dias até vencimento usando o próximo PeriodoDF ativo
+        proximo_periodo = (
+            PeriodoDF.objects.filter(fundo=fundo, data_vencimento__gte=hoje)
+            .exclude(status="finalizada")
+            .order_by("data_vencimento")
+            .first()
+        )
+        if proximo_periodo:
+            dias_restantes = (proximo_periodo.data_vencimento - hoje).days
             if dias_restantes > 30:
-                status = "ok"  # Verde
+                status = "ok"
             elif dias_restantes >= 15:
-                status = "aviso"  # Amarelo
+                status = "aviso"
             elif dias_restantes >= 0:
-                status = "urgente"  # Vermelho urgente
+                status = "urgente"
             else:
-                status = "vencida"  # Vermelho vencida
-                dias_restantes = abs(dias_restantes)  # Converter para positivo para exibição
-            
+                status = "vencida"
+                dias_restantes = abs(dias_restantes)
+
             fundos_prazos[fundo.id] = {
-                "data_vencimento": fundo.data_vencimento_df.isoformat(),  # Converter para string
+                "data_vencimento": proximo_periodo.data_vencimento.isoformat(),
                 "dias_restantes": dias_restantes,
-                "status": status
+                "status": status,
+                "periodo_nome": proximo_periodo.nome_exibicao,
             }
 
     return render(request, "demonstracao_financeira.html", {
@@ -117,6 +122,104 @@ def demonstracao_financeira(request):
         "fundos_datas": json.dumps(fundos_datas),
         "fundos_prazos": json.dumps(fundos_prazos),
         "can_enviar_balancete": _can_manage_fundos(request),
+    })
+
+
+# ===============================
+# PÁGINA: Controle de Emissões
+# ===============================
+@login_required
+@company_can_view_data
+def controle_emissoes(request):
+    """
+    Dashboard mostrando o status de emissão das DFs de todos os fundos.
+    """
+    fundos_qs = query_por_empresa_ativa(
+        Fundo.objects.select_related("empresa").prefetch_related("configuracoes_df"),
+        request,
+        "empresa",
+    ).order_by("nome")
+
+    # Obter status de todos os fundos
+    fundos_info = obter_status_todos_fundos(fundos_qs)
+    
+    # Calcular métricas para o dashboard
+    total_fundos = len(fundos_info)
+    
+    # Contadores por status
+    status_counts = {
+        'nao_iniciada': 0,
+        'em_andamento': 0,
+        'emitida': 0
+    }
+    for info in fundos_info:
+        status_counts[info['status']] += 1
+    
+    # Contadores por tipo de DF (via ConfiguracaoDF por fundo)
+    tipo_counts = {}
+    for info in fundos_info:
+        tipos = [c.tipo for c in info['fundo'].configuracoes_df.all()]
+        if not tipos:
+            tipos = ['nao_definido']
+        for tipo in tipos:
+            tipo_counts[tipo] = tipo_counts.get(tipo, 0) + 1
+
+    # Fundos com vencimento próximo (30 dias) via PeriodoDF
+    from datetime import timedelta
+    hoje = date.today()
+    fundo_ids = [info['fundo'].id for info in fundos_info]
+    vencimentos_proximos = (
+        PeriodoDF.objects.filter(
+            fundo_id__in=fundo_ids,
+            data_vencimento__range=(hoje, hoje + timedelta(days=30)),
+        )
+        .exclude(status='finalizada')
+        .values('fundo')
+        .distinct()
+        .count()
+    )
+
+    # Enriquecer cada fundo_info com o próximo período
+    for info in fundos_info:
+        info['proximo_periodo'] = (
+            PeriodoDF.objects.filter(fundo=info['fundo'], data_vencimento__gte=hoje)
+            .exclude(status='finalizada')
+            .order_by('data_vencimento')
+            .first()
+        )
+    
+    # Preparar dados para gráficos (JSON)
+    dashboard_data = {
+        'status_labels': ['Não Iniciada', 'Em Andamento', 'Emitida'],
+        'status_values': [
+            status_counts['nao_iniciada'],
+            status_counts['em_andamento'],
+            status_counts['emitida']
+        ],
+        'tipo_labels': [],
+        'tipo_values': []
+    }
+    
+    # Mapeamento de tipos para labels legíveis
+    tipo_labels_map = {
+        'anual': 'Anual',
+        'transitoria': 'Transitória',
+        'trimestral': 'Trimestral',
+        'encerramento': 'Encerramento',
+        'nao_definido': 'Não Definido'
+    }
+    
+    for tipo, count in tipo_counts.items():
+        dashboard_data['tipo_labels'].append(tipo_labels_map.get(tipo, tipo))
+        dashboard_data['tipo_values'].append(count)
+    
+    return render(request, "controle_emissoes.html", {
+        "fundos_info": fundos_info,
+        "can_manage_fundos": _can_manage_fundos(request),
+        "total_fundos": total_fundos,
+        "status_counts": status_counts,
+        "vencimentos_proximos": vencimentos_proximos,
+        "dashboard_data": json.dumps(dashboard_data),
     })
 
 
@@ -447,6 +550,17 @@ def exportar_dfs_excel(request, fundo_id, data_atual, data_anterior):
         )
 
     wb.save(response)
+    
+    # Registrar histórico de emissão
+    HistoricoEmissaoDF.objects.create(
+        fundo=fundo,
+        empresa=fundo.empresa,
+        usuario=request.user if request.user.is_authenticated else None,
+        data_referencia_df=data_atual,
+        data_anterior_df=data_anterior,
+        tipo_exportacao='excel'
+    )
+    
     return response
 
 
@@ -527,6 +641,17 @@ def exportar_dfs_docx(request, fundo_id, data_atual, data_anterior):
         response["Content-Disposition"] = (
             f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{nome_curto}.docx"
         )
+    
+    # Registrar histórico de emissão
+    HistoricoEmissaoDF.objects.create(
+        fundo=fundo,
+        empresa=fundo.empresa,
+        usuario=request.user if request.user.is_authenticated else None,
+        data_referencia_df=data_atual,
+        data_anterior_df=data_anterior,
+        tipo_exportacao='word'
+    )
+    
     return response
 
 # ===========================
@@ -535,7 +660,10 @@ def exportar_dfs_docx(request, fundo_id, data_atual, data_anterior):
 @login_required
 @company_can_view_data
 def listar_fundos(request):
-    fundos = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa").order_by("nome")
+    fundos = query_por_empresa_ativa(
+        Fundo.objects.select_related("empresa").prefetch_related("configuracoes_df"),
+        request, "empresa"
+    ).order_by("nome")
     form = FundoForm()
     return render(request, "fundos/listar.html", {
         "fundos": fundos,
@@ -580,6 +708,7 @@ def adicionar_fundo(request):
                             return redirect("listar_fundos")
 
             fundo.save()
+            form.save_configuracoes(fundo)
             messages.success(request, "Fundo criado com sucesso.")
             return redirect("listar_fundos")
     else:
@@ -608,6 +737,7 @@ def editar_fundo(request, fundo_id):
                     messages.error(request, "Você não tem permissão para mover o fundo para essa empresa.")
                     return redirect("listar_fundos")
             obj.save()
+            form.save_configuracoes(obj)
             messages.success(request, "Fundo atualizado com sucesso.")
             return redirect("listar_fundos")
     else:
@@ -626,6 +756,71 @@ def excluir_fundo(request, fundo_id):
         messages.success(request, "Fundo excluído com sucesso.")
         return redirect("listar_fundos")
     return render(request, "fundos/confirmar_exclusao.html", {"fundo": fundo})
+
+
+# ===========================
+# Gerenciamento de Períodos de DF
+# ===========================
+@login_required
+@company_can_view_data
+def gerenciar_periodos(request, fundo_id):
+    qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
+    fundo = get_object_or_404(qs, id=fundo_id)
+
+    periodos_qs = PeriodoDF.objects.filter(fundo=fundo).order_by("-ano", "tipo_periodo", "trimestre")
+
+    # Filtros opcionais por URL params
+    ano_filtro = request.GET.get("ano")
+    status_filtro = request.GET.get("status")
+    if ano_filtro:
+        periodos_qs = periodos_qs.filter(ano=ano_filtro)
+    if status_filtro:
+        periodos_qs = periodos_qs.filter(status=status_filtro)
+
+    periodos_info = []
+    for periodo in periodos_qs:
+        status_info = calcular_status_periodo(periodo)
+        dias = status_info["dias_ate_vencimento"]
+        status_info["dias_vencida"] = abs(dias) if dias < 0 else 0
+        periodos_info.append({"periodo": periodo, **status_info})
+
+    anos_disponiveis = (
+        PeriodoDF.objects.filter(fundo=fundo)
+        .values_list("ano", flat=True)
+        .distinct()
+        .order_by("-ano")
+    )
+
+    form_manual = PeriodoDFManualForm(fundo=fundo)
+
+    return render(request, "periodos/gerenciar.html", {
+        "fundo": fundo,
+        "periodos_info": periodos_info,
+        "anos_disponiveis": anos_disponiveis,
+        "ano_filtro": ano_filtro,
+        "status_filtro": status_filtro,
+        "form_manual": form_manual,
+        "can_manage_fundos": _can_manage_fundos(request),
+    })
+
+
+@login_required
+@company_can_manage_fundos
+def criar_periodo_manual(request, fundo_id):
+    qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
+    fundo = get_object_or_404(qs, id=fundo_id)
+
+    if request.method == "POST":
+        form = PeriodoDFManualForm(request.POST, fundo=fundo)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Período criado com sucesso.")
+        else:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f"{field}: {error}")
+
+    return redirect("gerenciar_periodos", fundo_id=fundo_id)
 
 
 # ===========================
