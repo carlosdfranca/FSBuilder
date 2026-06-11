@@ -1242,6 +1242,10 @@ nav.navbar {
     background-color: rgba(255, 255, 255, 0.08);
     color: var(--text-primary);
 }
+.dataTables_wrapper .table-responsive {
+    border: none;
+    border-radius: 0;
+}
 
 /* ================================
    Corrige tag .alert-error (Django)

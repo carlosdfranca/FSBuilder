@@ -116,10 +116,10 @@ def calcular_status_periodo(periodo_df):
     # Determinar status
     if tem_emissao:
         status = 'finalizada'
-    elif periodo_df.data_vencimento < hoje and not tem_emissao:
-        status = 'vencida'
     elif tem_dados:
         status = 'em_andamento'
+    elif periodo_df.data_vencimento < hoje:
+        status = 'vencida'
     else:
         status = 'nao_iniciada'
     

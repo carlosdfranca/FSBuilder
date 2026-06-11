@@ -3,217 +3,298 @@
 
 {% block title %}Controle de Emissões{% endblock %}
 
+{% block extra_head %}
+<style>
+  /* Variantes de cor extras para kpi-card */
+  .kpi-card--red::before    { background: linear-gradient(90deg, #b91c1c, #ef4444); }
+  .kpi-card--red   .kpi-card__value { color: #ef4444; }
+  .kpi-card--sky::before { background: linear-gradient(90deg, #1d4ed8, #3b82f6); }
+  .kpi-card--sky .kpi-card__value { color: #3b82f6; }
+
+  a.kpi-card-link { text-decoration: none; display: block; transition: transform 0.18s ease; }
+  a.kpi-card-link:hover .kpi-card { transform: translateY(-3px); box-shadow: var(--shadow-card-hover); }
+  a.kpi-card-link--active .kpi-card { outline: 2px solid currentColor; outline-offset: 3px; }
+
+  /* Suaviza cor de linha da tabela no light mode */
+  .row-aviso { background-color: rgba(255, 193, 7, 0.08) !important; }
+
+  /* Chart containers */
+  .chart-wrap { position: relative; height: 280px; }
+</style>
+{% endblock %}
+
 {% block conteudo %}
 {% include 'base/navbar.html' %}
 
 <div class="container py-5">
+
   {% if messages %}
-    <div class="mt-3">
-      {% for message in messages %}
-        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-          {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
-        </div>
-      {% endfor %}
-    </div>
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }} alert-dismissible fade show mb-3" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+      </div>
+    {% endfor %}
   {% endif %}
 
-  <!-- Título Principal -->
-  <div class="mb-4">
-    <h4 class="mb-0">Controle de Emissões de Demonstrações Financeiras</h4>
-    <p class="text-muted mb-0 mt-1">Acompanhe o status de emissão das DFs de todos os fundos</p>
-  </div>
-
-  <!-- Cards de Métricas -->
-  <div class="row g-3 mb-4">
-    <div class="col-md-3">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center">
-            <div class="flex-shrink-0">
-              <div class="bg-primary bg-opacity-10 rounded-circle p-3">
-                <i class="bi bi-briefcase fs-4 text-primary"></i>
-              </div>
-            </div>
-            <div class="flex-grow-1 ms-3">
-              <h6 class="text-muted mb-1 small">Total de Fundos</h6>
-              <h3 class="mb-0">{{ total_fundos }}</h3>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-md-3">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center">
-            <div class="flex-shrink-0">
-              <div class="bg-success bg-opacity-10 rounded-circle p-3">
-                <i class="bi bi-check-circle fs-4 text-success"></i>
-              </div>
-            </div>
-            <div class="flex-grow-1 ms-3">
-              <h6 class="text-muted mb-1 small">DFs Emitidas</h6>
-              <h3 class="mb-0">
-                {{ status_counts.emitida }}
-                <small class="text-muted fs-6">
-                  {% if total_fundos > 0 %}
-                    ({{ status_counts.emitida|floatformat:0 }}/{{ total_fundos }})
-                  {% endif %}
-                </small>
-              </h3>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-md-3">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center">
-            <div class="flex-shrink-0">
-              <div class="bg-warning bg-opacity-10 rounded-circle p-3">
-                <i class="bi bi-hourglass-split fs-4 text-warning"></i>
-              </div>
-            </div>
-            <div class="flex-grow-1 ms-3">
-              <h6 class="text-muted mb-1 small">Em Andamento</h6>
-              <h3 class="mb-0">{{ status_counts.em_andamento }}</h3>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-md-3">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center">
-            <div class="flex-shrink-0">
-              <div class="bg-danger bg-opacity-10 rounded-circle p-3">
-                <i class="bi bi-clock-history fs-4 text-danger"></i>
-              </div>
-            </div>
-            <div class="flex-grow-1 ms-3">
-              <h6 class="text-muted mb-1 small">Vencimento Próximo</h6>
-              <h3 class="mb-0">{{ vencimentos_proximos }}</h3>
-              <small class="text-muted">Próximos 30 dias</small>
-            </div>
-          </div>
-        </div>
-      </div>
+  <!-- [A] Cabeçalho -->
+  <div class="page-header">
+    <div class="page-header__titles">
+      <h1 class="page-header__title">Controle de Emissões</h1>
+      <p class="page-header__subtitle">Vencimentos e status de todos os períodos de DF de todos os fundos</p>
     </div>
   </div>
 
-  <!-- Tabela de Fundos -->
+  <!-- [B] KPI Cards -->
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));">
+
+    <a href="?{{ filtros_base }}"
+       class="kpi-card-link {% if not status_filtro %}kpi-card-link--active{% endif %}">
+      <div class="kpi-card kpi-card--blue">
+        <div class="kpi-card__label">Total</div>
+        <div class="kpi-card__value">{{ metricas.total }}</div>
+        <div class="kpi-card__sub">períodos cadastrados</div>
+        <i class="bi bi-calendar-range kpi-card__ghost-icon"></i>
+      </div>
+    </a>
+
+    <a href="?status=vencida{% if filtros_base %}&{{ filtros_base }}{% endif %}"
+       class="kpi-card-link {% if status_filtro == 'vencida' %}kpi-card-link--active{% endif %}">
+      <div class="kpi-card kpi-card--red">
+        <div class="kpi-card__label">Vencidas</div>
+        <div class="kpi-card__value">{{ metricas.vencidas }}</div>
+        <div class="kpi-card__sub">sem entrega</div>
+        <i class="bi bi-clock-history kpi-card__ghost-icon"></i>
+      </div>
+    </a>
+
+    <a href="?status=quase_vencendo{% if filtros_base %}&{{ filtros_base }}{% endif %}"
+       class="kpi-card-link {% if status_filtro == 'quase_vencendo' %}kpi-card-link--active{% endif %}">
+      <div class="kpi-card kpi-card--amber">
+        <div class="kpi-card__label">Quase Vencendo</div>
+        <div class="kpi-card__value">{{ metricas.quase_vencendo }}</div>
+        <div class="kpi-card__sub">próximos 30 dias</div>
+        <i class="bi bi-hourglass-split kpi-card__ghost-icon"></i>
+      </div>
+    </a>
+
+    <a href="?status=em_andamento{% if filtros_base %}&{{ filtros_base }}{% endif %}"
+       class="kpi-card-link {% if status_filtro == 'em_andamento' %}kpi-card-link--active{% endif %}">
+      <div class="kpi-card kpi-card--sky">
+        <div class="kpi-card__label">Em Andamento</div>
+        <div class="kpi-card__value">{{ metricas.em_andamento }}</div>
+        <div class="kpi-card__sub">com dados importados</div>
+        <i class="bi bi-arrow-repeat kpi-card__ghost-icon"></i>
+      </div>
+    </a>
+
+    <a href="?status=nao_iniciada{% if filtros_base %}&{{ filtros_base }}{% endif %}"
+       class="kpi-card-link {% if status_filtro == 'nao_iniciada' %}kpi-card-link--active{% endif %}">
+      <div class="kpi-card kpi-card--gray">
+        <div class="kpi-card__label">Não Iniciadas</div>
+        <div class="kpi-card__value">{{ metricas.nao_iniciadas }}</div>
+        <div class="kpi-card__sub">sem dados ainda</div>
+        <i class="bi bi-circle kpi-card__ghost-icon"></i>
+      </div>
+    </a>
+
+    <a href="?status=finalizada{% if filtros_base %}&{{ filtros_base }}{% endif %}"
+       class="kpi-card-link {% if status_filtro == 'finalizada' %}kpi-card-link--active{% endif %}">
+      <div class="kpi-card kpi-card--green">
+        <div class="kpi-card__label">Finalizadas</div>
+        <div class="kpi-card__value">{{ metricas.finalizadas }}</div>
+        <div class="kpi-card__sub">DFs entregues</div>
+        <i class="bi bi-check-circle kpi-card__ghost-icon"></i>
+      </div>
+    </a>
+
+  </div>
+
+  <!-- [C] Filtros -->
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-3 px-4">
+      <div class="row g-3 align-items-end">
+
+        <!-- Fundo -->
+        <div class="col-12 col-sm-6 col-lg-5">
+          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-fundo">
+            <i class="bi bi-briefcase me-1"></i>Fundo
+          </label>
+          <select id="filtro-fundo" class="form-select form-select-sm">
+            <option value="">Todos os fundos</option>
+            {% for f in fundos_lista %}
+            <option value="{{ f.id }}" {% if fundo_filtro == f.id|stringformat:'s' %}selected{% endif %}>
+              {{ f.nome }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Ano -->
+        <div class="col-6 col-sm-3 col-lg-2">
+          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-ano">
+            <i class="bi bi-calendar3 me-1"></i>Ano
+          </label>
+          <select id="filtro-ano" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            {% for ano in anos_disponiveis %}
+            <option value="{{ ano }}" {% if ano_filtro == ano|stringformat:'s' %}selected{% endif %}>
+              {{ ano }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Ações + contador -->
+        <div class="col-6 col-sm-3 col-lg-5 d-flex align-items-center gap-3 justify-content-end">
+          {% if ano_filtro or fundo_filtro %}
+          <a href="?{% if status_filtro %}status={{ status_filtro }}{% endif %}"
+             class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-x-circle me-1"></i>Limpar
+          </a>
+          {% endif %}
+          <span class="text-muted small">
+            <strong>{{ periodos|length }}</strong> período{{ periodos|length|pluralize }}
+          </span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- [D] Tabela de períodos -->
   <div class="card border-0 shadow-sm mb-4">
-    <div class="card-body">
-      <h5 class="card-title mb-3">Detalhamento por Fundo</h5>
-
-      {% if fundos_info %}
+    <div class="card-body p-0">
+      {% if periodos %}
         <div class="table-responsive">
-          <table class="table table-striped table-hover align-middle" id="tabela-controle-emissoes">
-            <thead>
+          <table class="table table-ds table-hover align-middle mb-0" id="tabela-periodos">
+            <thead class="table-light">
               <tr>
-                <th scope="col" style="width: 20%;">Nome do Fundo</th>
-                <th scope="col" style="width: 15%;">CNPJ</th>
-                <th scope="col" style="width: 15%;">Última Emissão</th>
-                <th scope="col" style="width: 12%;">Próx. Vencimento</th>
-                <th scope="col" style="width: 15%;">Status</th>
-                <th scope="col" style="width: 13%;">Tipos de DF</th>
-                <th scope="col" style="width: 10%;" class="text-center">Ações</th>
+                <th class="ps-3">Fundo</th>
+                <th>Período</th>
+                <th>Tipo</th>
+                <th>Vencimento</th>
+                <th>Prazo</th>
+                <th>Status</th>
+                <th class="text-center pe-3">Ações</th>
               </tr>
             </thead>
             <tbody>
-              {% for info in fundos_info %}
-                <tr>
-                  <td class="fw-bold">{{ info.fundo.nome }}</td>
-                  <td>{{ info.fundo.cnpj }}</td>
-                  <td>
-                    {% if info.ultima_emissao_data %}
-                      {{ info.ultima_emissao_data|date:"d/m/Y H:i" }}
+              {% for item in periodos %}
+              <tr class="{% if item.urgencia == 'vencida' %}table-danger{% elif item.urgencia == 'urgente' %}table-warning{% elif item.urgencia == 'finalizada' %}table-success{% elif item.urgencia == 'aviso' %}row-aviso{% endif %}">
+                <td class="ps-3 fw-semibold">{{ item.periodo.fundo.nome }}</td>
+                <td>{{ item.periodo.nome_exibicao }}</td>
+                <td>
+                  {% if item.periodo.tipo_periodo == 'trimestral' %}
+                    <span class="badge bg-primary bg-opacity-75">Trimestral</span>
+                  {% elif item.periodo.tipo_periodo == 'anual' %}
+                    <span class="badge bg-info text-dark">Anual</span>
+                  {% elif item.periodo.tipo_periodo == 'transitoria' %}
+                    <span class="badge bg-secondary">Transitória</span>
+                  {% elif item.periodo.tipo_periodo == 'encerramento' %}
+                    <span class="badge bg-dark">Encerramento</span>
+                  {% endif %}
+                </td>
+                <td data-order="{{ item.periodo.data_vencimento|date:'Y-m-d' }}">
+                  {% if item.periodo.data_vencimento %}
+                    {{ item.periodo.data_vencimento|date:"d/m/Y" }}
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if item.urgencia == 'finalizada' %}
+                    <span class="text-success small"><i class="bi bi-check-circle me-1"></i>Entregue</span>
+                  {% elif item.urgencia == 'vencida' %}
+                    {% if item.dias_atraso %}
+                      <span class="badge bg-danger">{{ item.dias_atraso }} dia{{ item.dias_atraso|pluralize }} atraso</span>
                     {% else %}
-                      <span class="text-muted">—</span>
+                      <span class="badge bg-danger">Vencida hoje</span>
                     {% endif %}
-                  </td>
-                  <td class="text-center">
-                    {% if info.proximo_periodo %}
-                      <span title="{{ info.proximo_periodo.nome_exibicao }}">
-                        {{ info.proximo_periodo.data_vencimento|date:"d/m/Y" }}
-                      </span>
-                    {% else %}
-                      <span class="text-muted">—</span>
-                    {% endif %}
-                  </td>
-                  <td>
-                    {% if info.status == 'nao_iniciada' %}
-                      <span class="badge bg-secondary">Não Iniciada</span>
-                    {% elif info.status == 'em_andamento' %}
-                      <span class="badge bg-warning text-dark">Em Andamento</span>
-                    {% elif info.status == 'emitida' %}
-                      <span class="badge bg-success">Emitida</span>
-                    {% endif %}
-                  </td>
-                  <td>
-                    {% with configs=info.fundo.configuracoes_df.all %}
-                      {% if configs %}
-                        {% for config in configs %}
-                          <span class="badge bg-info text-dark">{{ config.tipo|title }}</span>
-                        {% endfor %}
-                      {% else %}
-                        <span class="text-muted">—</span>
-                      {% endif %}
-                    {% endwith %}
-                  </td>
-                  <td class="text-center">
-                    <a href="{% url 'demonstracao_financeira' %}" class="btn btn-sm btn-outline-primary" title="Gerar DF">
-                      <i class="bi bi-graph-up"></i>
-                    </a>
-                  </td>
-                </tr>
+                  {% elif item.urgencia == 'urgente' %}
+                    <span class="badge bg-danger">{{ item.dias_ate_vencimento }} dia{{ item.dias_ate_vencimento|pluralize }}</span>
+                  {% elif item.urgencia == 'aviso' %}
+                    <span class="badge bg-warning text-dark">{{ item.dias_ate_vencimento }} dias</span>
+                  {% else %}
+                    <span class="text-muted small">{{ item.dias_ate_vencimento }} dias</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if item.periodo.status == 'finalizada' %}
+                    <span class="badge bg-success">Finalizada</span>
+                  {% elif item.periodo.status == 'em_andamento' %}
+                    <span class="badge text-white" style="background-color:#3b82f6;">Em Andamento</span>
+                  {% elif item.periodo.status == 'vencida' %}
+                    <span class="badge bg-danger">Vencida</span>
+                  {% else %}
+                    <span class="badge bg-secondary">Não Iniciada</span>
+                  {% endif %}
+                </td>
+                <td class="text-center pe-3">
+                  <a href="{% url 'demonstracao_financeira' %}?fundo={{ item.periodo.fundo.id }}"
+                     class="btn btn-sm btn-outline-primary"
+                     title="Abrir DF deste fundo">
+                    <i class="bi bi-graph-up"></i>
+                  </a>
+                </td>
+              </tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
 
       {% else %}
-        <div class="alert alert-info mb-0">
-          Nenhum fundo cadastrado. 
-          {% if can_manage_fundos %}
-            <a href="{% url 'listar_fundos' %}" class="alert-link">Clique aqui para cadastrar seu primeiro fundo.</a>
+        <div class="p-4">
+          {% if status_filtro or ano_filtro %}
+            <div class="empty-state">
+              <i class="bi bi-funnel empty-state__icon"></i>
+              <p class="empty-state__title">Nenhum período encontrado</p>
+              <p class="empty-state__text">Nenhum período corresponde aos filtros aplicados.</p>
+              <a href="?" class="btn btn-sm btn-outline-secondary">Limpar filtros</a>
+            </div>
+          {% else %}
+            <div class="empty-state">
+              <i class="bi bi-calendar-x empty-state__icon"></i>
+              <p class="empty-state__title">Nenhum período de DF cadastrado</p>
+              <p class="empty-state__text">Acesse os fundos para gerar os períodos de cada DF.</p>
+              {% if can_manage_fundos %}
+                <a href="{% url 'listar_fundos' %}" class="btn btn-sm btn-outline-secondary">
+                  <i class="bi bi-briefcase me-1"></i>Ver Fundos
+                </a>
+              {% endif %}
+            </div>
           {% endif %}
         </div>
       {% endif %}
-
     </div>
   </div>
 
-  <!-- Gráficos do Dashboard -->
-  {% if total_fundos > 0 %}
-  <div class="row g-3">
-    <div class="col-md-6">
+  <!-- [E] Gráficos -->
+  {% if metricas.total > 0 %}
+  <div class="row g-4">
+
+    <div class="col-md-5">
       <div class="card border-0 shadow-sm h-100">
         <div class="card-body">
-          <h5 class="card-title mb-3">Distribuição por Status</h5>
-          <div style="position: relative; height: 300px;">
+          <h6 class="fw-semibold mb-3">Distribuição por Status</h6>
+          <div class="chart-wrap">
             <canvas id="chartStatus"></canvas>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="col-md-6">
+    <div class="col-md-7">
       <div class="card border-0 shadow-sm h-100">
         <div class="card-body">
-          <h5 class="card-title mb-3">Fundos por Tipo de DF</h5>
-          <div style="position: relative; height: 300px;">
-            <canvas id="chartTipo"></canvas>
+          <h6 class="fw-semibold mb-3">Períodos por Ano</h6>
+          <div class="chart-wrap">
+            <canvas id="chartAnos"></canvas>
           </div>
         </div>
       </div>
     </div>
+
   </div>
   {% endif %}
 
@@ -221,112 +302,125 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- Chart.js CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-
 <script>
-  document.addEventListener("DOMContentLoaded", function () {
-    // Inicializar DataTables na tabela de controle
-    $('#tabela-controle-emissoes').DataTable({
-      language: {
-        url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json'
-      },
+// Aplica filtros de fundo e ano preservando o status ativo
+function aplicarFiltros() {
+  const fundo = document.getElementById('filtro-fundo').value;
+  const ano   = document.getElementById('filtro-ano').value;
+  const params = new URLSearchParams();
+  const status = '{{ status_filtro }}';
+  if (status) params.set('status', status);
+  if (fundo)  params.set('fundo', fundo);
+  if (ano)    params.set('ano', ano);
+  window.location.href = '?' + params.toString();
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+
+  // Bind selects
+  const selFundo = document.getElementById('filtro-fundo');
+  const selAno   = document.getElementById('filtro-ano');
+  if (selFundo) selFundo.addEventListener('change', aplicarFiltros);
+  if (selAno)   selAno.addEventListener('change', aplicarFiltros);
+
+  // DataTables
+  const tabela = document.getElementById('tabela-periodos');
+  if (tabela) {
+    $(tabela).DataTable({
+      language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json' },
       pageLength: 25,
-      order: [[0, 'asc']], // Ordenar por nome do fundo
-      columnDefs: [
-        { orderable: false, targets: [6] } // Desabilitar ordenação na coluna de ações
-      ]
+      order: [[3, 'asc']],
+      columnDefs: [{ orderable: false, targets: [6] }]
     });
+  }
 
-    // Dados do dashboard vindos do backend
-    const dashboardData = {{ dashboard_data|safe }};
+  // Dados do backend
+  const dd = {{ dashboard_data|safe }};
 
-    // Gráfico de Status (Donut Chart)
-    if (document.getElementById('chartStatus')) {
-      const ctxStatus = document.getElementById('chartStatus').getContext('2d');
-      new Chart(ctxStatus, {
-        type: 'doughnut',
-        data: {
-          labels: dashboardData.status_labels,
-          datasets: [{
-            data: dashboardData.status_values,
-            backgroundColor: [
-              'rgba(108, 117, 125, 0.8)',  // Cinza - Não Iniciada
-              'rgba(255, 193, 7, 0.8)',    // Amarelo - Em Andamento
-              'rgba(25, 135, 84, 0.8)'     // Verde - Emitida
-            ],
-            borderColor: [
-              'rgba(108, 117, 125, 1)',
-              'rgba(255, 193, 7, 1)',
-              'rgba(25, 135, 84, 1)'
-            ],
-            borderWidth: 2
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: {
-                padding: 15,
-                font: {
-                  size: 12
-                }
-              }
-            },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  const label = context.label || '';
-                  const value = context.parsed || 0;
-                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                  const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
-                  return `${label}: ${value} (${percentage}%)`;
-                }
-              }
-            }
-          }
-        }
-      });
-    }
+  // Detecta tema atual para ajustar cores dos gráficos
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const textColor = isDark ? '#ADADB1' : '#6c757d';
+  const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
 
-    // Gráfico de Tipos (Bar Chart)
-    if (document.getElementById('chartTipo')) {
-      const ctxTipo = document.getElementById('chartTipo').getContext('2d');
-      new Chart(ctxTipo, {
-        type: 'bar',
-        data: {
-          labels: dashboardData.tipo_labels,
-          datasets: [{
-            label: 'Número de Fundos',
-            data: dashboardData.tipo_values,
-            backgroundColor: 'rgba(13, 110, 253, 0.8)',
-            borderColor: 'rgba(13, 110, 253, 1)',
-            borderWidth: 2,
-            borderRadius: 5
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: {
-                stepSize: 1
-              }
-            }
+  // Donut — Distribuição por Status
+  const ctxStatus = document.getElementById('chartStatus');
+  if (ctxStatus) {
+    new Chart(ctxStatus, {
+      type: 'doughnut',
+      data: {
+        labels: dd.status_labels,
+        datasets: [{
+          data: dd.status_values,
+          backgroundColor: dd.status_colors,
+          borderColor: isDark ? '#171719' : '#ffffff',
+          borderWidth: 3,
+          hoverOffset: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: textColor, padding: 14, font: { size: 12 } }
           },
-          plugins: {
-            legend: {
-              display: false
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                const pct = total > 0 ? Math.round((ctx.parsed / total) * 100) : 0;
+                return ` ${ctx.label}: ${ctx.parsed} (${pct}%)`;
+              }
             }
           }
         }
-      });
-    }
-  });
+      }
+    });
+  }
+
+  // Barra horizontal empilhada — Períodos por Ano
+  const ctxAnos = document.getElementById('chartAnos');
+  if (ctxAnos && dd.anos.length > 0) {
+    new Chart(ctxAnos, {
+      type: 'bar',
+      data: {
+        labels: dd.anos,
+        datasets: [
+          { label: 'Finalizadas',   data: dd.por_ano.finalizadas,   backgroundColor: '#10b981', borderRadius: 3 },
+          { label: 'Em Andamento',  data: dd.por_ano.em_andamento,  backgroundColor: '#3b82f6', borderRadius: 3 },
+          { label: 'Vencidas',      data: dd.por_ano.vencidas,      backgroundColor: '#ef4444', borderRadius: 3 },
+          { label: 'Não Iniciadas', data: dd.por_ano.nao_iniciadas, backgroundColor: '#6b7585', borderRadius: 3 },
+        ]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            stacked: true,
+            ticks: { color: textColor, stepSize: 1 },
+            grid: { color: gridColor }
+          },
+          y: {
+            stacked: true,
+            ticks: { color: textColor },
+            grid: { display: false }
+          }
+        },
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: textColor, padding: 14, font: { size: 12 } }
+          }
+        }
+      }
+    });
+  }
+
+});
 </script>
 {% endblock %}

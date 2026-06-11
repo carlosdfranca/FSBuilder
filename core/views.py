@@ -2,7 +2,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
-from django.http import FileResponse, HttpResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from datetime import date
 import json
@@ -30,7 +30,7 @@ from core.processing.dre_service import gerar_dados_dre
 from core.processing.dpf_service import gerar_dados_dpf
 from core.processing.dmpl_service import gerar_dados_dmpl
 from core.processing.dfc_service import gerar_tabela_dfc
-from core.processing.status_service import obter_status_todos_fundos, calcular_status_periodo
+from core.processing.status_service import calcular_status_periodo
 from core.upload.balancete_parser import parse_excel, BalanceteSchemaError
 from core.upload.mec_parser import parse_excel_mec, MecSchemaError
 
@@ -139,93 +139,151 @@ def demonstracao_financeira(request):
 @company_can_view_data
 def controle_emissoes(request):
     """
-    Dashboard mostrando o status de emissão das DFs de todos os fundos.
+    Dashboard de vencimentos e status de todos os períodos de DF de todos os fundos.
     """
-    fundos_qs = query_por_empresa_ativa(
-        Fundo.objects.select_related("empresa").prefetch_related("configuracoes_df"),
-        request,
-        "empresa",
-    ).order_by("nome")
-
-    # Obter status de todos os fundos
-    fundos_info = obter_status_todos_fundos(fundos_qs)
-    
-    # Calcular métricas para o dashboard
-    total_fundos = len(fundos_info)
-    
-    # Contadores por status
-    status_counts = {
-        'nao_iniciada': 0,
-        'em_andamento': 0,
-        'emitida': 0
-    }
-    for info in fundos_info:
-        status_counts[info['status']] += 1
-    
-    # Contadores por tipo de DF (via ConfiguracaoDF por fundo)
-    tipo_counts = {}
-    for info in fundos_info:
-        tipos = [c.tipo for c in info['fundo'].configuracoes_df.all()]
-        if not tipos:
-            tipos = ['nao_definido']
-        for tipo in tipos:
-            tipo_counts[tipo] = tipo_counts.get(tipo, 0) + 1
-
-    # Fundos com vencimento próximo (30 dias) via PeriodoDF
-    from datetime import timedelta
+    empresa = get_empresa_escopo(request)
     hoje = date.today()
-    fundo_ids = [info['fundo'].id for info in fundos_info]
-    vencimentos_proximos = (
-        PeriodoDF.objects.filter(
-            fundo_id__in=fundo_ids,
-            data_vencimento__range=(hoje, hoje + timedelta(days=30)),
-        )
-        .exclude(status='finalizada')
-        .values('fundo')
+
+    # Sincroniza status vencida em lote: períodos sem dados e sem emissão que já passaram
+    # do prazo ainda podem estar como nao_iniciada se nunca houve interação com eles.
+    PeriodoDF.objects.filter(
+        empresa=empresa,
+        status='nao_iniciada',
+        data_vencimento__lt=hoje,
+    ).update(status='vencida')
+    # Reverte caso data_vencimento tenha sido corrigida para o futuro
+    PeriodoDF.objects.filter(
+        empresa=empresa,
+        status='vencida',
+        data_vencimento__gte=hoje,
+    ).update(status='nao_iniciada')
+
+    status_filtro = request.GET.get('status', '')
+    ano_filtro = request.GET.get('ano', '')
+    fundo_filtro = request.GET.get('fundo', '')
+
+    qs = (
+        PeriodoDF.objects
+        .filter(empresa=empresa)
+        .select_related('fundo')
+        .order_by('data_vencimento', 'fundo__nome')
+    )
+    if ano_filtro:
+        try:
+            qs = qs.filter(ano=int(ano_filtro))
+        except ValueError:
+            ano_filtro = ''
+    if fundo_filtro:
+        try:
+            qs = qs.filter(fundo_id=int(fundo_filtro))
+        except ValueError:
+            fundo_filtro = ''
+
+    todos = list(qs)
+
+    metricas = {
+        'total': len(todos),
+        'finalizadas': sum(1 for p in todos if p.status == 'finalizada'),
+        'em_andamento': sum(1 for p in todos if p.status == 'em_andamento'),
+        'nao_iniciadas': sum(1 for p in todos if p.status == 'nao_iniciada'),
+        'vencidas': sum(1 for p in todos if p.status == 'vencida'),
+        'quase_vencendo': sum(
+            1 for p in todos
+            if p.status not in ('finalizada', 'vencida')
+            and p.data_vencimento
+            and 0 <= (p.data_vencimento - hoje).days <= 30
+        ),
+    }
+
+    if status_filtro == 'quase_vencendo':
+        periodos_base = [
+            p for p in todos
+            if p.status not in ('finalizada', 'vencida')
+            and p.data_vencimento
+            and 0 <= (p.data_vencimento - hoje).days <= 30
+        ]
+    elif status_filtro:
+        periodos_base = [p for p in todos if p.status == status_filtro]
+    else:
+        periodos_base = todos
+
+    periodos = []
+    for p in periodos_base:
+        dias = (p.data_vencimento - hoje).days if p.data_vencimento else None
+        if p.status == 'finalizada':
+            urgencia = 'finalizada'
+        elif p.status == 'vencida':
+            urgencia = 'vencida'
+        elif dias is not None and dias <= 7:
+            urgencia = 'urgente'
+        elif dias is not None and dias <= 30:
+            urgencia = 'aviso'
+        else:
+            urgencia = 'ok'
+        periodos.append({
+            'periodo': p,
+            'dias_ate_vencimento': dias,
+            'dias_atraso': abs(dias) if dias is not None and dias < 0 else 0,
+            'urgencia': urgencia,
+        })
+
+    anos_disponiveis = list(
+        PeriodoDF.objects.filter(empresa=empresa)
+        .values_list('ano', flat=True)
         .distinct()
-        .count()
+        .order_by('-ano')
     )
 
-    # Enriquecer cada fundo_info com o próximo período
-    for info in fundos_info:
-        info['proximo_periodo'] = (
-            PeriodoDF.objects.filter(fundo=info['fundo'], data_vencimento__gte=hoje)
-            .exclude(status='finalizada')
-            .order_by('data_vencimento')
-            .first()
-        )
-    
-    # Preparar dados para gráficos (JSON)
+    fundos_lista = list(
+        Fundo.objects.filter(empresa=empresa).order_by('nome').values('id', 'nome')
+    )
+
+    # String com params não-status para montar URLs dos KPI cards
+    _filtros_parts = []
+    if ano_filtro:
+        _filtros_parts.append(f'ano={ano_filtro}')
+    if fundo_filtro:
+        _filtros_parts.append(f'fundo={fundo_filtro}')
+    filtros_base = '&'.join(_filtros_parts)
+
+    # Breakdown por ano para o gráfico de barras (usa todos, sem filtro de status)
+    _todos_sem_filtro = todos  # já é todos os do ano filtrado (ou todos os anos)
+    ano_breakdown = {}
+    for p in _todos_sem_filtro:
+        yr = str(p.ano)
+        if yr not in ano_breakdown:
+            ano_breakdown[yr] = {'finalizada': 0, 'em_andamento': 0, 'vencida': 0, 'nao_iniciada': 0}
+        key = p.status if p.status in ano_breakdown[yr] else 'nao_iniciada'
+        ano_breakdown[yr][key] += 1
+
+    anos_sorted = sorted(ano_breakdown.keys())
     dashboard_data = {
-        'status_labels': ['Não Iniciada', 'Em Andamento', 'Emitida'],
+        'status_labels': ['Finalizadas', 'Em Andamento', 'Vencidas', 'Não Iniciadas'],
         'status_values': [
-            status_counts['nao_iniciada'],
-            status_counts['em_andamento'],
-            status_counts['emitida']
+            metricas['finalizadas'], metricas['em_andamento'],
+            metricas['vencidas'], metricas['nao_iniciadas'],
         ],
-        'tipo_labels': [],
-        'tipo_values': []
+        'status_colors': ['#10b981', '#3b82f6', '#ef4444', '#6b7585'],
+        'anos': anos_sorted,
+        'por_ano': {
+            'finalizadas':   [ano_breakdown[a]['finalizada']   for a in anos_sorted],
+            'em_andamento':  [ano_breakdown[a]['em_andamento'] for a in anos_sorted],
+            'vencidas':      [ano_breakdown[a]['vencida']      for a in anos_sorted],
+            'nao_iniciadas': [ano_breakdown[a]['nao_iniciada'] for a in anos_sorted],
+        },
     }
-    
-    # Mapeamento de tipos para labels legíveis
-    tipo_labels_map = {
-        'anual': 'Anual',
-        'transitoria': 'Transitória',
-        'trimestral': 'Trimestral',
-        'encerramento': 'Encerramento',
-        'nao_definido': 'Não Definido'
-    }
-    
-    for tipo, count in tipo_counts.items():
-        dashboard_data['tipo_labels'].append(tipo_labels_map.get(tipo, tipo))
-        dashboard_data['tipo_values'].append(count)
-    
+
     return render(request, "controle_emissoes.html", {
-        "fundos_info": fundos_info,
+        "periodos": periodos,
+        "metricas": metricas,
+        "status_filtro": status_filtro,
+        "ano_filtro": ano_filtro,
+        "fundo_filtro": fundo_filtro,
+        "anos_disponiveis": anos_disponiveis,
+        "fundos_lista": fundos_lista,
+        "filtros_base": filtros_base,
         "can_manage_fundos": _can_manage_fundos(request),
-        "total_fundos": total_fundos,
-        "status_counts": status_counts,
-        "vencimentos_proximos": vencimentos_proximos,
+        "hoje": hoje,
         "dashboard_data": json.dumps(dashboard_data),
     })
 
@@ -239,6 +297,14 @@ def importar_balancete_view(request):
     if request.method != "POST":
         return redirect("demonstracao_financeira")
 
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+    def _err(msg):
+        if is_ajax:
+            return JsonResponse({"ok": False, "message": msg}, status=400)
+        messages.error(request, msg)
+        return redirect("demonstracao_financeira")
+
     fundo_id = request.POST.get("fundo_id")
     periodo_df_id = request.POST.get("periodo_df_id")
     saldo_anterior_mode = request.POST.get("saldo_anterior_mode", "zerado")
@@ -250,8 +316,7 @@ def importar_balancete_view(request):
     fundo = get_object_or_404(fundo_qs, id=fundo_id)
 
     if not periodo_df_id:
-        messages.error(request, "Selecione o período da DF.")
-        return redirect("demonstracao_financeira")
+        return _err("Selecione o período da DF.")
 
     periodo = get_object_or_404(PeriodoDF, id=periodo_df_id, fundo=fundo)
 
@@ -262,8 +327,7 @@ def importar_balancete_view(request):
     data_referencia = calcular_data_referencia_periodo(periodo)
 
     if not arquivo_balancete:
-        messages.error(request, "Selecione o arquivo do balancete (Saldo Final).")
-        return redirect("demonstracao_financeira")
+        return _err("Selecione o arquivo do balancete (Saldo Final).")
 
     try:
         rows = parse_excel(arquivo_balancete)
@@ -274,11 +338,9 @@ def importar_balancete_view(request):
             periodo_df_id=periodo.id,
         )
     except BalanceteSchemaError as e:
-        messages.error(request, f"Planilha inválida: faltam colunas {', '.join(e.missing_columns)}")
-        return redirect("demonstracao_financeira")
+        return _err(f"Planilha inválida: faltam colunas {', '.join(e.missing_columns)}")
     except Exception as e:
-        messages.error(request, f"Erro ao importar balancete: {e}")
-        return redirect("demonstracao_financeira")
+        return _err(f"Erro ao importar balancete: {e}")
 
     periodo.data_referencia = data_referencia
 
@@ -287,40 +349,44 @@ def importar_balancete_view(request):
         periodo.save()
     elif saldo_anterior_mode == "clone":
         if not periodo_anterior_id:
-            messages.error(request, "Selecione o período de origem para o clone.")
-            return redirect("demonstracao_financeira")
+            return _err("Selecione o período de origem para o clone.")
         periodo_origem = get_object_or_404(PeriodoDF, id=periodo_anterior_id, fundo=fundo)
         if not periodo_origem.data_referencia:
-            messages.error(request, f"O período '{periodo_origem.nome_exibicao}' ainda não possui balancete importado.")
-            return redirect("demonstracao_financeira")
+            return _err(f"O período '{periodo_origem.nome_exibicao}' ainda não possui balancete importado.")
         periodo.data_anterior = periodo_origem.data_referencia
         periodo.save()
     elif saldo_anterior_mode == "spreadsheet":
         if not arquivo_saldo_anterior:
-            messages.error(request, "Selecione o arquivo do saldo anterior.")
-            return redirect("demonstracao_financeira")
+            return _err("Selecione o arquivo do saldo anterior.")
         data_anterior = calcular_data_referencia_periodo_anterior(periodo)
         if not data_anterior:
-            messages.error(request, "Não foi possível determinar a data do saldo anterior para este tipo de período.")
-            return redirect("demonstracao_financeira")
+            return _err("Não foi possível determinar a data do saldo anterior para este tipo de período.")
         try:
             rows_ant = parse_excel(arquivo_saldo_anterior)
             import_balancete(fundo_id=fundo.id, data_referencia=data_anterior, rows=rows_ant)
         except BalanceteSchemaError as e:
-            messages.error(request, f"Planilha do saldo anterior inválida: faltam colunas {', '.join(e.missing_columns)}")
-            return redirect("demonstracao_financeira")
+            return _err(f"Planilha do saldo anterior inválida: faltam colunas {', '.join(e.missing_columns)}")
         except Exception as e:
-            messages.error(request, f"Erro ao importar saldo anterior: {e}")
-            return redirect("demonstracao_financeira")
+            return _err(f"Erro ao importar saldo anterior: {e}")
         periodo.data_anterior = data_anterior
         periodo.save()
     else:
         periodo.save()
 
+    from df.services.periodo_service import atualizar_status_automatico
+    periodo.refresh_from_db()
+    atualizar_status_automatico(periodo)
+
     if report.errors:
-        messages.warning(request, f"Balancete importado com avisos. {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados.")
+        msg = f"Balancete importado com avisos. {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados."
+        if is_ajax:
+            return JsonResponse({"ok": True, "warning": True, "message": msg})
+        messages.warning(request, msg)
     else:
-        messages.success(request, f"Balancete importado com sucesso para '{periodo.nome_exibicao}': {report.imported} inseridos, {report.updated} atualizados.")
+        msg = f"Balancete importado com sucesso para '{periodo.nome_exibicao}': {report.imported} inseridos, {report.updated} atualizados."
+        if is_ajax:
+            return JsonResponse({"ok": True, "message": msg})
+        messages.success(request, msg)
 
     return redirect("demonstracao_financeira")
 
@@ -331,33 +397,75 @@ def importar_balancete_view(request):
 @login_required
 @company_can_manage_fundos
 def importar_mec_view(request):
-    if request.method == "POST":
-        fundo_id = request.POST.get("fundo_id")
-        arquivo_mec = request.FILES.get("arquivo_mec")
+    if request.method != "POST":
+        return redirect("demonstracao_financeira")
 
-        fundo_qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
-        fundo = get_object_or_404(fundo_qs, id=fundo_id)
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
 
-        if not arquivo_mec:
-            messages.error(request, "Selecione o arquivo do MEC.")
-            return redirect("demonstracao_financeira")
+    def _err(msg):
+        if is_ajax:
+            return JsonResponse({"ok": False, "message": msg}, status=400)
+        messages.error(request, msg)
+        return redirect("demonstracao_financeira")
 
-        try:
-            rows_mec = parse_excel_mec(arquivo_mec)
-            report = import_mec(fundo_id=fundo.id, rows=rows_mec)
-        except MecSchemaError as e:
-            messages.error(request, f"Planilha do MEC inválida: faltam colunas {', '.join(e.missing_columns)}")
-            return redirect("demonstracao_financeira")
-        except Exception as e:
-            messages.error(request, f"Erro ao importar MEC: {e}")
-            return redirect("demonstracao_financeira")
+    fundo_id = request.POST.get("fundo_id")
+    arquivo_mec = request.FILES.get("arquivo_mec")
 
-        if report.errors:
-            messages.warning(request, f"MEC importado com erros. {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados.")
-        else:
-            messages.success(request, f"MEC importado com sucesso. {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados.")
+    fundo_qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
+    fundo = get_object_or_404(fundo_qs, id=fundo_id)
+
+    if not arquivo_mec:
+        return _err("Selecione o arquivo do MEC.")
+
+    try:
+        rows_mec = parse_excel_mec(arquivo_mec)
+        report = import_mec(fundo_id=fundo.id, rows=rows_mec)
+    except MecSchemaError as e:
+        return _err(f"Planilha do MEC inválida: faltam colunas {', '.join(e.missing_columns)}")
+    except Exception as e:
+        return _err(f"Erro ao importar MEC: {e}")
+
+    if report.errors:
+        msg = f"MEC importado com erros. {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados."
+        if is_ajax:
+            return JsonResponse({"ok": True, "warning": True, "message": msg})
+        messages.warning(request, msg)
+    else:
+        msg = f"MEC importado com sucesso. {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados."
+        if is_ajax:
+            return JsonResponse({"ok": True, "message": msg})
+        messages.success(request, msg)
 
     return redirect("demonstracao_financeira")
+
+
+# ===============================
+# API: períodos de um fundo (JSON)
+# ===============================
+@login_required
+@company_can_view_data
+def api_periodos_fundo(request, fundo_id):
+    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
+    fundo = get_object_or_404(fundo_qs, id=fundo_id)
+
+    from core.processing.import_service import calcular_data_referencia_periodo
+    periodos = PeriodoDF.objects.filter(fundo=fundo).order_by("ano", "tipo_periodo", "trimestre")
+    periodos_data = []
+    for p in periodos:
+        data_ref_calc = calcular_data_referencia_periodo(p)
+        periodos_data.append({
+            "id": p.id,
+            "nome": p.nome_exibicao,
+            "tipo": p.tipo_periodo,
+            "ano": p.ano,
+            "trimestre": p.trimestre,
+            "status": p.status,
+            "tem_balancete": p.balancete_items.exists(),
+            "data_referencia": p.data_referencia.isoformat() if p.data_referencia else None,
+            "data_referencia_calculada": data_ref_calc.isoformat() if data_ref_calc else None,
+            "data_vencimento": p.data_vencimento.isoformat() if p.data_vencimento else None,
+        })
+    return JsonResponse({"periodos": periodos_data})
 
 
 # ===============================
@@ -556,6 +664,10 @@ def exportar_dfs_excel(request, periodo_df_id):
         periodo_df=periodo,
     )
 
+    from df.services.periodo_service import atualizar_status_automatico
+    periodo.refresh_from_db()
+    atualizar_status_automatico(periodo)
+
     return response
 
 
@@ -642,6 +754,10 @@ def exportar_dfs_docx(request, periodo_df_id):
         tipo_exportacao='word',
         periodo_df=periodo,
     )
+
+    from df.services.periodo_service import atualizar_status_automatico
+    periodo.refresh_from_db()
+    atualizar_status_automatico(periodo)
 
     return response
 
@@ -773,6 +889,8 @@ def gerenciar_periodos(request, fundo_id):
         status_info = calcular_status_periodo(periodo)
         dias = status_info["dias_ate_vencimento"]
         status_info["dias_vencida"] = abs(dias) if dias < 0 else 0
+        status_info["n_balancete"] = periodo.balancete_items.count()
+        status_info["n_mec"] = periodo.mec_items.count()
         periodos_info.append({"periodo": periodo, **status_info})
 
     anos_disponiveis = (
@@ -792,6 +910,8 @@ def gerenciar_periodos(request, fundo_id):
         "status_filtro": status_filtro,
         "form_manual": form_manual,
         "can_manage_fundos": _can_manage_fundos(request),
+        "ano_atual": date.today().year,
+        "ano_inicial_sugerido": date.today().year - 5,
     })
 
 
@@ -810,6 +930,92 @@ def criar_periodo_manual(request, fundo_id):
             for field, errors in form.errors.items():
                 for error in errors:
                     messages.error(request, f"{field}: {error}")
+
+    return redirect("gerenciar_periodos", fundo_id=fundo_id)
+
+
+# ===========================
+# Excluir Período de DF
+# ===========================
+@login_required
+@company_can_manage_fundos
+def excluir_periodo(request, fundo_id, periodo_id):
+    qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
+    fundo = get_object_or_404(qs, id=fundo_id)
+    periodo = get_object_or_404(PeriodoDF, id=periodo_id, fundo=fundo)
+
+    if request.method != "POST":
+        return redirect("gerenciar_periodos", fundo_id=fundo_id)
+
+    tem_balancete = periodo.balancete_items.exists()
+    tem_mec = periodo.mec_items.exists()
+    tem_dados = tem_balancete or tem_mec
+
+    if tem_dados and not request.POST.get("confirmar_exclusao"):
+        messages.error(request, "Para excluir um período com dados importados, confirme a exclusão marcando a caixa de verificação.")
+        return redirect("gerenciar_periodos", fundo_id=fundo_id)
+
+    nome = periodo.nome_exibicao
+    n_balancete = periodo.balancete_items.count() if tem_balancete else 0
+    n_mec = periodo.mec_items.count() if tem_mec else 0
+    periodo.delete()
+
+    if tem_dados:
+        messages.warning(request, f"Período '{nome}' excluído junto com {n_balancete} registro(s) de balancete e {n_mec} registro(s) de MEC.")
+    else:
+        messages.success(request, f"Período '{nome}' excluído com sucesso.")
+
+    return redirect("gerenciar_periodos", fundo_id=fundo_id)
+
+
+# ===========================
+# Gerar Períodos Históricos
+# ===========================
+@login_required
+@company_can_manage_fundos
+def gerar_periodos_historicos(request, fundo_id):
+    qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
+    fundo = get_object_or_404(qs, id=fundo_id)
+
+    if request.method != "POST":
+        return redirect("gerenciar_periodos", fundo_id=fundo_id)
+
+    try:
+        ano_inicial = int(request.POST.get("ano_inicial", 0))
+        ano_final = int(request.POST.get("ano_final", 0))
+    except (ValueError, TypeError):
+        messages.error(request, "Informe anos válidos.")
+        return redirect("gerenciar_periodos", fundo_id=fundo_id)
+
+    ano_atual = date.today().year
+    if ano_inicial < 1990 or ano_final > ano_atual or ano_inicial > ano_final:
+        messages.error(request, f"Intervalo de anos inválido. Use entre 1990 e {ano_atual}.")
+        return redirect("gerenciar_periodos", fundo_id=fundo_id)
+
+    if not fundo.configuracoes_df.exists():
+        messages.error(request, "Este fundo não possui nenhuma configuração de DF (Trimestral/Anual).")
+        return redirect("gerenciar_periodos", fundo_id=fundo_id)
+
+    from df.services.periodo_service import gerar_periodos_para_anos
+    resultado = gerar_periodos_para_anos(fundo, ano_inicial, ano_final)
+
+    # Corrige imediatamente os períodos gerados que já estejam vencidos
+    PeriodoDF.objects.filter(
+        fundo=fundo,
+        status='nao_iniciada',
+        data_vencimento__lt=date.today(),
+    ).update(status='vencida')
+
+    total = resultado["total"]
+    if total == 0:
+        messages.info(request, "Nenhum período novo criado — todos os períodos desse intervalo já existiam.")
+    else:
+        detalhes = []
+        if resultado["trimestral"]:
+            detalhes.append(f"{resultado['trimestral']} trimestral(is)")
+        if resultado["anual"]:
+            detalhes.append(f"{resultado['anual']} anual(is)")
+        messages.success(request, f"{total} período(s) criado(s) para {ano_inicial}–{ano_final}: {', '.join(detalhes)}.")
 
     return redirect("gerenciar_periodos", fundo_id=fundo_id)
 

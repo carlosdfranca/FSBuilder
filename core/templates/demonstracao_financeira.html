@@ -3,60 +3,132 @@
 
 {% block title %}Demonstração Financeira{% endblock %}
 
+{% block extra_head %}
+<style>
+  /* Anima o container principal ao aparecer */
+  #df-container { animation: fadeInUp 0.28s ease both; }
+
+  /* Período selecionado no modal — compatível com dark/light */
+  .modal-periodo-display {
+    background: var(--surface-3);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    padding: 0.75rem 1rem;
+  }
+
+  /* Saldo anterior — list-group dark/light mode */
+  #modal-importar .list-group-item {
+    background-color: var(--surface-3);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+  }
+  #modal-importar .list-group-item-action:hover,
+  #modal-importar .list-group-item-action:focus {
+    background-color: rgba(255, 255, 255, 0.045);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+  }
+  html[data-theme="light"] #modal-importar .list-group-item-action:hover,
+  html[data-theme="light"] #modal-importar .list-group-item-action:focus {
+    background-color: rgba(0, 0, 0, 0.04);
+  }
+  #modal-importar .list-group-item small {
+    color: var(--text-secondary);
+  }
+  /* Radio buttons dentro do modal */
+  #modal-importar .form-check-input {
+    background-color: var(--surface-2);
+    border-color: rgba(255, 255, 255, 0.22);
+  }
+  html[data-theme="light"] #modal-importar .form-check-input {
+    background-color: #fff;
+    border-color: rgba(0, 0, 0, 0.28);
+  }
+  #modal-importar .form-check-input:checked {
+    background-color: var(--accent-primary);
+    border-color: var(--accent-primary);
+  }
+</style>
+{% endblock %}
+
 {% block conteudo %}
 {% include 'base/navbar.html' %}
 
-<div class="container mt-5">
+<div class="container py-5">
+
   {% if messages %}
-    <div class="mt-3">
-      {% for message in messages %}
-        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-          {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
-        </div>
-      {% endfor %}
+  <div class="mb-3">
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+      {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
     </div>
+    {% endfor %}
+  </div>
   {% endif %}
 
   {% if fundos %}
-    <!-- Seletor de Fundo -->
-    <div class="card shadow rounded p-4 mb-4">
-      <h4 class="mb-3">Selecionar Fundo</h4>
+
+  <!-- Cabeçalho -->
+  <div class="page-header">
+    <div class="page-header__titles">
+      <h1 class="page-header__title">Demonstração Financeira</h1>
+      <p class="page-header__subtitle">Selecione um fundo para visualizar e gerenciar os períodos de DF</p>
+    </div>
+  </div>
+
+  <!-- Seletor de fundo -->
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3 px-4">
+      <label class="form-label small fw-semibold text-muted mb-2" for="select-fundo">
+        <i class="bi bi-briefcase me-1"></i>Fundo
+      </label>
       <select class="form-select" id="select-fundo">
-        <option selected disabled>Escolha um fundo</option>
+        <option selected disabled>Selecione um fundo...</option>
         {% for fundo in fundos %}
-          <option value="{{ fundo.id }}">{{ fundo.nome }} ({{ fundo.cnpj }})</option>
+          <option value="{{ fundo.id }}">{{ fundo.nome }}</option>
         {% endfor %}
       </select>
     </div>
+  </div>
 
-    <!-- Conteúdo dinâmico -->
-    <div id="df-container" style="display: none;">
+  <!-- Feedback inline (AJAX) -->
+  <div id="df-feedback"></div>
 
-      <!-- Alerta de prazo -->
-      <div id="prazo-alert" class="mb-3"></div>
+  <!-- Container dinâmico — aparece ao selecionar fundo -->
+  <div id="df-container" style="display: none;">
 
-      <!-- Tabela de Períodos -->
-      <div class="card shadow rounded p-4 mb-4">
+    <!-- Banner de prazo -->
+    <div id="prazo-alert" class="mb-3"></div>
+
+    <!-- Tabela de períodos -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-3">
-          <h5 class="mb-0">Períodos da Demonstração Financeira</h5>
+          <h6 class="fw-semibold mb-0">
+            <i class="bi bi-calendar-range me-2 text-muted"></i>Períodos
+          </h6>
           <a id="link-criar-periodo" href="#" class="btn btn-sm btn-outline-secondary" style="display:none;">
-            <i class="bi bi-plus-lg me-1"></i> Criar período manual
+            <i class="bi bi-gear me-1"></i>Gerenciar períodos
           </a>
         </div>
         <div id="periodos-table-container"></div>
       </div>
+    </div>
 
-      {% if can_enviar_balancete %}
-      <!-- Card MEC (separado do balancete) -->
-      <div class="card shadow rounded p-4 mb-4">
-        <h5 class="mb-3">Enviar MEC</h5>
+    {% if can_enviar_balancete %}
+    <!-- Enviar MEC -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body">
+        <h6 class="fw-semibold mb-3">
+          <i class="bi bi-file-earmark-spreadsheet me-2 text-muted"></i>Enviar Planilha MEC
+        </h6>
         <form method="POST" action="{% url 'importar_mec' %}" enctype="multipart/form-data">
           {% csrf_token %}
           <input type="hidden" name="fundo_id" id="mec-fundo-id" value="">
           <div class="row align-items-end g-3">
             <div class="col-md-8">
-              <label class="form-label fw-semibold">Planilha MEC</label>
+              <label class="form-label small fw-semibold text-muted mb-1">Arquivo .xlsx / .xls</label>
               <input type="file" class="form-control" name="arquivo_mec" accept=".xlsx,.xls" required>
             </div>
             <div class="col-md-4">
@@ -67,22 +139,38 @@
           </div>
         </form>
       </div>
-      {% endif %}
-
     </div>
+    {% endif %}
+
+  </div>
 
   {% else %}
-    <div class="alert alert-warning text-center mt-5">
-      Você ainda não adicionou nenhum fundo.
-      {% if can_enviar_balancete %}
-        <a href="{% url 'listar_fundos' %}" class="alert-link">Clique aqui para cadastrar seu primeiro fundo.</a>
-      {% endif %}
+
+  <!-- Estado vazio — sem fundos -->
+  <div class="page-header">
+    <div class="page-header__titles">
+      <h1 class="page-header__title">Demonstração Financeira</h1>
     </div>
+  </div>
+  <div class="empty-state">
+    <i class="bi bi-briefcase empty-state__icon"></i>
+    <p class="empty-state__title">Nenhum fundo cadastrado</p>
+    <p class="empty-state__text">Cadastre um fundo para começar a gerenciar as demonstrações financeiras.</p>
+    {% if can_enviar_balancete %}
+      <a href="{% url 'listar_fundos' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-plus-circle me-1"></i>Cadastrar primeiro fundo
+      </a>
+    {% endif %}
+  </div>
+
   {% endif %}
+
 </div>
 
 
-<!-- Modal Importar Balancete -->
+<!-- ════════════════════════════════════════
+     Modal: Importar Balancete
+════════════════════════════════════════ -->
 <div class="modal fade" id="modal-importar" tabindex="-1" aria-labelledby="modal-importar-label" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -92,15 +180,18 @@
         <input type="hidden" name="periodo_df_id" id="modal-periodo-id">
 
         <div class="modal-header">
-          <h5 class="modal-title" id="modal-importar-label">Importar Balancete</h5>
+          <h5 class="modal-title" id="modal-importar-label">
+            <i class="bi bi-upload me-2"></i>Importar Balancete
+          </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
 
         <div class="modal-body">
+
           <!-- Período selecionado (read-only) -->
           <div class="mb-4">
-            <label class="form-label fw-semibold text-muted small">Período</label>
-            <div class="form-control bg-light fw-bold" id="modal-periodo-nome" style="pointer-events:none;"></div>
+            <div class="small fw-semibold text-muted mb-1">Período</div>
+            <div class="modal-periodo-display fw-semibold" id="modal-periodo-nome"></div>
           </div>
 
           <!-- Saldo Final -->
@@ -118,50 +209,49 @@
             <p class="text-muted small mb-3">Como deseja definir os dados de comparação?</p>
 
             <div class="list-group">
-
-              <!-- Opção: Zerado -->
               <label class="list-group-item list-group-item-action d-flex align-items-start gap-3 cursor-pointer">
-                <input class="form-check-input mt-1" type="radio" name="saldo_anterior_mode" value="zerado" id="mode-zerado" checked onchange="toggleModeOptions()">
+                <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="saldo_anterior_mode"
+                       value="zerado" id="mode-zerado" checked onchange="toggleModeOptions()">
                 <div>
-                  <div class="fw-semibold">Zerado (início do fundo)</div>
+                  <div class="fw-semibold">Zerado <span class="text-muted fw-normal">(início do fundo)</span></div>
                   <small class="text-muted">Todos os valores do período anterior serão zero. Use para o primeiro período do fundo.</small>
                 </div>
               </label>
 
-              <!-- Opção: Clonar -->
               <label class="list-group-item list-group-item-action d-flex align-items-start gap-3 cursor-pointer">
-                <input class="form-check-input mt-1" type="radio" name="saldo_anterior_mode" value="clone" id="mode-clone" onchange="toggleModeOptions()">
+                <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="saldo_anterior_mode"
+                       value="clone" id="mode-clone" onchange="toggleModeOptions()">
                 <div class="w-100">
                   <div class="fw-semibold">Clonar outro período</div>
                   <small class="text-muted">Usa os dados de um período já importado como saldo anterior.</small>
                   <div id="clone-options" style="display:none;" class="mt-2">
-                    <select name="periodo_anterior_id" class="form-select" id="select-periodo-anterior">
+                    <select name="periodo_anterior_id" class="form-select form-select-sm" id="select-periodo-anterior">
                       <option value="" disabled selected>Selecione o período de origem...</option>
                     </select>
                   </div>
                 </div>
               </label>
 
-              <!-- Opção: Importar planilha -->
               <label class="list-group-item list-group-item-action d-flex align-items-start gap-3 cursor-pointer">
-                <input class="form-check-input mt-1" type="radio" name="saldo_anterior_mode" value="spreadsheet" id="mode-spreadsheet" onchange="toggleModeOptions()">
+                <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="saldo_anterior_mode"
+                       value="spreadsheet" id="mode-spreadsheet" onchange="toggleModeOptions()">
                 <div class="w-100">
                   <div class="fw-semibold">Importar de planilha</div>
-                  <small class="text-muted">Upload de uma planilha com os dados do período anterior.</small>
+                  <small class="text-muted">Upload de uma planilha separada com os dados do período anterior.</small>
                   <div id="spreadsheet-options" style="display:none;" class="mt-2">
-                    <input type="file" class="form-control" name="arquivo_saldo_anterior" accept=".xlsx,.xls">
+                    <input type="file" class="form-control form-control-sm" name="arquivo_saldo_anterior" accept=".xlsx,.xls">
                   </div>
                 </div>
               </label>
-
             </div>
           </div>
+
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
           <button type="submit" class="btn btn-primary">
-            <i class="bi bi-upload me-1"></i> Importar
+            <i class="bi bi-upload me-1"></i>Importar
           </button>
         </div>
       </form>
@@ -171,77 +261,195 @@
 
 {% endblock %}
 
+
 {% block scripts %}
 <script>
   document.addEventListener("DOMContentLoaded", function () {
-    const selectFundo = document.getElementById("select-fundo");
-    const container = document.getElementById("df-container");
-    const periodosPorFundo = {{ fundos_periodos|safe }};
+    const selectFundo   = document.getElementById("select-fundo");
+    const dfContainer   = document.getElementById("df-container");
+    let periodosPorFundo = {{ fundos_periodos|safe }};
     const prazosPorFundo = {{ fundos_prazos|safe }};
     const canEnviarBalancete = {{ can_enviar_balancete|yesno:"true,false" }};
+    let fundoAtual  = null;
+    let dtPeriodos  = null;   // instância DataTables da tabela de períodos
+
+    // Pré-selecionar fundo via ?fundo=<id> (ex: retorno do DF Final)
+    const params = new URLSearchParams(window.location.search);
+    const fundoIdParam = params.get("fundo");
+    if (fundoIdParam && selectFundo.querySelector(`option[value="${fundoIdParam}"]`)) {
+      selectFundo.value = fundoIdParam;
+      selectFundo.dispatchEvent(new Event("change"));
+    }
 
     selectFundo.addEventListener("change", function () {
-      const fundoId = this.value;
-      container.style.display = "block";
+      fundoAtual = this.value;
+      dfContainer.style.display = "block";
 
-      // Update MEC fundo_id
       const mecFundoId = document.getElementById("mec-fundo-id");
-      if (mecFundoId) mecFundoId.value = fundoId;
+      if (mecFundoId) mecFundoId.value = fundoAtual;
 
-      // Update "criar período manual" link
       const linkCriar = document.getElementById("link-criar-periodo");
       if (linkCriar) {
-        linkCriar.href = `/fundos/${fundoId}/periodos/criar/`;
+        linkCriar.href = `/fundos/${fundoAtual}/periodos/`;
         linkCriar.style.display = "inline-flex";
       }
 
-      renderPrazoAlert(fundoId);
-      renderPeriodosTable(fundoId);
+      renderPrazoAlert(fundoAtual);
+      renderPeriodosTable(fundoAtual);
     });
 
+    // ── Feedback inline ──────────────────────────────────────
+    function mostrarFeedback(msg, tipo) {
+      const el = document.getElementById("df-feedback");
+      const icon = tipo === "success" ? "bi-check-circle-fill"
+                 : tipo === "warning" ? "bi-exclamation-triangle-fill"
+                 : "bi-x-circle-fill";
+      el.innerHTML = `
+        <div class="alert alert-${tipo} alert-dismissible fade show d-flex align-items-center gap-2 mb-3" role="alert">
+          <i class="bi ${icon} flex-shrink-0"></i>
+          <div>${msg}</div>
+          <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+        </div>`;
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    // ── Refresh da tabela via API ─────────────────────────────
+    function refreshPeriodos(fundoId) {
+      return fetch(`/api/fundo/${fundoId}/periodos/`, {
+        headers: { "X-Requested-With": "XMLHttpRequest" }
+      })
+        .then(r => r.json())
+        .then(data => {
+          periodosPorFundo[fundoId] = data.periodos;
+          renderPeriodosTable(fundoId);
+        });
+    }
+
+    // ── AJAX: Balancete ───────────────────────────────────────
+    const formBalancete = document.querySelector("#modal-importar form");
+    if (formBalancete) {
+      formBalancete.addEventListener("submit", function (e) {
+        e.preventDefault();
+        const btn = formBalancete.querySelector('button[type="submit"]');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Importando…';
+
+        fetch(formBalancete.action, {
+          method: "POST",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          body: new FormData(formBalancete),
+        })
+          .then(r => r.json().then(data => ({ ok: r.ok, data })))
+          .then(({ ok, data }) => {
+            bootstrap.Modal.getInstance(document.getElementById("modal-importar")).hide();
+            mostrarFeedback(data.message, ok && !data.warning ? "success" : ok ? "warning" : "danger");
+            if (ok && fundoAtual) refreshPeriodos(fundoAtual);
+          })
+          .catch(() => mostrarFeedback("Erro inesperado ao importar. Tente novamente.", "danger"))
+          .finally(() => { btn.disabled = false; btn.innerHTML = originalText; });
+      });
+    }
+
+    // ── AJAX: MEC ─────────────────────────────────────────────
+    const formMec = document.querySelector("form[action*='importar-mec']");
+    if (formMec) {
+      formMec.addEventListener("submit", function (e) {
+        e.preventDefault();
+        const btn = formMec.querySelector('button[type="submit"]');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Importando…';
+
+        fetch(formMec.action, {
+          method: "POST",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          body: new FormData(formMec),
+        })
+          .then(r => r.json().then(data => ({ ok: r.ok, data })))
+          .then(({ ok, data }) => {
+            mostrarFeedback(data.message, ok && !data.warning ? "success" : ok ? "warning" : "danger");
+            if (ok) formMec.reset();
+          })
+          .catch(() => mostrarFeedback("Erro inesperado ao importar MEC. Tente novamente.", "danger"))
+          .finally(() => { btn.disabled = false; btn.innerHTML = originalText; });
+      });
+    }
+
+    // ── Banner de prazo ───────────────────────────────────────
     function renderPrazoAlert(fundoId) {
       const el = document.getElementById("prazo-alert");
       const prazo = prazosPorFundo[fundoId];
       if (!prazo) { el.innerHTML = ""; return; }
 
-      const dataVenc = new Date(prazo.data_vencimento + "T00:00:00");
-      const dataFormatada = dataVenc.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-      const dias = prazo.dias_restantes;
+      const dataVenc     = new Date(prazo.data_vencimento + "T00:00:00");
+      const dataFormatada = dataVenc.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+      const dias  = prazo.dias_restantes;
       const status = prazo.status;
 
       const configs = {
-        ok:      { cls: "alert-success", icon: "bi-check-circle-fill", text: `Faltam <strong>${dias} dias</strong> para o vencimento (${dataFormatada}) — ${prazo.periodo_nome}` },
-        aviso:   { cls: "alert-warning", icon: "bi-exclamation-triangle-fill", text: `Faltam <strong>${dias} dias</strong> para o vencimento (${dataFormatada}) — ${prazo.periodo_nome}` },
-        urgente: { cls: "alert-danger",  icon: "bi-alarm-fill", text: `<strong>URGENTE:</strong> Faltam <strong>${dias} dias</strong> para o vencimento (${dataFormatada}) — ${prazo.periodo_nome}` },
-        vencida: { cls: "alert-danger",  icon: "bi-x-circle-fill", text: `<strong>DF VENCIDA</strong> há <strong>${dias} dias</strong> (vencimento em ${dataFormatada}) — ${prazo.periodo_nome}` },
+        ok: {
+          cls: "alert-success", icon: "bi-check-circle-fill",
+          titulo: `Próximo vencimento em ${dataFormatada}`,
+          sub: `${dias} dia${dias !== 1 ? "s" : ""} restante${dias !== 1 ? "s" : ""} — ${prazo.periodo_nome}`,
+        },
+        aviso: {
+          cls: "alert-warning", icon: "bi-exclamation-triangle-fill",
+          titulo: `Vencimento se aproximando: ${dataFormatada}`,
+          sub: `${dias} dia${dias !== 1 ? "s" : ""} restante${dias !== 1 ? "s" : ""} — ${prazo.periodo_nome}`,
+        },
+        urgente: {
+          cls: "alert-danger", icon: "bi-alarm-fill",
+          titulo: `Urgente: vencimento em ${dataFormatada}`,
+          sub: `Apenas ${dias} dia${dias !== 1 ? "s" : ""} — ${prazo.periodo_nome}`,
+        },
+        vencida: {
+          cls: "alert-danger", icon: "bi-x-circle-fill",
+          titulo: `DF vencida há ${dias} dia${dias !== 1 ? "s" : ""}`,
+          sub: `Vencimento era em ${dataFormatada} — ${prazo.periodo_nome}`,
+        },
       };
       const c = configs[status] || configs.ok;
 
       el.innerHTML = `
-        <div class="alert ${c.cls} d-flex align-items-center gap-2 mb-0" role="alert">
-          <i class="bi ${c.icon}"></i>
-          <div>${c.text}</div>
+        <div class="alert ${c.cls} d-flex align-items-center gap-3" role="alert">
+          <i class="bi ${c.icon} fs-5 flex-shrink-0"></i>
+          <div>
+            <div class="fw-semibold">${c.titulo}</div>
+            <div class="small opacity-80">${c.sub}</div>
+          </div>
         </div>`;
     }
 
+    // ── Tabela de períodos ────────────────────────────────────
     function renderPeriodosTable(fundoId) {
-      const tableContainer = document.getElementById("periodos-table-container");
-      const periodos = periodosPorFundo[fundoId] || [];
+      const container = document.getElementById("periodos-table-container");
+      const periodos  = periodosPorFundo[fundoId] || [];
+
+      // Destruir instância anterior antes de reescrever o HTML
+      if (dtPeriodos) {
+        dtPeriodos.destroy();
+        dtPeriodos = null;
+      }
 
       if (!periodos.length) {
-        tableContainer.innerHTML = `
-          <div class="alert alert-info mb-0">
-            Nenhum período configurado para este fundo.
-            Configure os tipos de DF na <a href="/fundos/">página de fundos</a> para gerar períodos automaticamente,
-            ou crie um período manual clicando em "Criar período manual".
+        container.innerHTML = `
+          <div class="empty-state" style="padding:2.5rem 1rem;">
+            <i class="bi bi-calendar-x empty-state__icon" style="font-size:2.5rem;"></i>
+            <p class="empty-state__title">Nenhum período configurado</p>
+            <p class="empty-state__text">
+              Configure os tipos de DF na
+              <a href="/fundos/">página de fundos</a>
+              para gerar períodos automaticamente, ou crie um período manual.
+            </p>
           </div>`;
         return;
       }
 
       const rows = periodos.map(p => buildPeriodoRow(p, fundoId)).join("");
-      tableContainer.innerHTML = `
+      container.innerHTML = `
         <div class="table-responsive">
-          <table class="table table-hover align-middle mb-0">
+          <table id="tabela-periodos" class="table table-ds table-hover align-middle mb-0">
             <thead class="table-light">
               <tr>
                 <th>Período</th>
@@ -255,43 +463,85 @@
             <tbody>${rows}</tbody>
           </table>
         </div>`;
+
+      dtPeriodos = $("#tabela-periodos").DataTable({
+        language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json" },
+        pageLength: 10,
+        order: [[3, "asc"]],
+        columnDefs: [
+          { orderable: false, targets: [5] },
+          { searchable: false, targets: [5] },
+        ],
+      });
     }
 
     function buildPeriodoRow(p, fundoId) {
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+
       const tipoBadge = {
-        trimestral:   '<span class="badge bg-info text-dark">Trimestral</span>',
-        anual:        '<span class="badge bg-primary">Anual</span>',
-        transitoria:  '<span class="badge bg-warning text-dark">Transitória</span>',
+        trimestral:   '<span class="badge bg-primary bg-opacity-75">Trimestral</span>',
+        anual:        '<span class="badge bg-info text-dark">Anual</span>',
+        transitoria:  '<span class="badge bg-secondary">Transitória</span>',
         encerramento: '<span class="badge bg-dark">Encerramento</span>',
       }[p.tipo] || `<span class="badge bg-secondary">${p.tipo}</span>`;
 
       const statusBadge = {
         nao_iniciada: '<span class="badge bg-secondary">Não Iniciada</span>',
-        em_andamento: '<span class="badge bg-warning text-dark">Em Andamento</span>',
+        em_andamento: '<span class="badge" style="background-color:#3b82f6;color:#fff;">Em Andamento</span>',
         finalizada:   '<span class="badge bg-success">Finalizada</span>',
         vencida:      '<span class="badge bg-danger">Vencida</span>',
       }[p.status] || `<span class="badge bg-secondary">${p.status}</span>`;
 
-      const dataVenc = p.data_vencimento ? formatDate(p.data_vencimento) : "—";
-      const dataRef  = p.data_referencia ? formatDate(p.data_referencia) : '<span class="text-muted">—</span>';
+      // Vencimento + prazo visual
+      let vencimentoCell = '<span class="text-muted">—</span>';
+      let rowClass = "";
+      if (p.data_vencimento) {
+        const dataVenc    = new Date(p.data_vencimento + "T00:00:00");
+        const dataFmt     = formatDate(p.data_vencimento);
+        const dias        = Math.round((dataVenc - hoje) / 86400000);
+        let prazoTag      = "";
+
+        if (p.status === "finalizada") {
+          rowClass = "table-success";
+        } else if (p.status === "vencida" || dias < 0) {
+          rowClass  = "table-danger";
+          const atraso = Math.abs(dias);
+          prazoTag  = `<span class="badge bg-danger ms-2">${atraso}d atraso</span>`;
+        } else if (dias <= 7) {
+          rowClass  = "table-warning";
+          prazoTag  = `<span class="badge bg-danger ms-2">${dias}d</span>`;
+        } else if (dias <= 30) {
+          prazoTag  = `<span class="badge bg-warning text-dark ms-2">${dias}d</span>`;
+        }
+        vencimentoCell = `${dataFmt}${prazoTag}`;
+      }
+
+      const dataRef = p.data_referencia
+        ? formatDate(p.data_referencia)
+        : '<span class="text-muted">—</span>';
 
       const verBtn = p.tem_balancete
-        ? `<a href="/dre-resultado/${p.id}/" class="btn btn-sm btn-outline-primary" title="Ver DF"><i class="bi bi-graph-up"></i></a>`
-        : `<button class="btn btn-sm btn-outline-primary" disabled title="Sem balancete"><i class="bi bi-graph-up"></i></button>`;
+        ? `<a href="/dre-resultado/${p.id}/" class="btn btn-sm btn-outline-primary" title="Ver DF">
+             <i class="bi bi-graph-up"></i>
+           </a>`
+        : `<button class="btn btn-sm btn-outline-secondary" disabled title="Sem balancete">
+             <i class="bi bi-graph-up"></i>
+           </button>`;
 
       const importBtn = canEnviarBalancete
         ? `<button class="btn btn-sm btn-outline-secondary" title="Importar balancete"
-              onclick="abrirModalImportar(${p.id}, '${escapeHtml(p.nome)}', '${fundoId}')">
-              <i class="bi bi-upload"></i>
-            </button>`
+               onclick="abrirModalImportar(${p.id}, '${escapeHtml(p.nome)}', '${fundoId}')">
+             <i class="bi bi-upload"></i>
+           </button>`
         : "";
 
-      return `<tr>
+      return `<tr class="${rowClass}">
         <td class="fw-semibold">${escapeHtml(p.nome)}</td>
         <td>${tipoBadge}</td>
         <td>${statusBadge}</td>
-        <td>${dataVenc}</td>
-        <td>${dataRef}</td>
+        <td data-order="${p.data_vencimento || ''}">${vencimentoCell}</td>
+        <td data-order="${p.data_referencia || ''}">${dataRef}</td>
         <td class="text-center" style="white-space:nowrap;">${verBtn} ${importBtn}</td>
       </tr>`;
     }
@@ -303,28 +553,26 @@
 
     function escapeHtml(str) {
       return String(str)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
     }
-  });
+  }); // DOMContentLoaded
 
-  // Abrir modal de importação de balancete
+
+  // ── Funções globais (chamadas por onclick inline) ──────────
   function abrirModalImportar(periodoId, periodoNome, fundoId) {
-    document.getElementById("modal-periodo-id").value = periodoId;
-    document.getElementById("modal-fundo-id").value = fundoId;
+    document.getElementById("modal-periodo-id").value  = periodoId;
+    document.getElementById("modal-fundo-id").value    = fundoId;
     document.getElementById("modal-periodo-nome").textContent = periodoNome;
 
-    // Reset form
     document.getElementById("mode-zerado").checked = true;
     toggleModeOptions();
     document.querySelector("#modal-importar input[name='arquivo_balancete']").value = "";
 
-    // Popular dropdown de períodos com balancete para clone
+    // Popular clone dropdown com os períodos que já têm balancete
     const periodosPorFundo = {{ fundos_periodos|safe }};
-    const periodos = periodosPorFundo[fundoId] || [];
+    const periodos    = periodosPorFundo[fundoId] || [];
     const comBalancete = periodos.filter(p => p.tem_balancete && p.id !== parseInt(periodoId));
 
     const select = document.getElementById("select-periodo-anterior");
@@ -332,7 +580,9 @@
     comBalancete.forEach(p => {
       const opt = document.createElement("option");
       opt.value = p.id;
-      opt.textContent = p.nome + (p.data_referencia ? ` (${new Date(p.data_referencia + "T00:00:00").toLocaleDateString("pt-BR")})` : "");
+      opt.textContent = p.nome + (p.data_referencia
+        ? ` (${new Date(p.data_referencia + "T00:00:00").toLocaleDateString("pt-BR")})`
+        : "");
       select.appendChild(opt);
     });
 
@@ -345,7 +595,6 @@
     document.getElementById("spreadsheet-options").style.display =
       document.getElementById("mode-spreadsheet").checked ? "block" : "none";
 
-    // Arquivo saldo anterior só é obrigatório no modo spreadsheet
     const fileInput = document.querySelector("#modal-importar input[name='arquivo_saldo_anterior']");
     if (fileInput) {
       fileInput.required = document.getElementById("mode-spreadsheet").checked;

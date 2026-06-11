@@ -28,9 +28,14 @@
       <p class="text-muted mb-0 mt-1 small">{{ fundo.cnpj }}</p>
     </div>
     {% if can_manage_fundos %}
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCriarPeriodo">
-      <i class="bi bi-plus-circle"></i> Criar Período Manual
-    </button>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalGerarHistorico">
+        <i class="bi bi-clock-history"></i> Gerar Períodos Históricos
+      </button>
+      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCriarPeriodo">
+        <i class="bi bi-plus-circle"></i> Criar Período Manual
+      </button>
+    </div>
     {% endif %}
   </div>
 
@@ -139,13 +144,21 @@
                       <span class="text-muted">—</span>
                     {% endif %}
                   </td>
-                  <td class="text-center">
+                  <td class="text-center" style="white-space:nowrap;">
                     {% if info.tem_dados %}
                       <a href="{% url 'demonstracao_financeira' %}"
                          class="btn btn-sm btn-outline-primary"
                          title="Gerar DF">
                         <i class="bi bi-graph-up"></i>
                       </a>
+                    {% endif %}
+                    {% if can_manage_fundos %}
+                      <button type="button"
+                              class="btn btn-sm btn-outline-danger"
+                              title="Excluir período"
+                              onclick="abrirModalExcluir({{ info.periodo.id }}, '{{ info.periodo.nome_exibicao|escapejs }}', {{ info.n_balancete }}, {{ info.n_mec }})">
+                        <i class="bi bi-trash3"></i>
+                      </button>
                     {% endif %}
                   </td>
                 </tr>
@@ -167,6 +180,51 @@
     </div>
   </div>
 </div>
+
+<!-- Modal: Gerar Períodos Históricos -->
+{% if can_manage_fundos %}
+<div class="modal fade" id="modalGerarHistorico" tabindex="-1" aria-labelledby="modalGerarHistoricoLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{% url 'gerar_periodos_historicos' fundo.id %}">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalGerarHistoricoLabel">Gerar Períodos Históricos</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-3">
+            Gera automaticamente os períodos <strong>Trimestral</strong> e/ou <strong>Anual</strong>
+            para o intervalo de anos informado, usando as datas de vencimento já configuradas para este fundo.
+            Períodos que já existem são ignorados.
+          </p>
+          <div class="row g-3">
+            <div class="col-6">
+              <label class="form-label fw-semibold">Ano inicial</label>
+              <input type="number" name="ano_inicial" class="form-control"
+                     min="1990" max="{{ ano_atual }}" value="{{ ano_inicial_sugerido }}" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-semibold">Ano final</label>
+              <input type="number" name="ano_final" class="form-control"
+                     min="1990" max="{{ ano_atual }}" value="{{ ano_atual }}" required>
+            </div>
+          </div>
+          <p class="text-muted small mt-3 mb-0">
+            <i class="bi bi-info-circle"></i>
+            Apenas os tipos de DF configurados neste fundo serão gerados (Trimestral e/ou Anual).
+            Transitória e Encerramento não são afetados.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Gerar Períodos</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <!-- Modal: Criar Período Manual -->
 {% if can_manage_fundos %}
@@ -206,10 +264,99 @@
   </div>
 </div>
 {% endif %}
+
+<!-- Modal: Excluir Período -->
+{% if can_manage_fundos %}
+<div class="modal fade" id="modalExcluirPeriodo" tabindex="-1" aria-labelledby="modalExcluirPeriodoLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" id="form-excluir-periodo" action="">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title text-danger" id="modalExcluirPeriodoLabel">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>Excluir Período
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <p>Você está prestes a excluir o período <strong id="excluir-periodo-nome"></strong>.</p>
+
+          <div id="excluir-aviso-dados" style="display:none;">
+            <div class="alert alert-danger">
+              <i class="bi bi-database-fill-x me-2"></i>
+              <strong>Este período possui dados importados:</strong>
+              <ul class="mb-0 mt-1">
+                <li id="excluir-linha-balancete" style="display:none;"></li>
+                <li id="excluir-linha-mec" style="display:none;"></li>
+              </ul>
+              <p class="mb-0 mt-2">Excluir este período <strong>apagará permanentemente</strong> todos esses registros. Essa ação não pode ser desfeita.</p>
+            </div>
+            <div class="form-check mt-2">
+              <input class="form-check-input" type="checkbox" id="confirmar-exclusao-check" name="confirmar_exclusao" value="1" onchange="toggleBotaoExcluir()">
+              <label class="form-check-label" for="confirmar-exclusao-check">
+                Entendo que os dados serão excluídos permanentemente
+              </label>
+            </div>
+          </div>
+
+          <div id="excluir-aviso-sem-dados" style="display:none;">
+            <p class="text-muted">Este período não possui dados importados e pode ser excluído com segurança.</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger" id="btn-confirmar-excluir">
+            <i class="bi bi-trash3 me-1"></i>Excluir
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block scripts %}
 <script>
+  function abrirModalExcluir(periodoId, periodoNome, nBalancete, nMec) {
+    const temDados = nBalancete > 0 || nMec > 0;
+
+    document.getElementById("excluir-periodo-nome").textContent = periodoNome;
+    document.getElementById("form-excluir-periodo").action = `/fundos/{{ fundo.id }}/periodos/${periodoId}/excluir/`;
+
+    document.getElementById("excluir-aviso-dados").style.display = temDados ? "block" : "none";
+    document.getElementById("excluir-aviso-sem-dados").style.display = temDados ? "none" : "block";
+
+    const check = document.getElementById("confirmar-exclusao-check");
+    check.checked = false;
+
+    const linhaBalancete = document.getElementById("excluir-linha-balancete");
+    const linhaMec = document.getElementById("excluir-linha-mec");
+    if (nBalancete > 0) {
+      linhaBalancete.textContent = `${nBalancete} registro(s) de balancete`;
+      linhaBalancete.style.display = "list-item";
+    } else {
+      linhaBalancete.style.display = "none";
+    }
+    if (nMec > 0) {
+      linhaMec.textContent = `${nMec} registro(s) de MEC`;
+      linhaMec.style.display = "list-item";
+    } else {
+      linhaMec.style.display = "none";
+    }
+
+    const btn = document.getElementById("btn-confirmar-excluir");
+    btn.disabled = temDados;
+
+    new bootstrap.Modal(document.getElementById("modalExcluirPeriodo")).show();
+  }
+
+  function toggleBotaoExcluir() {
+    const check = document.getElementById("confirmar-exclusao-check");
+    document.getElementById("btn-confirmar-excluir").disabled = !check.checked;
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     if (typeof $.fn.DataTable !== 'undefined') {
       $('#tabela-periodos').DataTable({

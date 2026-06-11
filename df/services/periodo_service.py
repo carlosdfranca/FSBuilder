@@ -8,6 +8,34 @@ from django.db import transaction
 from df.models import PeriodoDF, Fundo
 
 
+# Último dia de cada mês-fim de trimestre
+_FIM_TRIMESTRE = {
+    1: (3, 31),   # Q1: 31/Mar
+    2: (6, 30),   # Q2: 30/Jun
+    3: (9, 30),   # Q3: 30/Set
+    4: (12, 31),  # Q4: 31/Dez
+}
+
+
+def _vencimento_apos_fim(ano: int, mes_config: int, dia_config: int, fim_periodo: date) -> date:
+    """
+    Retorna a data de vencimento correta para um período.
+
+    O vencimento configurado (dia+mês) representa um prazo que sempre cai
+    DEPOIS do fim do período — se date(ano, mes, dia) ainda não passou do fim,
+    o vencimento é no ano seguinte.
+    """
+    try:
+        candidato = date(ano, mes_config, dia_config)
+    except ValueError:
+        candidato = None
+
+    if candidato and candidato > fim_periodo:
+        return candidato
+
+    return date(ano + 1, mes_config, dia_config)
+
+
 def gerar_periodos_trimestrais(fundo, ano_inicial, ano_final=None):
     """
     Gera períodos trimestrais para um fundo baseado na sua configuração.
@@ -33,16 +61,18 @@ def gerar_periodos_trimestrais(fundo, ano_inicial, ano_final=None):
         for trimestre in range(1, 5):
             dia = getattr(config, f'trim{trimestre}_dia')
             mes = getattr(config, f'trim{trimestre}_mes')
-            
+
             if dia is None or mes is None:
                 continue
-            
+
+            fim_mes, fim_dia = _FIM_TRIMESTRE[trimestre]
+            fim_periodo = date(ano, fim_mes, fim_dia)
+
             try:
-                data_vencimento = date(ano, mes, dia)
+                data_vencimento = _vencimento_apos_fim(ano, mes, dia, fim_periodo)
             except ValueError:
-                # Data inválida (ex: 31 de fevereiro), pular
                 continue
-            
+
             periodo, created = PeriodoDF.objects.get_or_create(
                 fundo=fundo,
                 empresa=fundo.empresa,
@@ -55,10 +85,10 @@ def gerar_periodos_trimestrais(fundo, ano_inicial, ano_final=None):
                     'criado_manualmente': False,
                 }
             )
-            
+
             if created:
                 periodos_criados.append(periodo)
-    
+
     return periodos_criados
 
 
@@ -87,12 +117,14 @@ def gerar_periodos_anuais(fundo, ano_inicial, ano_final=None):
     periodos_criados = []
     
     for ano in range(ano_inicial, ano_final + 1):
+        # Período anual sempre termina em 31/12
+        fim_periodo = date(ano, 12, 31)
+
         try:
-            data_vencimento = date(ano, config.anual_mes, config.anual_dia)
+            data_vencimento = _vencimento_apos_fim(ano, config.anual_mes, config.anual_dia, fim_periodo)
         except ValueError:
-            # Data inválida, pular
             continue
-        
+
         periodo, created = PeriodoDF.objects.get_or_create(
             fundo=fundo,
             empresa=fundo.empresa,
@@ -105,10 +137,10 @@ def gerar_periodos_anuais(fundo, ano_inicial, ano_final=None):
                 'criado_manualmente': False,
             }
         )
-        
+
         if created:
             periodos_criados.append(periodo)
-    
+
     return periodos_criados
 
 
@@ -195,12 +227,13 @@ def obter_ou_criar_periodo(fundo, tipo_periodo, ano, trimestre=None, data_vencim
 
         dia = getattr(config, f'trim{trimestre}_dia')
         mes = getattr(config, f'trim{trimestre}_mes')
-        
+
         if dia is None or mes is None:
             raise ValueError(f"Trimestre {trimestre} não configurado para este fundo")
-        
-        data_vencimento = date(ano, mes, dia)
-        
+
+        fim_mes, fim_dia = _FIM_TRIMESTRE[trimestre]
+        data_vencimento = _vencimento_apos_fim(ano, mes, dia, date(ano, fim_mes, fim_dia))
+
         periodo, created = PeriodoDF.objects.get_or_create(
             fundo=fundo,
             empresa=fundo.empresa,
@@ -222,8 +255,8 @@ def obter_ou_criar_periodo(fundo, tipo_periodo, ano, trimestre=None, data_vencim
 
         if config.anual_dia is None or config.anual_mes is None:
             raise ValueError("DF Anual não configurada para este fundo")
-        
-        data_vencimento = date(ano, config.anual_mes, config.anual_dia)
+
+        data_vencimento = _vencimento_apos_fim(ano, config.anual_mes, config.anual_dia, date(ano, 12, 31))
         
         periodo, created = PeriodoDF.objects.get_or_create(
             fundo=fundo,
@@ -361,10 +394,10 @@ def atualizar_status_automatico(periodo_df):
     
     if tem_emissao:
         novo_status = 'finalizada'
-    elif periodo_df.data_vencimento < hoje and not tem_emissao:
-        novo_status = 'vencida'
     elif tem_dados:
         novo_status = 'em_andamento'
+    elif periodo_df.data_vencimento < hoje:
+        novo_status = 'vencida'
     else:
         novo_status = 'nao_iniciada'
     
