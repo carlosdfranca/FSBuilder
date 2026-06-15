@@ -119,23 +119,15 @@
                       <br><small class="text-warning">{{ info.dias_ate_vencimento }} dias</small>
                     {% endif %}
                   </td>
-                  <td class="text-center" style="white-space:nowrap;">
+                  <td class="text-center">
                     {% if info.status == 'nao_iniciada' %}
-                      <span class="badge bg-secondary">Não Iniciada</span>
+                      <span class="badge bg-secondary" {% if can_manage_fundos %}data-pid="{{ info.periodo.id }}" data-status="nao_iniciada"{% endif %}>Não Iniciada</span>
                     {% elif info.status == 'em_andamento' %}
-                      <span class="badge bg-warning text-dark">Em Andamento</span>
+                      <span class="badge text-white" style="background-color:#3b82f6;" {% if can_manage_fundos %}data-pid="{{ info.periodo.id }}" data-status="em_andamento"{% endif %}>Em Andamento</span>
                     {% elif info.status == 'finalizada' %}
-                      <span class="badge bg-success">Finalizada</span>
+                      <span class="badge bg-success" {% if can_manage_fundos %}data-pid="{{ info.periodo.id }}" data-status="finalizada"{% endif %}>Finalizada</span>
                     {% elif info.status == 'vencida' %}
-                      <span class="badge bg-danger">Vencida</span>
-                    {% endif %}
-                    {% if can_manage_fundos %}
-                    <button type="button"
-                            class="btn btn-sm btn-link p-0 ms-1 text-muted"
-                            title="Alterar status"
-                            onclick="abrirModalStatus({{ info.periodo.id }}, '{{ info.periodo.nome_exibicao|escapejs }}', '{{ info.status }}')">
-                      <i class="bi bi-pencil-square"></i>
-                    </button>
+                      <span class="badge bg-danger" {% if can_manage_fundos %}data-pid="{{ info.periodo.id }}" data-status="vencida"{% endif %}>Vencida</span>
                     {% endif %}
                   </td>
                   <td class="text-center">
@@ -323,28 +315,6 @@
 </div>
 {% endif %}
 
-<!-- Modal: Alterar Status -->
-{% if can_manage_fundos %}
-<div class="modal fade" id="modalAlterarStatus" tabindex="-1" aria-labelledby="modalAlterarStatusLabel" aria-hidden="true">
-  <div class="modal-dialog modal-sm">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="modalAlterarStatusLabel">Alterar Status</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-      </div>
-      <div class="modal-body">
-        <p class="small text-muted mb-1">Período:</p>
-        <p class="fw-semibold mb-3" id="modalStatusNome"></p>
-        <p class="small text-muted mb-1">Status atual:</p>
-        <p class="mb-3" id="modalStatusAtual"></p>
-        <div id="modalStatusFeedback" class="alert d-none mb-2 py-2 small"></div>
-        <div class="d-grid gap-2" id="modalStatusBotoes"></div>
-      </div>
-    </div>
-  </div>
-</div>
-{% endif %}
-
 {% endblock %}
 
 {% block scripts %}
@@ -398,62 +368,54 @@
     }
   });
 
-  // ── Alterar Status ──────────────────────────────────────────
-  let _statusPeriodoId = null;
-
-  const _STATUS_LABELS = {
-    nao_iniciada: '<span class="badge bg-secondary">Não Iniciada</span>',
-    em_andamento: '<span class="badge bg-warning text-dark">Em Andamento</span>',
-    finalizada:   '<span class="badge bg-success">Finalizada</span>',
-    vencida:      '<span class="badge bg-danger">Vencida</span>',
+  // ── Status Inline Dropdown ───────────────────────────────────
+  const _SD_CFG = {
+    nao_iniciada: { label: 'Não Iniciada', cls: 'bg-secondary', style: '' },
+    em_andamento: { label: 'Em Andamento', cls: 'text-white',   style: 'background-color:#3b82f6;' },
+    finalizada:   { label: 'Finalizada',   cls: 'bg-success',   style: '' },
+    vencida:      { label: 'Vencida',      cls: 'bg-danger',    style: '' },
   };
+  const _SD_OPTS = {
+    nao_iniciada: ['em_andamento', 'finalizada'],
+    em_andamento: ['nao_iniciada', 'finalizada'],
+    vencida:      ['finalizada'],
+    finalizada:   ['em_andamento', 'nao_iniciada'],
+  };
+  const _sd = (() => {
+    const el = document.createElement('div');
+    el.style.cssText = 'display:none;position:fixed;z-index:9999;min-width:175px;padding:4px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.25);background:var(--surface-2);border:1px solid var(--border-color);';
+    document.body.appendChild(el);
+    return el;
+  })();
+  let _sdPid = null;
 
-  function abrirModalStatus(periodoId, nome, statusAtual) {
-    _statusPeriodoId = periodoId;
-    document.getElementById('modalStatusNome').textContent = nome;
-    document.getElementById('modalStatusAtual').innerHTML = _STATUS_LABELS[statusAtual] || statusAtual;
-    document.getElementById('modalStatusFeedback').className = 'alert d-none mb-2 py-2 small';
-
-    const container = document.getElementById('modalStatusBotoes');
-    container.innerHTML = '';
-
-    const opts = {
-      nao_iniciada: [
-        { label: 'Em Andamento',  value: 'em_andamento', cls: 'btn-outline-primary' },
-        { label: 'Finalizada',    value: 'finalizada',   cls: 'btn-outline-success' },
-      ],
-      em_andamento: [
-        { label: 'Não Iniciada',  value: 'nao_iniciada', cls: 'btn-outline-secondary' },
-        { label: 'Finalizada',    value: 'finalizada',   cls: 'btn-outline-success' },
-      ],
-      vencida: [
-        { label: 'Finalizada',    value: 'finalizada',   cls: 'btn-outline-success' },
-      ],
-      finalizada: [
-        { label: 'Em Andamento',  value: 'em_andamento', cls: 'btn-outline-primary' },
-        { label: 'Não Iniciada',  value: 'nao_iniciada', cls: 'btn-outline-secondary' },
-      ],
-    };
-
-    (opts[statusAtual] || []).forEach(({ label, value, cls }) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = `btn ${cls}`;
-      btn.textContent = label;
-      btn.onclick = () => _confirmarStatus(value);
-      container.appendChild(btn);
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-pid]').forEach(badge => {
+      badge.style.cursor = 'pointer';
+      badge.insertAdjacentHTML('beforeend', ' <i class="bi bi-chevron-down" style="font-size:.6em;opacity:.75;vertical-align:middle;"></i>');
+      badge.addEventListener('click', e => { e.stopPropagation(); _openSd(badge); });
     });
+  });
 
-    new bootstrap.Modal(document.getElementById('modalAlterarStatus')).show();
+  function _openSd(trigger) {
+    _sdPid = trigger.dataset.pid;
+    const opts = _SD_OPTS[trigger.dataset.status] || [];
+    _sd.innerHTML = opts.map(s => {
+      const c = _SD_CFG[s];
+      return `<button type="button" style="display:flex;align-items:center;width:100%;padding:8px 12px;border:none;background:none;cursor:pointer;border-radius:5px;gap:8px;" onmouseover="this.style.background='var(--surface-3)'" onmouseout="this.style.background='none'" onclick="_selectSd('${s}')"><span class="badge ${c.cls}" style="${c.style}font-size:.78em;">${c.label}</span></button>`;
+    }).join('');
+    const r = trigger.getBoundingClientRect();
+    _sd.style.display = 'block';
+    const sdH = _sd.offsetHeight;
+    _sd.style.left = r.left + 'px';
+    _sd.style.top  = (window.innerHeight - r.bottom > sdH + 8) ? (r.bottom + 4) + 'px' : (r.top - sdH - 4) + 'px';
   }
 
-  function _confirmarStatus(novoStatus) {
-    const fb = document.getElementById('modalStatusFeedback');
+  function _selectSd(novoStatus) {
     const fd = new FormData();
     fd.append('status', novoStatus);
     fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-
-    fetch(`/api/periodo/${_statusPeriodoId}/status/`, {
+    fetch(`/api/periodo/${_sdPid}/status/`, {
       method: 'POST',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
       body: fd,
@@ -461,17 +423,24 @@
     .then(r => r.json())
     .then(data => {
       if (data.ok) {
-        location.reload();
-      } else {
-        fb.className = 'alert alert-danger mb-2 py-2 small';
-        fb.textContent = data.error || 'Erro ao alterar status.';
+        const badge = document.querySelector(`[data-pid="${_sdPid}"]`);
+        if (badge) {
+          const c = _SD_CFG[novoStatus];
+          badge.className = 'badge ' + c.cls;
+          badge.setAttribute('style', c.style);
+          badge.style.cursor = 'pointer';
+          badge.dataset.status = novoStatus;
+          badge.innerHTML = c.label + ' <i class="bi bi-chevron-down" style="font-size:.6em;opacity:.75;vertical-align:middle;"></i>';
+        }
       }
+      _closeSd();
     })
-    .catch(() => {
-      fb.className = 'alert alert-danger mb-2 py-2 small';
-      fb.textContent = 'Erro de conexão.';
-    });
+    .catch(_closeSd);
   }
+
+  function _closeSd() { _sd.style.display = 'none'; _sdPid = null; }
+  document.addEventListener('click', e => { if (!_sd.contains(e.target) && !e.target.closest('[data-pid]')) _closeSd(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') _closeSd(); });
 
 </script>
 {% endblock %}

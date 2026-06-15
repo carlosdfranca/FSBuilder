@@ -108,9 +108,21 @@
           <h6 class="fw-semibold mb-0">
             <i class="bi bi-calendar-range me-2 text-muted"></i>Períodos
           </h6>
-          <a id="link-criar-periodo" href="#" class="btn btn-sm btn-outline-secondary" style="display:none;">
-            <i class="bi bi-gear me-1"></i>Gerenciar períodos
-          </a>
+          <div id="period-actions" class="d-flex gap-2" style="display:none;">
+            <a id="link-criar-periodo" href="#" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-gear me-1"></i>Gerenciar períodos
+            </a>
+            {% if can_enviar_balancete %}
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    data-bs-toggle="modal" data-bs-target="#modalGerarHistoricoDF">
+              <i class="bi bi-clock-history me-1"></i>Gerar Histórico
+            </button>
+            <button type="button" class="btn btn-sm btn-primary"
+                    data-bs-toggle="modal" data-bs-target="#modalCriarPeriodoDF">
+              <i class="bi bi-plus-circle me-1"></i>Criar Período
+            </button>
+            {% endif %}
+          </div>
         </div>
         <div id="periodos-table-container"></div>
       </div>
@@ -259,6 +271,84 @@
   </div>
 </div>
 
+{% if can_enviar_balancete %}
+<!-- Modal: Criar Período Manual -->
+<div class="modal fade" id="modalCriarPeriodoDF" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="form-criar-periodo-df" method="POST" action="">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Criar Período Manual</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-3">
+            Use para criar períodos <strong>Transitória</strong> (fusões, incorporações) ou
+            <strong>Encerramento</strong> (liquidação do fundo).
+          </p>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Tipo de DF</label>
+            <select name="tipo_periodo" class="form-select" required>
+              <option value="transitoria">DF Transitória</option>
+              <option value="encerramento">DF de Encerramento</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Data de Vencimento</label>
+            <input type="date" name="data_vencimento" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Descrição (opcional)</label>
+            <input type="text" name="descricao" class="form-control" placeholder="Ex: Fusão com Fundo XYZ">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i>Criar Período</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Gerar Períodos Históricos -->
+<div class="modal fade" id="modalGerarHistoricoDF" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="form-gerar-historico-df" method="POST" action="">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-clock-history me-2"></i>Gerar Períodos Históricos</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-3">
+            Gera automaticamente os períodos <strong>Trimestral</strong> e/ou <strong>Anual</strong>
+            para o intervalo de anos informado, com base nas configurações de DF do fundo.
+            Períodos que já existem são ignorados.
+          </p>
+          <div class="row g-3">
+            <div class="col-6">
+              <label class="form-label fw-semibold">Ano inicial</label>
+              <input type="number" id="df-ano-inicial" name="ano_inicial" class="form-control" min="1990" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-semibold">Ano final</label>
+              <input type="number" id="df-ano-final" name="ano_final" class="form-control" min="1990" required>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-clock-history me-1"></i>Gerar Períodos</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 
@@ -289,10 +379,13 @@
       if (mecFundoId) mecFundoId.value = fundoAtual;
 
       const linkCriar = document.getElementById("link-criar-periodo");
-      if (linkCriar) {
-        linkCriar.href = `/fundos/${fundoAtual}/periodos/`;
-        linkCriar.style.display = "inline-flex";
-      }
+      if (linkCriar) linkCriar.href = `/fundos/${fundoAtual}/periodos/`;
+      const periodActions = document.getElementById("period-actions");
+      if (periodActions) periodActions.style.display = "flex";
+      const formCriarEl = document.getElementById('form-criar-periodo-df');
+      if (formCriarEl) formCriarEl.action = `/fundos/${fundoAtual}/periodos/criar/`;
+      const formHistoricoEl = document.getElementById('form-gerar-historico-df');
+      if (formHistoricoEl) formHistoricoEl.action = `/fundos/${fundoAtual}/periodos/gerar-historico/`;
 
       renderPrazoAlert(fundoAtual);
       renderPeriodosTable(fundoAtual);
@@ -486,12 +579,20 @@
         encerramento: '<span class="badge bg-dark">Encerramento</span>',
       }[p.tipo] || `<span class="badge bg-secondary">${p.tipo}</span>`;
 
-      const statusBadge = {
-        nao_iniciada: '<span class="badge bg-secondary">Não Iniciada</span>',
-        em_andamento: '<span class="badge" style="background-color:#3b82f6;color:#fff;">Em Andamento</span>',
-        finalizada:   '<span class="badge bg-success">Finalizada</span>',
-        vencida:      '<span class="badge bg-danger">Vencida</span>',
-      }[p.status] || `<span class="badge bg-secondary">${p.status}</span>`;
+      const _chv = '<i class="bi bi-chevron-down" style="font-size:.6em;opacity:.75;vertical-align:middle;"></i>';
+      const statusBadge = canEnviarBalancete
+        ? ({
+            nao_iniciada: `<span class="badge bg-secondary" data-pid="${p.id}" data-status="nao_iniciada" style="cursor:pointer;">Não Iniciada ${_chv}</span>`,
+            em_andamento: `<span class="badge text-white" style="background-color:#3b82f6;cursor:pointer;" data-pid="${p.id}" data-status="em_andamento">Em Andamento ${_chv}</span>`,
+            finalizada:   `<span class="badge bg-success" data-pid="${p.id}" data-status="finalizada" style="cursor:pointer;">Finalizada ${_chv}</span>`,
+            vencida:      `<span class="badge bg-danger" data-pid="${p.id}" data-status="vencida" style="cursor:pointer;">Vencida ${_chv}</span>`,
+          }[p.status] || `<span class="badge bg-secondary">${escapeHtml(p.status)}</span>`)
+        : ({
+            nao_iniciada: '<span class="badge bg-secondary">Não Iniciada</span>',
+            em_andamento: '<span class="badge text-white" style="background-color:#3b82f6;">Em Andamento</span>',
+            finalizada:   '<span class="badge bg-success">Finalizada</span>',
+            vencida:      '<span class="badge bg-danger">Vencida</span>',
+          }[p.status] || `<span class="badge bg-secondary">${escapeHtml(p.status)}</span>`);
 
       // Vencimento + prazo visual
       let vencimentoCell = '<span class="text-muted">—</span>';
@@ -557,8 +658,141 @@
         .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
     }
+
+    // ── AJAX: Criar Período Manual ──────────────────────────
+    const formCriarPeriodo = document.getElementById('form-criar-periodo-df');
+    if (formCriarPeriodo) {
+      formCriarPeriodo.addEventListener('submit', e => {
+        e.preventDefault();
+        const btn = formCriarPeriodo.querySelector('[type="submit"]');
+        const orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Criando…';
+        fetch(formCriarPeriodo.action, {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          body: new FormData(formCriarPeriodo),
+        })
+        .then(r => r.json())
+        .then(data => {
+          bootstrap.Modal.getInstance(document.getElementById('modalCriarPeriodoDF')).hide();
+          mostrarFeedback(data.message || data.error || 'Erro', data.ok ? 'success' : 'danger');
+          if (data.ok && fundoAtual) { formCriarPeriodo.reset(); refreshPeriodos(fundoAtual); }
+        })
+        .catch(() => mostrarFeedback('Erro ao criar período.', 'danger'))
+        .finally(() => { btn.disabled = false; btn.innerHTML = orig; });
+      });
+    }
+
+    // ── AJAX: Gerar Períodos Históricos ──────────────────────
+    const formGerarHistorico = document.getElementById('form-gerar-historico-df');
+    if (formGerarHistorico) {
+      formGerarHistorico.addEventListener('submit', e => {
+        e.preventDefault();
+        const btn = formGerarHistorico.querySelector('[type="submit"]');
+        const orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Gerando…';
+        fetch(formGerarHistorico.action, {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          body: new FormData(formGerarHistorico),
+        })
+        .then(r => r.json())
+        .then(data => {
+          bootstrap.Modal.getInstance(document.getElementById('modalGerarHistoricoDF')).hide();
+          mostrarFeedback(data.message || data.error || 'Erro', data.ok ? 'success' : 'danger');
+          if (data.ok && fundoAtual) refreshPeriodos(fundoAtual);
+        })
+        .catch(() => mostrarFeedback('Erro ao gerar períodos.', 'danger'))
+        .finally(() => { btn.disabled = false; btn.innerHTML = orig; });
+      });
+    }
+
   }); // DOMContentLoaded
 
+
+  // ── Status Inline Dropdown (event delegation — badges são dinâmicos) ──
+  const _SD_CFG = {
+    nao_iniciada: { label: 'Não Iniciada', cls: 'bg-secondary',        style: '' },
+    em_andamento: { label: 'Em Andamento', cls: 'text-white',          style: 'background-color:#3b82f6;' },
+    finalizada:   { label: 'Finalizada',   cls: 'bg-success',          style: '' },
+    vencida:      { label: 'Vencida',      cls: 'bg-danger',           style: '' },
+  };
+  const _SD_OPTS = {
+    nao_iniciada: ['em_andamento', 'finalizada'],
+    em_andamento: ['nao_iniciada', 'finalizada'],
+    vencida:      ['finalizada'],
+    finalizada:   ['em_andamento', 'nao_iniciada'],
+  };
+  const _sd = (() => {
+    const el = document.createElement('div');
+    el.style.cssText = 'display:none;position:fixed;z-index:9999;min-width:175px;padding:4px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.25);background:var(--surface-2);border:1px solid var(--border-color);';
+    document.body.appendChild(el);
+    return el;
+  })();
+  let _sdPid = null;
+
+  document.addEventListener('click', e => {
+    const badge = e.target.closest('[data-pid]');
+    if (badge) { e.stopPropagation(); _openSd(badge); return; }
+    if (!_sd.contains(e.target)) _closeSd();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') _closeSd(); });
+
+  function _openSd(trigger) {
+    _sdPid = trigger.dataset.pid;
+    const opts = _SD_OPTS[trigger.dataset.status] || [];
+    _sd.innerHTML = opts.map(s => {
+      const c = _SD_CFG[s];
+      return `<button type="button" style="display:flex;align-items:center;width:100%;padding:8px 12px;border:none;background:none;cursor:pointer;border-radius:5px;gap:8px;" onmouseover="this.style.background='var(--surface-3)'" onmouseout="this.style.background='none'" onclick="_selectSd('${s}')"><span class="badge ${c.cls}" style="${c.style}font-size:.78em;">${c.label}</span></button>`;
+    }).join('');
+    const r = trigger.getBoundingClientRect();
+    _sd.style.display = 'block';
+    const sdH = _sd.offsetHeight;
+    _sd.style.left = r.left + 'px';
+    _sd.style.top  = (window.innerHeight - r.bottom > sdH + 8) ? (r.bottom + 4) + 'px' : (r.top - sdH - 4) + 'px';
+  }
+
+  function _selectSd(novoStatus) {
+    const fd = new FormData();
+    fd.append('status', novoStatus);
+    fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+    fetch(`/api/periodo/${_sdPid}/status/`, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: fd,
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        const badge = document.querySelector(`[data-pid="${_sdPid}"]`);
+        if (badge) {
+          const c = _SD_CFG[novoStatus];
+          const chv = '<i class="bi bi-chevron-down" style="font-size:.6em;opacity:.75;vertical-align:middle;"></i>';
+          badge.className = 'badge ' + c.cls;
+          badge.setAttribute('style', c.style + 'cursor:pointer;');
+          badge.dataset.status = novoStatus;
+          badge.innerHTML = c.label + ' ' + chv;
+        }
+      }
+      _closeSd();
+    })
+    .catch(_closeSd);
+  }
+
+  function _closeSd() { _sd.style.display = 'none'; _sdPid = null; }
+
+  // Preenche os campos de ano com o ano atual na primeira abertura
+  document.addEventListener('show.bs.modal', e => {
+    if (e.target.id === 'modalGerarHistoricoDF') {
+      const ano = new Date().getFullYear();
+      const ini = document.getElementById('df-ano-inicial');
+      const fim = document.getElementById('df-ano-final');
+      if (ini && !ini.value) { ini.value = ano; ini.max = ano; }
+      if (fim && !fim.value) { fim.value = ano; fim.max = ano; }
+    }
+  });
 
   // ── Funções globais (chamadas por onclick inline) ──────────
   function abrirModalImportar(periodoId, periodoNome, fundoId) {
