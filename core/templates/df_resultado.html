@@ -27,11 +27,14 @@
         </div>
       </div>
 
-      <div class="col-md-3 d-flex flex-row gap-2 justify-content-end align-items-start">
-        <a href="{% url 'exportar_dfs_excel' fundo.id data_atual_str data_anterior_str %}" class="btn btn-success">
+      <div class="col-md-3 d-flex flex-row gap-2 justify-content-end align-items-start flex-wrap">
+        <a href="{% url 'demonstracao_financeira' %}?fundo={{ fundo.id }}" class="btn btn-outline-secondary">
+          <i class="bi bi-arrow-left me-1"></i>Voltar
+        </a>
+        <a href="{% url 'exportar_dfs_excel' periodo.id %}" class="btn btn-success">
           Exportar Excel <i class="bi bi-file-earmark-excel-fill ms-2"></i>
         </a>
-        <a href="{% url 'exportar_dfs_docx' fundo.id data_atual_str data_anterior_str %}" class="btn btn-word">
+        <a href="{% url 'exportar_dfs_docx' periodo.id %}" class="btn btn-word">
           Exportar Word <i class="bi bi-file-earmark-word-fill ms-2"></i>
         </a>
       </div>

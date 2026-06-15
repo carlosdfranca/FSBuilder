@@ -14,11 +14,14 @@ urlpatterns = [
 
     # Demonstração Financeira
     path('', demonstracao_financeira, name='demonstracao_financeira'),
+    path('controle-emissoes/', controle_emissoes, name='controle_emissoes'),
     path("importar-balancete/", importar_balancete_view, name="importar_balancete"),
     path("importar-mec/", importar_mec_view, name="importar_mec"),
-    path('dre-resultado/<int:fundo_id>/<str:data_atual>/<str:data_anterior>/', df_resultado, name='dre_resultado'),
-    path("dre-resultado/<int:fundo_id>/<str:data_atual>/<str:data_anterior>/exportar/", exportar_dfs_excel, name="exportar_dfs_excel"),
-    path("dre-resultado/<int:fundo_id>/<str:data_atual>/<str:data_anterior>/exportar-docx/", exportar_dfs_docx, name="exportar_dfs_docx"),
+    path("api/fundo/<int:fundo_id>/periodos/", api_periodos_fundo, name="api_periodos_fundo"),
+    path("api/periodo/<int:periodo_id>/status/", atualizar_status_manual, name="atualizar_status_manual"),
+    path('dre-resultado/<int:periodo_df_id>/', df_resultado, name='dre_resultado'),
+    path("dre-resultado/<int:periodo_df_id>/exportar/", exportar_dfs_excel, name="exportar_dfs_excel"),
+    path("dre-resultado/<int:periodo_df_id>/exportar-docx/", exportar_dfs_docx, name="exportar_dfs_docx"),
 
 
     # Fundos
@@ -26,4 +29,8 @@ urlpatterns = [
     path('fundos/adicionar/', adicionar_fundo, name='adicionar_fundo'),
     path('fundos/<int:fundo_id>/editar/', editar_fundo, name='editar_fundo'),
     path('fundos/<int:fundo_id>/excluir/', excluir_fundo, name='excluir_fundo'),
+    path('fundos/<int:fundo_id>/periodos/', gerenciar_periodos, name='gerenciar_periodos'),
+    path('fundos/<int:fundo_id>/periodos/criar/', criar_periodo_manual, name='criar_periodo_manual'),
+    path('fundos/<int:fundo_id>/periodos/gerar-historico/', gerar_periodos_historicos, name='gerar_periodos_historicos'),
+    path('fundos/<int:fundo_id>/periodos/<int:periodo_id>/excluir/', excluir_periodo, name='excluir_periodo'),
 ]   
