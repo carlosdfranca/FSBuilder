@@ -148,11 +148,6 @@ def import_balancete(*, fundo_id: int, data_referencia: date, rows: List, period
         periodo_df.data_referencia = data_referencia
         periodo_df.save()
 
-    # Atualizar status do período se fornecido
-    if periodo_df:
-        from df.services.periodo_service import atualizar_status_automatico
-        atualizar_status_automatico(periodo_df)
-
     return ImportReport(imported=imported, updated=updated, ignored=ignored, errors=errors)
 
 
@@ -201,10 +196,5 @@ def import_mec(*, fundo_id: int, rows: List, periodo_df_id: int = None) -> Impor
             imported += 1
         else:
             updated += 1
-
-    # Atualizar status do período se fornecido
-    if periodo_df:
-        from df.services.periodo_service import atualizar_status_automatico
-        atualizar_status_automatico(periodo_df)
 
     return ImportReport(imported=imported, updated=updated, ignored=ignored, errors=errors)

@@ -1,7 +1,7 @@
 {% extends 'base/base.html' %}
 {% load static %}
 
-{% block title %}Controle de Emissões{% endblock %}
+{% block title %}Calendário{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -44,6 +44,87 @@
       <p class="page-header__subtitle">Vencimentos e status de todos os períodos de DF de todos os fundos</p>
     </div>
   </div>
+
+  <!-- [C] Filtros -->
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-3 px-4">
+      <div class="row g-3 align-items-end">
+
+        <!-- Fundo -->
+        <div class="col-12 col-sm-6 col-lg-5">
+          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-fundo">
+            <i class="bi bi-briefcase me-1"></i>Fundo
+          </label>
+          <select id="filtro-fundo" class="form-select form-select-sm">
+            <option value="">Todos os fundos</option>
+            {% for f in fundos_lista %}
+            <option value="{{ f.id }}" {% if fundo_filtro == f.id|stringformat:'s' %}selected{% endif %}>
+              {{ f.nome }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Ano -->
+        <div class="col-6 col-sm-3 col-lg-2">
+          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-ano">
+            <i class="bi bi-calendar3 me-1"></i>Ano
+          </label>
+          <select id="filtro-ano" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            {% for ano in anos_disponiveis %}
+            <option value="{{ ano }}" {% if ano_filtro == ano|stringformat:'s' %}selected{% endif %}>
+              {{ ano }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Ações + contador -->
+        <div class="col-6 col-sm-3 col-lg-5 d-flex align-items-center gap-3 justify-content-end">
+          {% if ano_filtro or fundo_filtro %}
+          <a href="?{% if status_filtro %}status={{ status_filtro }}{% endif %}"
+             class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-x-circle me-1"></i>Limpar
+          </a>
+          {% endif %}
+          <span class="text-muted small">
+            <strong>{{ periodos|length }}</strong> período{{ periodos|length|pluralize }}
+          </span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- [E] Gráficos -->
+  {% if metricas.total > 0 %}
+  <div class="row g-4 pb-3">
+
+    <div class="col-md-5">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-3">Distribuição por Status</h6>
+          <div class="chart-wrap">
+            <canvas id="chartStatus"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-7">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-3">Períodos por Ano</h6>
+          <div class="chart-wrap">
+            <canvas id="chartAnos"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  {% endif %}
 
   <!-- [B] KPI Cards -->
   <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));">
@@ -110,58 +191,6 @@
 
   </div>
 
-  <!-- [C] Filtros -->
-  <div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-3 px-4">
-      <div class="row g-3 align-items-end">
-
-        <!-- Fundo -->
-        <div class="col-12 col-sm-6 col-lg-5">
-          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-fundo">
-            <i class="bi bi-briefcase me-1"></i>Fundo
-          </label>
-          <select id="filtro-fundo" class="form-select form-select-sm">
-            <option value="">Todos os fundos</option>
-            {% for f in fundos_lista %}
-            <option value="{{ f.id }}" {% if fundo_filtro == f.id|stringformat:'s' %}selected{% endif %}>
-              {{ f.nome }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <!-- Ano -->
-        <div class="col-6 col-sm-3 col-lg-2">
-          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-ano">
-            <i class="bi bi-calendar3 me-1"></i>Ano
-          </label>
-          <select id="filtro-ano" class="form-select form-select-sm">
-            <option value="">Todos</option>
-            {% for ano in anos_disponiveis %}
-            <option value="{{ ano }}" {% if ano_filtro == ano|stringformat:'s' %}selected{% endif %}>
-              {{ ano }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <!-- Ações + contador -->
-        <div class="col-6 col-sm-3 col-lg-5 d-flex align-items-center gap-3 justify-content-end">
-          {% if ano_filtro or fundo_filtro %}
-          <a href="?{% if status_filtro %}status={{ status_filtro }}{% endif %}"
-             class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-x-circle me-1"></i>Limpar
-          </a>
-          {% endif %}
-          <span class="text-muted small">
-            <strong>{{ periodos|length }}</strong> período{{ periodos|length|pluralize }}
-          </span>
-        </div>
-
-      </div>
-    </div>
-  </div>
-
   <!-- [D] Tabela de períodos -->
   <div class="card border-0 shadow-sm mb-4">
     <div class="card-body p-0">
@@ -219,7 +248,7 @@
                     <span class="text-muted small">{{ item.dias_ate_vencimento }} dias</span>
                   {% endif %}
                 </td>
-                <td>
+                <td style="white-space:nowrap;">
                   {% if item.periodo.status == 'finalizada' %}
                     <span class="badge bg-success">Finalizada</span>
                   {% elif item.periodo.status == 'em_andamento' %}
@@ -228,6 +257,14 @@
                     <span class="badge bg-danger">Vencida</span>
                   {% else %}
                     <span class="badge bg-secondary">Não Iniciada</span>
+                  {% endif %}
+                  {% if can_manage_fundos %}
+                  <button type="button"
+                          class="btn btn-sm btn-link p-0 ms-1 text-muted"
+                          title="Alterar status"
+                          onclick="abrirModalStatus({{ item.periodo.id }}, '{{ item.periodo.nome_exibicao|escapejs }}', '{{ item.periodo.status }}')">
+                    <i class="bi bi-pencil-square"></i>
+                  </button>
                   {% endif %}
                 </td>
                 <td class="text-center pe-3">
@@ -269,36 +306,30 @@
     </div>
   </div>
 
-  <!-- [E] Gráficos -->
-  {% if metricas.total > 0 %}
-  <div class="row g-4">
-
-    <div class="col-md-5">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body">
-          <h6 class="fw-semibold mb-3">Distribuição por Status</h6>
-          <div class="chart-wrap">
-            <canvas id="chartStatus"></canvas>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-md-7">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body">
-          <h6 class="fw-semibold mb-3">Períodos por Ano</h6>
-          <div class="chart-wrap">
-            <canvas id="chartAnos"></canvas>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-  {% endif %}
-
 </div>
+
+<!-- Modal: Alterar Status -->
+{% if can_manage_fundos %}
+<div class="modal fade" id="modalAlterarStatus" tabindex="-1" aria-labelledby="modalAlterarStatusLabel" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalAlterarStatusLabel">Alterar Status</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted mb-1">Período:</p>
+        <p class="fw-semibold mb-3" id="modalStatusNome"></p>
+        <p class="small text-muted mb-1">Status atual:</p>
+        <p class="mb-3" id="modalStatusAtual"></p>
+        <div id="modalStatusFeedback" class="alert d-none mb-2 py-2 small"></div>
+        <div class="d-grid gap-2" id="modalStatusBotoes"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block scripts %}
@@ -422,5 +453,85 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
 });
+
+// ── Alterar Status ──────────────────────────────────────────
+let _statusPeriodoId = null;
+
+const _STATUS_LABELS = {
+  nao_iniciada: '<span class="badge bg-secondary">Não Iniciada</span>',
+  em_andamento: '<span class="badge text-white" style="background-color:#3b82f6;">Em Andamento</span>',
+  finalizada:   '<span class="badge bg-success">Finalizada</span>',
+  vencida:      '<span class="badge bg-danger">Vencida</span>',
+};
+
+function abrirModalStatus(periodoId, nome, statusAtual) {
+  _statusPeriodoId = periodoId;
+  document.getElementById('modalStatusNome').textContent = nome;
+  document.getElementById('modalStatusAtual').innerHTML = _STATUS_LABELS[statusAtual] || statusAtual;
+  document.getElementById('modalStatusFeedback').className = 'alert d-none mb-2 py-2 small';
+
+  const container = document.getElementById('modalStatusBotoes');
+  container.innerHTML = '';
+
+  const opcoes = _opcoesStatus(statusAtual);
+  opcoes.forEach(({ label, value, cls }) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `btn ${cls}`;
+    btn.textContent = label;
+    btn.onclick = () => _confirmarStatus(value);
+    container.appendChild(btn);
+  });
+
+  new bootstrap.Modal(document.getElementById('modalAlterarStatus')).show();
+}
+
+function _opcoesStatus(atual) {
+  const opts = {
+    nao_iniciada: [
+      { label: 'Em Andamento',  value: 'em_andamento', cls: 'btn-outline-primary' },
+      { label: 'Finalizada',    value: 'finalizada',   cls: 'btn-outline-success' },
+    ],
+    em_andamento: [
+      { label: 'Não Iniciada',  value: 'nao_iniciada', cls: 'btn-outline-secondary' },
+      { label: 'Finalizada',    value: 'finalizada',   cls: 'btn-outline-success' },
+    ],
+    vencida: [
+      { label: 'Finalizada',    value: 'finalizada',   cls: 'btn-outline-success' },
+    ],
+    finalizada: [
+      { label: 'Em Andamento',  value: 'em_andamento', cls: 'btn-outline-primary' },
+      { label: 'Não Iniciada',  value: 'nao_iniciada', cls: 'btn-outline-secondary' },
+    ],
+  };
+  return opts[atual] || [];
+}
+
+function _confirmarStatus(novoStatus) {
+  const fb = document.getElementById('modalStatusFeedback');
+  const fd = new FormData();
+  fd.append('status', novoStatus);
+  fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+  fetch(`/api/periodo/${_statusPeriodoId}/status/`, {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    body: fd,
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      location.reload();
+    } else {
+      fb.className = 'alert alert-danger mb-2 py-2 small';
+      fb.textContent = data.error || 'Erro ao alterar status.';
+    }
+  })
+  .catch(() => {
+    fb.className = 'alert alert-danger mb-2 py-2 small';
+    fb.textContent = 'Erro de conexão.';
+  });
+}
+
 </script>
 {% endblock %}

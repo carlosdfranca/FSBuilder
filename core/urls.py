@@ -18,6 +18,7 @@ urlpatterns = [
     path("importar-balancete/", importar_balancete_view, name="importar_balancete"),
     path("importar-mec/", importar_mec_view, name="importar_mec"),
     path("api/fundo/<int:fundo_id>/periodos/", api_periodos_fundo, name="api_periodos_fundo"),
+    path("api/periodo/<int:periodo_id>/status/", atualizar_status_manual, name="atualizar_status_manual"),
     path('dre-resultado/<int:periodo_df_id>/', df_resultado, name='dre_resultado'),
     path("dre-resultado/<int:periodo_df_id>/exportar/", exportar_dfs_excel, name="exportar_dfs_excel"),
     path("dre-resultado/<int:periodo_df_id>/exportar-docx/", exportar_dfs_docx, name="exportar_dfs_docx"),

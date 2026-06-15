@@ -373,10 +373,6 @@ def importar_balancete_view(request):
     else:
         periodo.save()
 
-    from df.services.periodo_service import atualizar_status_automatico
-    periodo.refresh_from_db()
-    atualizar_status_automatico(periodo)
-
     if report.errors:
         msg = f"Balancete importado com avisos. {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados."
         if is_ajax:
@@ -664,10 +660,6 @@ def exportar_dfs_excel(request, periodo_df_id):
         periodo_df=periodo,
     )
 
-    from df.services.periodo_service import atualizar_status_automatico
-    periodo.refresh_from_db()
-    atualizar_status_automatico(periodo)
-
     return response
 
 
@@ -755,11 +747,35 @@ def exportar_dfs_docx(request, periodo_df_id):
         periodo_df=periodo,
     )
 
-    from df.services.periodo_service import atualizar_status_automatico
-    periodo.refresh_from_db()
-    atualizar_status_automatico(periodo)
-
     return response
+
+# ===========================
+# Alteração manual de status
+# ===========================
+@login_required
+@company_can_manage_fundos
+def atualizar_status_manual(request, periodo_id):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'Método não permitido'}, status=405)
+
+    empresa = get_empresa_escopo(request)
+    periodo = get_object_or_404(PeriodoDF, id=periodo_id, empresa=empresa)
+
+    novo_status = request.POST.get('status', '').strip()
+    STATUS_MANUAIS = {'nao_iniciada', 'em_andamento', 'finalizada'}
+    if novo_status not in STATUS_MANUAIS:
+        return JsonResponse({'ok': False, 'error': 'Status inválido'}, status=400)
+
+    if periodo.status == 'vencida' and novo_status == 'em_andamento':
+        return JsonResponse({
+            'ok': False,
+            'error': 'Período vencido não pode ser marcado como Em Andamento'
+        }, status=400)
+
+    periodo.status = novo_status
+    periodo.save(update_fields=['status', 'atualizado_em'])
+    return JsonResponse({'ok': True, 'status': novo_status})
+
 
 # ===========================
 # CRUD de Fundos (inalterado)
@@ -891,6 +907,7 @@ def gerenciar_periodos(request, fundo_id):
         status_info["dias_vencida"] = abs(dias) if dias < 0 else 0
         status_info["n_balancete"] = periodo.balancete_items.count()
         status_info["n_mec"] = periodo.mec_items.count()
+        status_info["status"] = periodo.status  # usa o status salvo, não o calculado
         periodos_info.append({"periodo": periodo, **status_info})
 
     anos_disponiveis = (
