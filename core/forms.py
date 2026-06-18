@@ -2,13 +2,32 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.contrib.auth.password_validation import validate_password
 from datetime import date
-from df.models import Fundo, ConfiguracaoDF
+from df.models import Fundo, ConfiguracaoDF, Gestora
 from usuarios.models import Usuario
+
+
+class GestoraForm(forms.ModelForm):
+    class Meta:
+        model = Gestora
+        fields = ['nome', 'cnpj']
+        widgets = {
+            'nome': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nome da gestora'}),
+            'cnpj': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '00.000.000/0000-00'}),
+        }
+
 
 class FundoForm(forms.ModelForm):
     """
     Form para criar/editar Fundo com configuração de DFs integrada.
     """
+    gestora = forms.ModelChoiceField(
+        queryset=Gestora.objects.none(),
+        required=False,
+        empty_label="Sem gestora",
+        label="Gestora",
+        widget=forms.Select(attrs={'class': 'form-select'}),
+    )
+
     # Checkboxes para tipos recorrentes
     tem_trimestral = forms.BooleanField(
         required=False,
@@ -37,14 +56,20 @@ class FundoForm(forms.ModelForm):
 
     class Meta:
         model = Fundo
-        fields = ['nome', 'cnpj']
+        fields = ['nome', 'cnpj', 'gestora']
         widgets = {
             'nome': forms.TextInput(attrs={'class': 'form-control'}),
             'cnpj': forms.TextInput(attrs={'class': 'form-control'}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, empresa=None, **kwargs):
         super().__init__(*args, **kwargs)
+
+        _empresa = empresa
+        if _empresa is None and self.instance and self.instance.pk:
+            _empresa = self.instance.empresa
+        if _empresa is not None:
+            self.fields['gestora'].queryset = Gestora.objects.filter(empresa=_empresa).order_by('nome')
 
         if self.instance.pk:
             config_trim = self.instance.configuracoes_df.filter(tipo='trimestral').first()

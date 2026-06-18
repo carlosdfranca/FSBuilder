@@ -28,6 +28,11 @@ urlpatterns = [
     path('fundos/adicionar/', adicionar_fundo, name='adicionar_fundo'),
     path('fundos/<int:fundo_id>/editar/', editar_fundo, name='editar_fundo'),
     path('fundos/<int:fundo_id>/excluir/', excluir_fundo, name='excluir_fundo'),
+
+    # Gestoras
+    path('gestoras/adicionar/', adicionar_gestora, name='adicionar_gestora'),
+    path('gestoras/<int:gestora_id>/editar/', editar_gestora, name='editar_gestora'),
+    path('gestoras/<int:gestora_id>/excluir/', excluir_gestora, name='excluir_gestora'),
     path('fundos/<int:fundo_id>/periodos/', gerenciar_periodos, name='gerenciar_periodos'),
     path('fundos/<int:fundo_id>/periodos/criar/', criar_periodo_manual, name='criar_periodo_manual'),
     path('fundos/<int:fundo_id>/periodos/gerar-historico/', gerar_periodos_historicos, name='gerar_periodos_historicos'),

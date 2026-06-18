@@ -7,7 +7,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from datetime import date
 import json
 
-from df.models import Fundo, BalanceteItem, HistoricoEmissaoDF, PeriodoDF
+from df.models import Fundo, BalanceteItem, HistoricoEmissaoDF, PeriodoDF, Gestora
 from usuarios.models import Empresa, Membership
 from usuarios.utils.company_scope import query_por_empresa_ativa
 from usuarios.permissions import (
@@ -19,7 +19,7 @@ from usuarios.permissions import (
     company_can_download_data
 )
 
-from .forms import FundoForm, EditarPerfilForm
+from .forms import FundoForm, GestoraForm, EditarPerfilForm
 from df.forms import PeriodoDFManualForm
 
 # Camadas novas (core)
@@ -68,12 +68,14 @@ def _can_manage_fundos(request):
 @login_required
 @company_can_view_data
 def demonstracao_financeira(request):
+    empresa_ativa = get_empresa_escopo(request)
     fundos_qs = query_por_empresa_ativa(
-        Fundo.objects.select_related("empresa"),
+        Fundo.objects.select_related("empresa", "gestora"),
         request,
         "empresa",
     ).order_by("nome")
     fundos = list(fundos_qs)
+    gestoras = list(Gestora.objects.filter(empresa=empresa_ativa).order_by('nome')) if empresa_ativa else []
 
     from core.processing.import_service import calcular_data_referencia_periodo
     fundos_periodos = {}
@@ -126,6 +128,7 @@ def demonstracao_financeira(request):
 
     return render(request, "demonstracao_financeira.html", {
         "fundos": fundos,
+        "gestoras": gestoras,
         "fundos_periodos": json.dumps(fundos_periodos),
         "fundos_prazos": json.dumps(fundos_prazos),
         "can_enviar_balancete": _can_manage_fundos(request),
@@ -161,11 +164,12 @@ def controle_emissoes(request):
     status_filtro = request.GET.get('status', '')
     ano_filtro = request.GET.get('ano', '')
     fundo_filtro = request.GET.get('fundo', '')
+    gestora_filtro = request.GET.get('gestora', '')
 
     qs = (
         PeriodoDF.objects
         .filter(empresa=empresa)
-        .select_related('fundo')
+        .select_related('fundo', 'fundo__gestora')
         .order_by('data_vencimento', 'fundo__nome')
     )
     if ano_filtro:
@@ -178,6 +182,11 @@ def controle_emissoes(request):
             qs = qs.filter(fundo_id=int(fundo_filtro))
         except ValueError:
             fundo_filtro = ''
+    if gestora_filtro:
+        try:
+            qs = qs.filter(fundo__gestora_id=int(gestora_filtro))
+        except ValueError:
+            gestora_filtro = ''
 
     todos = list(qs)
 
@@ -237,6 +246,9 @@ def controle_emissoes(request):
     fundos_lista = list(
         Fundo.objects.filter(empresa=empresa).order_by('nome').values('id', 'nome')
     )
+    gestoras_lista = list(
+        Gestora.objects.filter(empresa=empresa).order_by('nome').values('id', 'nome')
+    )
 
     # String com params não-status para montar URLs dos KPI cards
     _filtros_parts = []
@@ -244,6 +256,8 @@ def controle_emissoes(request):
         _filtros_parts.append(f'ano={ano_filtro}')
     if fundo_filtro:
         _filtros_parts.append(f'fundo={fundo_filtro}')
+    if gestora_filtro:
+        _filtros_parts.append(f'gestora={gestora_filtro}')
     filtros_base = '&'.join(_filtros_parts)
 
     # Breakdown por ano para o gráfico de barras (usa todos, sem filtro de status)
@@ -279,8 +293,10 @@ def controle_emissoes(request):
         "status_filtro": status_filtro,
         "ano_filtro": ano_filtro,
         "fundo_filtro": fundo_filtro,
+        "gestora_filtro": gestora_filtro,
         "anos_disponiveis": anos_disponiveis,
         "fundos_lista": fundos_lista,
+        "gestoras_lista": gestoras_lista,
         "filtros_base": filtros_base,
         "can_manage_fundos": _can_manage_fundos(request),
         "hoje": hoje,
@@ -767,23 +783,31 @@ def exportar_dfs_docx(request, periodo_df_id):
 @login_required
 @company_can_view_data
 def listar_fundos(request):
+    empresa = get_empresa_escopo(request)
     fundos = query_por_empresa_ativa(
-        Fundo.objects.select_related("empresa").prefetch_related("configuracoes_df"),
+        Fundo.objects.select_related("empresa", "gestora").prefetch_related("configuracoes_df"),
         request, "empresa"
     ).order_by("nome")
-    form = FundoForm()
+    gestoras = list(Gestora.objects.filter(empresa=empresa).order_by('nome')) if empresa else []
+    form = FundoForm(empresa=empresa)
+    gestora_form = GestoraForm(prefix='gestora')
+    aba_ativa = request.GET.get('tab', 'fundos')
     return render(request, "fundos/listar.html", {
         "fundos": fundos,
         "form": form,
         "can_manage_fundos": _can_manage_fundos(request),
+        "gestoras": gestoras,
+        "gestora_form": gestora_form,
+        "aba_ativa": aba_ativa,
     })
 
 
 @login_required
 @company_can_manage_fundos
 def adicionar_fundo(request):
+    empresa_ativa = getattr(request, "empresa_ativa", None)
     if request.method == "POST":
-        form = FundoForm(request.POST)
+        form = FundoForm(request.POST, empresa=empresa_ativa)
         if form.is_valid():
             fundo = form.save(commit=False)
 
@@ -819,7 +843,7 @@ def adicionar_fundo(request):
             messages.success(request, "Fundo criado com sucesso.")
             return redirect("listar_fundos")
     else:
-        form = FundoForm()
+        form = FundoForm(empresa=empresa_ativa)
     return render(request, "fundos/form.html", {"form": form, "modo": "Adicionar"})
 
 
@@ -863,6 +887,67 @@ def excluir_fundo(request, fundo_id):
         messages.success(request, "Fundo excluído com sucesso.")
         return redirect("listar_fundos")
     return render(request, "fundos/confirmar_exclusao.html", {"fundo": fundo})
+
+
+# ===========================
+# CRUD de Gestoras
+# ===========================
+@login_required
+@company_can_manage_fundos
+def adicionar_gestora(request):
+    if request.method != "POST":
+        return redirect('listar_fundos')
+    empresa = get_empresa_escopo(request)
+    if not empresa:
+        messages.error(request, "Nenhuma empresa ativa.")
+        return redirect('listar_fundos')
+    form = GestoraForm(request.POST, prefix='gestora')
+    if form.is_valid():
+        gestora = form.save(commit=False)
+        gestora.empresa = empresa
+        try:
+            gestora.save()
+            messages.success(request, f"Gestora '{gestora.nome}' criada com sucesso.")
+        except Exception:
+            messages.error(request, "Erro ao criar gestora. Verifique se CNPJ ou nome já estão cadastrados.")
+    else:
+        messages.error(request, "Erro ao criar gestora. Verifique os campos informados.")
+    from django.urls import reverse
+    return redirect(reverse('listar_fundos') + '?tab=gestoras')
+
+
+@login_required
+@company_can_manage_fundos
+def editar_gestora(request, gestora_id):
+    empresa = get_empresa_escopo(request)
+    gestora = get_object_or_404(Gestora, id=gestora_id, empresa=empresa)
+    if request.method == "POST":
+        form = GestoraForm(request.POST, instance=gestora)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Gestora '{gestora.nome}' atualizada com sucesso.")
+        else:
+            messages.error(request, "Erro ao atualizar gestora. Verifique os campos informados.")
+    from django.urls import reverse
+    return redirect(reverse('listar_fundos') + '?tab=gestoras')
+
+
+@login_required
+@company_can_manage_fundos
+def excluir_gestora(request, gestora_id):
+    empresa = get_empresa_escopo(request)
+    gestora = get_object_or_404(Gestora, id=gestora_id, empresa=empresa)
+    if request.method == "POST":
+        nome = gestora.nome
+        gestora.delete()
+        messages.success(request, f"Gestora '{nome}' excluída com sucesso.")
+        from django.urls import reverse
+        return redirect(reverse('listar_fundos') + '?tab=gestoras')
+    fundos_vinculados = list(gestora.fundos.all())
+    return render(request, "gestoras/confirmar_exclusao.html", {
+        "gestora": gestora,
+        "fundos_vinculados": fundos_vinculados,
+    })
 
 
 # ===========================

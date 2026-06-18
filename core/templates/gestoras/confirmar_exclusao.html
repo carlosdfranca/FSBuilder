@@ -1,0 +1,31 @@
+{% extends 'base/base.html' %}
+{% block title %}Excluir Gestora{% endblock %}
+
+{% block conteudo %}
+{% include 'base/navbar.html' %}
+
+<div class="container py-5">
+  <div class="card p-4">
+    <h4 class="mb-3 text-danger">Confirmar exclusão</h4>
+    <p>Você tem certeza que deseja excluir a gestora <strong>{{ gestora.nome }}</strong> (CNPJ: {{ gestora.cnpj }})?</p>
+
+    {% if fundos_vinculados %}
+      <div class="alert alert-warning mb-3">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        Os seguintes fundos perderão a gestora vinculada (o campo ficará vazio):
+        <ul class="mb-0 mt-2">
+          {% for fundo in fundos_vinculados %}
+            <li>{{ fundo.nome }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <form method="POST">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger">Sim, excluir</button>
+      <a href="{% url 'listar_fundos' %}?tab=gestoras" class="btn btn-outline-secondary">Cancelar</a>
+    </form>
+  </div>
+</div>
+{% endblock %}
