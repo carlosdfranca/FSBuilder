@@ -214,9 +214,7 @@
                 <td class="ps-3 fw-semibold">{{ item.periodo.fundo.nome }}</td>
                 <td>{{ item.periodo.nome_exibicao }}</td>
                 <td>
-                  {% if item.periodo.tipo_periodo == 'trimestral' %}
-                    <span class="badge bg-primary bg-opacity-75">Trimestral</span>
-                  {% elif item.periodo.tipo_periodo == 'anual' %}
+                  {% if item.periodo.tipo_periodo == 'anual' %}
                     <span class="badge bg-info text-dark">Anual</span>
                   {% elif item.periodo.tipo_periodo == 'transitoria' %}
                     <span class="badge bg-secondary">Transitória</span>

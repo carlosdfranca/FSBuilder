@@ -201,6 +201,7 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CONVITE_EXPIRACAO_DIAS = config('CONVITE_EXPIRACAO_DIAS', default=7, cast=int)
 CONVITE_MAX_REENVIOS = config('CONVITE_MAX_REENVIOS', default=3, cast=int)
 CONVITE_ENVIO_SINCRONO = config('CONVITE_ENVIO_SINCRONO', default=False, cast=bool)  # Para dev/tests
+DF_NOTIFICACAO_SINCRONO = config('DF_NOTIFICACAO_SINCRONO', default=False, cast=bool)  # Para dev/tests
 
 # Base URL do site (usado em links de email)
 BASE_URL = config('BASE_URL', default='http://localhost:8000')
@@ -213,6 +214,10 @@ CELERY_BEAT_SCHEDULE = {
     'expirar-convites-antigos': {
         'task': 'usuarios.tasks.expirar_convites_antigos',
         'schedule': crontab(hour=3, minute=0),  # Todo dia às 3am
+    },
+    'verificar-vencimentos-df': {
+        'task': 'df.tasks.verificar_vencimentos_df',
+        'schedule': crontab(hour=8, minute=0),  # Todo dia às 8am
     },
 }
 
