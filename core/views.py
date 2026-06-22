@@ -83,7 +83,7 @@ def demonstracao_financeira(request):
     hoje = date.today()
 
     for fundo in fundos:
-        periodos = PeriodoDF.objects.filter(fundo=fundo).order_by('ano', 'tipo_periodo', 'trimestre')
+        periodos = PeriodoDF.objects.filter(fundo=fundo).order_by('ano', 'tipo_periodo')
         periodos_data = []
         for p in periodos:
             data_ref_calculada = calcular_data_referencia_periodo(p)
@@ -92,7 +92,6 @@ def demonstracao_financeira(request):
                 'nome': p.nome_exibicao,
                 'tipo': p.tipo_periodo,
                 'ano': p.ano,
-                'trimestre': p.trimestre,
                 'status': p.status,
                 'tem_balancete': p.balancete_items.exists(),
                 'data_referencia': p.data_referencia.isoformat() if p.data_referencia else None,
@@ -389,10 +388,6 @@ def importar_balancete_view(request):
     else:
         periodo.save()
 
-    from df.services.periodo_service import atualizar_status_automatico
-    periodo.refresh_from_db()
-    atualizar_status_automatico(periodo)
-
     if report.errors:
         msg = f"Balancete importado com avisos. {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados."
         if is_ajax:
@@ -465,7 +460,7 @@ def api_periodos_fundo(request, fundo_id):
     fundo = get_object_or_404(fundo_qs, id=fundo_id)
 
     from core.processing.import_service import calcular_data_referencia_periodo
-    periodos = PeriodoDF.objects.filter(fundo=fundo).order_by("ano", "tipo_periodo", "trimestre")
+    periodos = PeriodoDF.objects.filter(fundo=fundo).order_by("ano", "tipo_periodo")
     periodos_data = []
     for p in periodos:
         data_ref_calc = calcular_data_referencia_periodo(p)
@@ -474,7 +469,6 @@ def api_periodos_fundo(request, fundo_id):
             "nome": p.nome_exibicao,
             "tipo": p.tipo_periodo,
             "ano": p.ano,
-            "trimestre": p.trimestre,
             "status": p.status,
             "tem_balancete": p.balancete_items.exists(),
             "data_referencia": p.data_referencia.isoformat() if p.data_referencia else None,
@@ -680,10 +674,6 @@ def exportar_dfs_excel(request, periodo_df_id):
         periodo_df=periodo,
     )
 
-    from df.services.periodo_service import atualizar_status_automatico
-    periodo.refresh_from_db()
-    atualizar_status_automatico(periodo)
-
     return response
 
 
@@ -771,11 +761,35 @@ def exportar_dfs_docx(request, periodo_df_id):
         periodo_df=periodo,
     )
 
-    from df.services.periodo_service import atualizar_status_automatico
-    periodo.refresh_from_db()
-    atualizar_status_automatico(periodo)
-
     return response
+
+# ===========================
+# Alteração manual de status
+# ===========================
+@login_required
+@company_can_manage_fundos
+def atualizar_status_manual(request, periodo_id):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'Método não permitido'}, status=405)
+
+    empresa = get_empresa_escopo(request)
+    periodo = get_object_or_404(PeriodoDF, id=periodo_id, empresa=empresa)
+
+    novo_status = request.POST.get('status', '').strip()
+    STATUS_MANUAIS = {'nao_iniciada', 'em_andamento', 'finalizada'}
+    if novo_status not in STATUS_MANUAIS:
+        return JsonResponse({'ok': False, 'error': 'Status inválido'}, status=400)
+
+    if periodo.status == 'vencida' and novo_status == 'em_andamento':
+        return JsonResponse({
+            'ok': False,
+            'error': 'Período vencido não pode ser marcado como Em Andamento'
+        }, status=400)
+
+    periodo.status = novo_status
+    periodo.save(update_fields=['status', 'atualizado_em'])
+    return JsonResponse({'ok': True, 'status': novo_status})
+
 
 # ===========================
 # CRUD de Fundos (inalterado)
@@ -959,7 +973,7 @@ def gerenciar_periodos(request, fundo_id):
     qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
     fundo = get_object_or_404(qs, id=fundo_id)
 
-    periodos_qs = PeriodoDF.objects.filter(fundo=fundo).order_by("-ano", "tipo_periodo", "trimestre")
+    periodos_qs = PeriodoDF.objects.filter(fundo=fundo).order_by("-ano", "tipo_periodo")
 
     # Filtros opcionais por URL params
     ano_filtro = request.GET.get("ano")
@@ -976,6 +990,7 @@ def gerenciar_periodos(request, fundo_id):
         status_info["dias_vencida"] = abs(dias) if dias < 0 else 0
         status_info["n_balancete"] = periodo.balancete_items.count()
         status_info["n_mec"] = periodo.mec_items.count()
+        status_info["status"] = periodo.status  # usa o status salvo, não o calculado
         periodos_info.append({"periodo": periodo, **status_info})
 
     anos_disponiveis = (
@@ -1007,11 +1022,17 @@ def criar_periodo_manual(request, fundo_id):
     fundo = get_object_or_404(qs, id=fundo_id)
 
     if request.method == "POST":
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         form = PeriodoDFManualForm(request.POST, fundo=fundo)
         if form.is_valid():
-            form.save()
+            periodo = form.save()
+            if is_ajax:
+                return JsonResponse({'ok': True, 'message': f'Período {periodo.nome_exibicao} criado com sucesso.'})
             messages.success(request, "Período criado com sucesso.")
         else:
+            erros = '; '.join(e for errs in form.errors.values() for e in errs)
+            if is_ajax:
+                return JsonResponse({'ok': False, 'error': erros}, status=400)
             for field, errors in form.errors.items():
                 for error in errors:
                     messages.error(request, f"{field}: {error}")
@@ -1065,21 +1086,26 @@ def gerar_periodos_historicos(request, fundo_id):
     if request.method != "POST":
         return redirect("gerenciar_periodos", fundo_id=fundo_id)
 
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+    def _err(msg):
+        if is_ajax:
+            return JsonResponse({'ok': False, 'error': msg}, status=400)
+        messages.error(request, msg)
+        return redirect("gerenciar_periodos", fundo_id=fundo_id)
+
     try:
         ano_inicial = int(request.POST.get("ano_inicial", 0))
         ano_final = int(request.POST.get("ano_final", 0))
     except (ValueError, TypeError):
-        messages.error(request, "Informe anos válidos.")
-        return redirect("gerenciar_periodos", fundo_id=fundo_id)
+        return _err("Informe anos válidos.")
 
     ano_atual = date.today().year
     if ano_inicial < 1990 or ano_final > ano_atual or ano_inicial > ano_final:
-        messages.error(request, f"Intervalo de anos inválido. Use entre 1990 e {ano_atual}.")
-        return redirect("gerenciar_periodos", fundo_id=fundo_id)
+        return _err(f"Intervalo de anos inválido. Use entre 1990 e {ano_atual}.")
 
     if not fundo.configuracoes_df.exists():
-        messages.error(request, "Este fundo não possui nenhuma configuração de DF (Trimestral/Anual).")
-        return redirect("gerenciar_periodos", fundo_id=fundo_id)
+        return _err("Este fundo não possui configuração de DF Anual.")
 
     from df.services.periodo_service import gerar_periodos_para_anos
     resultado = gerar_periodos_para_anos(fundo, ano_inicial, ano_final)
@@ -1093,14 +1119,15 @@ def gerar_periodos_historicos(request, fundo_id):
 
     total = resultado["total"]
     if total == 0:
-        messages.info(request, "Nenhum período novo criado — todos os períodos desse intervalo já existiam.")
+        msg = "Nenhum período novo criado — todos os períodos desse intervalo já existiam."
+        if is_ajax:
+            return JsonResponse({'ok': True, 'message': msg})
+        messages.info(request, msg)
     else:
-        detalhes = []
-        if resultado["trimestral"]:
-            detalhes.append(f"{resultado['trimestral']} trimestral(is)")
-        if resultado["anual"]:
-            detalhes.append(f"{resultado['anual']} anual(is)")
-        messages.success(request, f"{total} período(s) criado(s) para {ano_inicial}–{ano_final}: {', '.join(detalhes)}.")
+        msg = f"{total} período(s) anual(is) criado(s) para {ano_inicial}–{ano_final}."
+        if is_ajax:
+            return JsonResponse({'ok': True, 'message': msg})
+        messages.success(request, msg)
 
     return redirect("gerenciar_periodos", fundo_id=fundo_id)
 

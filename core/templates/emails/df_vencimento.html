@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vencimento de DF - FSBuilder</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #1C1C1E;
+            margin: 0;
+            padding: 0;
+            background-color: #F8F5F0;
+        }
+
+        .email-wrapper {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #FFFFFF;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #6B1A2A 0%, #4A0F1C 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }
+
+        .header-title {
+            color: #ffffff;
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+
+        .header-subtitle {
+            color: rgba(255, 255, 255, 0.8);
+            margin: 8px 0 0 0;
+            font-size: 14px;
+            font-weight: 400;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .content {
+            padding: 40px 30px;
+            background-color: #FFFFFF;
+        }
+
+        .content h2 {
+            color: #1C1C1E;
+            font-size: 22px;
+            margin: 0 0 20px 0;
+            font-weight: 600;
+        }
+
+        .content p {
+            margin: 16px 0;
+            font-size: 15px;
+            color: #6C6C70;
+            line-height: 1.7;
+        }
+
+        .content strong {
+            color: #1C1C1E;
+            font-weight: 600;
+        }
+
+        /* Alerta urgente (1 dia) */
+        .alert-urgente {
+            background-color: rgba(220, 38, 38, 0.06);
+            border: 1px solid rgba(220, 38, 38, 0.2);
+            border-left: 4px solid #DC2626;
+            padding: 20px 24px;
+            margin: 28px 0;
+            border-radius: 8px;
+        }
+
+        .alert-urgente .alert-title {
+            color: #B91C1C;
+            font-size: 16px;
+            font-weight: 700;
+            margin: 0 0 8px 0;
+        }
+
+        /* Alerta próximo (≤ 15 dias) */
+        .alert-proximo {
+            background-color: rgba(217, 119, 6, 0.06);
+            border: 1px solid rgba(217, 119, 6, 0.2);
+            border-left: 4px solid #D97706;
+            padding: 20px 24px;
+            margin: 28px 0;
+            border-radius: 8px;
+        }
+
+        .alert-proximo .alert-title {
+            color: #B45309;
+            font-size: 16px;
+            font-weight: 700;
+            margin: 0 0 8px 0;
+        }
+
+        /* Alerta padrão (30, 60, 90 dias) */
+        .alert-padrao {
+            background-color: rgba(107, 26, 42, 0.06);
+            border: 1px solid rgba(107, 26, 42, 0.15);
+            border-left: 4px solid #6B1A2A;
+            padding: 20px 24px;
+            margin: 28px 0;
+            border-radius: 8px;
+        }
+
+        .alert-padrao .alert-title {
+            color: #6B1A2A;
+            font-size: 16px;
+            font-weight: 700;
+            margin: 0 0 8px 0;
+        }
+
+        .alert-body {
+            font-size: 14px;
+            color: #6C6C70;
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        .alert-body strong {
+            color: #1C1C1E;
+        }
+
+        /* Highlight box — dados do período */
+        .highlight-box {
+            background-color: rgba(107, 26, 42, 0.04);
+            border: 1px solid rgba(107, 26, 42, 0.12);
+            border-left: 4px solid #6B1A2A;
+            padding: 20px 24px;
+            margin: 28px 0;
+            border-radius: 8px;
+        }
+
+        .highlight-box p {
+            margin: 8px 0;
+            font-size: 15px;
+            color: #6C6C70;
+        }
+
+        .highlight-box p:first-child { margin-top: 0; }
+        .highlight-box p:last-child  { margin-bottom: 0; }
+
+        .highlight-box strong {
+            color: #C47080;
+            font-weight: 600;
+        }
+
+        /* CTA Button */
+        .cta-button {
+            text-align: center;
+            margin: 35px 0;
+        }
+
+        .cta-button a {
+            display: inline-block;
+            background: linear-gradient(135deg, #6B1A2A 0%, #4A0F1C 100%);
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 16px 48px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            box-shadow: 0 4px 12px rgba(107, 26, 42, 0.4);
+        }
+
+        .divider {
+            border: 0;
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+            margin: 30px 0;
+        }
+
+        .footer {
+            background-color: #F8F5F0;
+            padding: 30px;
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .footer p {
+            margin: 12px 0;
+            font-size: 13px;
+            color: #6C6C70;
+            line-height: 1.6;
+        }
+
+        .footer a {
+            color: #6B1A2A;
+            text-decoration: none;
+        }
+
+        .footer-copyright {
+            text-align: center;
+            margin-top: 25px !important;
+            padding-top: 20px;
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+            color: #ADADB1 !important;
+            font-size: 12px !important;
+        }
+
+        @media only screen and (max-width: 600px) {
+            .email-wrapper { margin: 20px; border-radius: 8px; }
+            .header { padding: 30px 20px; }
+            .header-title { font-size: 24px; }
+            .content { padding: 30px 20px; }
+            .cta-button a { padding: 14px 36px; font-size: 15px; }
+            .footer { padding: 25px 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <div class="header">
+            <h1 class="header-title">FSBuilder</h1>
+            <p class="header-subtitle">Plataforma de Demonstrações Financeiras</p>
+        </div>
+
+        <div class="content">
+            <h2>Lembrete de Vencimento de DF</h2>
+
+            <p>Olá, <strong>{{ usuario.get_full_name|default:usuario.username }}</strong>!</p>
+
+            <p>
+                Este é um lembrete automático sobre o vencimento de uma
+                Demonstração Financeira da empresa <strong>{{ empresa.nome }}</strong>.
+            </p>
+
+            {% if dias_restantes == 1 %}
+            <div class="alert-urgente">
+                <p class="alert-title">⚠️ VENCE AMANHÃ!</p>
+                <p class="alert-body">
+                    A DF do fundo <strong>{{ fundo.nome }}</strong> vence <strong>amanhã</strong>.
+                    Providencie a emissão o quanto antes para evitar atraso.
+                </p>
+            </div>
+            {% elif dias_restantes <= 15 %}
+            <div class="alert-proximo">
+                <p class="alert-title">⏳ Vencimento em {{ dias_restantes }} dias</p>
+                <p class="alert-body">
+                    A DF do fundo <strong>{{ fundo.nome }}</strong> vence em
+                    <strong>{{ dias_restantes }} dias</strong>.
+                    Verifique o andamento e providencie a emissão.
+                </p>
+            </div>
+            {% else %}
+            <div class="alert-padrao">
+                <p class="alert-title">📅 Vencimento em {{ dias_restantes }} dias</p>
+                <p class="alert-body">
+                    A DF do fundo <strong>{{ fundo.nome }}</strong> vence em
+                    <strong>{{ dias_restantes }} dias</strong>.
+                    Fique atento ao prazo.
+                </p>
+            </div>
+            {% endif %}
+
+            <!-- Dados do período -->
+            <div class="highlight-box">
+                <p><strong>Fundo:</strong> {{ fundo.nome }}</p>
+                <p><strong>Período:</strong> {{ periodo.nome_exibicao }}</p>
+                <p><strong>Data de Vencimento:</strong> {{ data_vencimento|date:"d/m/Y" }}</p>
+                <p><strong>Status:</strong> {{ periodo.get_status_display }}</p>
+            </div>
+
+            <!-- CTA -->
+            <div class="cta-button">
+                <a href="{{ base_url }}/controle-emissoes/">Ver Controle de Emissões</a>
+            </div>
+
+            <hr class="divider">
+
+            <p style="font-size: 13px; color: #ADADB1;">
+                Você está recebendo este e-mail porque é membro da empresa
+                <strong>{{ empresa.nome }}</strong> no FSBuilder.
+                Notificações são enviadas automaticamente 90, 60, 30, 15 e 1 dia antes do vencimento.
+            </p>
+        </div>
+
+        <div class="footer">
+            <p class="footer-copyright">
+                © {{ "now"|date:"Y" }} FSBuilder. Todos os direitos reservados.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

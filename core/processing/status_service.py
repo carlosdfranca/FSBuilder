@@ -170,7 +170,7 @@ def obter_periodos_com_status(fundo, ano=None):
     if ano is not None:
         queryset = queryset.filter(ano=ano)
     
-    queryset = queryset.order_by('-ano', 'tipo_periodo', 'trimestre')
+    queryset = queryset.order_by('-ano', 'tipo_periodo')
     
     resultado = []
     for periodo in queryset:
@@ -200,7 +200,7 @@ def obter_todos_periodos_com_status(empresa, ano=None):
     if ano is not None:
         queryset = queryset.filter(ano=ano)
     
-    queryset = queryset.order_by('-ano', 'fundo__nome', 'tipo_periodo', 'trimestre')
+    queryset = queryset.order_by('-ano', 'fundo__nome', 'tipo_periodo')
     
     resultado = []
     for periodo in queryset:
