@@ -236,9 +236,15 @@ class PeriodoDF(models.Model):
         help_text="Descrição opcional para períodos manuais"
     )
     
+    notificado_90 = models.BooleanField(default=False, db_index=True)
+    notificado_60 = models.BooleanField(default=False, db_index=True)
+    notificado_30 = models.BooleanField(default=False, db_index=True)
+    notificado_15 = models.BooleanField(default=False, db_index=True)
+    notificado_1  = models.BooleanField(default=False, db_index=True)
+
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         verbose_name = "Período de DF"
         verbose_name_plural = "Períodos de DFs"

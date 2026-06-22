@@ -1,0 +1,45 @@
+═══════════════════════════════════════════════════════════════════════════
+                            FSBuilder
+                 Plataforma de Demonstrações Financeiras
+═══════════════════════════════════════════════════════════════════════════
+
+LEMBRETE DE VENCIMENTO DE DF
+
+Olá, {{ usuario.get_full_name|default:usuario.username }}!
+
+Este é um lembrete automático sobre o vencimento de uma Demonstração
+Financeira da empresa {{ empresa.nome }}.
+
+───────────────────────────────────────────────────────────────────────────
+{% if dias_restantes == 1 %}
+⚠️  ATENÇÃO — A DF VENCE AMANHÃ!
+{% elif dias_restantes <= 15 %}
+⏳  ATENÇÃO — VENCIMENTO EM {{ dias_restantes }} DIAS
+{% else %}
+📅  LEMBRETE — VENCIMENTO EM {{ dias_restantes }} DIAS
+{% endif %}
+───────────────────────────────────────────────────────────────────────────
+
+📋 DADOS DO PERÍODO
+───────────────────────────────────────────────────────────────────────────
+
+Fundo:            {{ fundo.nome }}
+Período:          {{ periodo.nome_exibicao }}
+Data de Vencimento: {{ data_vencimento|date:"d/m/Y" }}
+Status:           {{ periodo.get_status_display }}
+
+───────────────────────────────────────────────────────────────────────────
+
+Acesse o controle de emissões para verificar o andamento:
+
+{{ base_url }}/controle-emissoes/
+
+───────────────────────────────────────────────────────────────────────────
+
+Você está recebendo este e-mail porque é membro da empresa {{ empresa.nome }}
+no FSBuilder. Notificações são enviadas automaticamente 90, 60, 30, 15 e 1
+dia antes do vencimento.
+
+═══════════════════════════════════════════════════════════════════════════
+© {{ "now"|date:"Y" }} FSBuilder. Todos os direitos reservados.
+═══════════════════════════════════════════════════════════════════════════
