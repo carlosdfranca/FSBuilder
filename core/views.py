@@ -81,7 +81,7 @@ def demonstracao_financeira(request):
     hoje = date.today()
 
     for fundo in fundos:
-        periodos = PeriodoDF.objects.filter(fundo=fundo).order_by('ano', 'tipo_periodo', 'trimestre')
+        periodos = PeriodoDF.objects.filter(fundo=fundo).order_by('ano', 'tipo_periodo')
         periodos_data = []
         for p in periodos:
             data_ref_calculada = calcular_data_referencia_periodo(p)
@@ -90,7 +90,6 @@ def demonstracao_financeira(request):
                 'nome': p.nome_exibicao,
                 'tipo': p.tipo_periodo,
                 'ano': p.ano,
-                'trimestre': p.trimestre,
                 'status': p.status,
                 'tem_balancete': p.balancete_items.exists(),
                 'data_referencia': p.data_referencia.isoformat() if p.data_referencia else None,
@@ -445,7 +444,7 @@ def api_periodos_fundo(request, fundo_id):
     fundo = get_object_or_404(fundo_qs, id=fundo_id)
 
     from core.processing.import_service import calcular_data_referencia_periodo
-    periodos = PeriodoDF.objects.filter(fundo=fundo).order_by("ano", "tipo_periodo", "trimestre")
+    periodos = PeriodoDF.objects.filter(fundo=fundo).order_by("ano", "tipo_periodo")
     periodos_data = []
     for p in periodos:
         data_ref_calc = calcular_data_referencia_periodo(p)
@@ -454,7 +453,6 @@ def api_periodos_fundo(request, fundo_id):
             "nome": p.nome_exibicao,
             "tipo": p.tipo_periodo,
             "ano": p.ano,
-            "trimestre": p.trimestre,
             "status": p.status,
             "tem_balancete": p.balancete_items.exists(),
             "data_referencia": p.data_referencia.isoformat() if p.data_referencia else None,
@@ -890,7 +888,7 @@ def gerenciar_periodos(request, fundo_id):
     qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
     fundo = get_object_or_404(qs, id=fundo_id)
 
-    periodos_qs = PeriodoDF.objects.filter(fundo=fundo).order_by("-ano", "tipo_periodo", "trimestre")
+    periodos_qs = PeriodoDF.objects.filter(fundo=fundo).order_by("-ano", "tipo_periodo")
 
     # Filtros opcionais por URL params
     ano_filtro = request.GET.get("ano")
@@ -1022,7 +1020,7 @@ def gerar_periodos_historicos(request, fundo_id):
         return _err(f"Intervalo de anos inválido. Use entre 1990 e {ano_atual}.")
 
     if not fundo.configuracoes_df.exists():
-        return _err("Este fundo não possui nenhuma configuração de DF (Trimestral/Anual).")
+        return _err("Este fundo não possui configuração de DF Anual.")
 
     from df.services.periodo_service import gerar_periodos_para_anos
     resultado = gerar_periodos_para_anos(fundo, ano_inicial, ano_final)
@@ -1041,12 +1039,7 @@ def gerar_periodos_historicos(request, fundo_id):
             return JsonResponse({'ok': True, 'message': msg})
         messages.info(request, msg)
     else:
-        detalhes = []
-        if resultado["trimestral"]:
-            detalhes.append(f"{resultado['trimestral']} trimestral(is)")
-        if resultado["anual"]:
-            detalhes.append(f"{resultado['anual']} anual(is)")
-        msg = f"{total} período(s) criado(s) para {ano_inicial}–{ano_final}: {', '.join(detalhes)}."
+        msg = f"{total} período(s) anual(is) criado(s) para {ano_inicial}–{ano_final}."
         if is_ajax:
             return JsonResponse({'ok': True, 'message': msg})
         messages.success(request, msg)

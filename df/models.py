@@ -34,12 +34,8 @@ class Fundo(models.Model):
         return f"{self.nome} [{self.cnpj}] - {self.empresa.nome}"
 
     @property
-    def config_trimestral(self):
-        return self.configuracoes_df.filter(tipo='trimestral').first()
-
-    @property
     def config_anual(self):
-        return self.configuracoes_df.filter(tipo='anual').first()
+        return self.configuracoes_df.first()
 
 
 # =========================
@@ -121,8 +117,7 @@ class HistoricoEmissaoDF(models.Model):
 # =========================
 class ConfiguracaoDF(models.Model):
     """
-    Configuração de vencimentos para um tipo de DF de um fundo.
-    Um registro por tipo (trimestral ou anual). Um fundo pode ter ambos.
+    Configuração de vencimento da DF Anual de um fundo.
     Transitória e Encerramento não têm configuração — são criadas manualmente.
     """
     fundo = models.ForeignKey(
@@ -132,27 +127,6 @@ class ConfiguracaoDF(models.Model):
         help_text="Fundo ao qual esta configuração pertence"
     )
 
-    TIPO_CHOICES = [
-        ('trimestral', 'Trimestral'),
-        ('anual', 'Anual'),
-    ]
-    tipo = models.CharField(
-        max_length=20,
-        choices=TIPO_CHOICES,
-        help_text="Tipo de DF configurado neste registro"
-    )
-
-    # Vencimentos para DF Trimestral (4 pares dia+mês — preenchidos quando tipo='trimestral')
-    trim1_dia = models.IntegerField(null=True, blank=True, help_text="Dia do vencimento do 1º trimestre (1-31)")
-    trim1_mes = models.IntegerField(null=True, blank=True, help_text="Mês do vencimento do 1º trimestre (1-12)")
-    trim2_dia = models.IntegerField(null=True, blank=True, help_text="Dia do vencimento do 2º trimestre (1-31)")
-    trim2_mes = models.IntegerField(null=True, blank=True, help_text="Mês do vencimento do 2º trimestre (1-12)")
-    trim3_dia = models.IntegerField(null=True, blank=True, help_text="Dia do vencimento do 3º trimestre (1-31)")
-    trim3_mes = models.IntegerField(null=True, blank=True, help_text="Mês do vencimento do 3º trimestre (1-12)")
-    trim4_dia = models.IntegerField(null=True, blank=True, help_text="Dia do vencimento do 4º trimestre (1-31)")
-    trim4_mes = models.IntegerField(null=True, blank=True, help_text="Mês do vencimento do 4º trimestre (1-12)")
-
-    # Vencimento para DF Anual (1 par dia+mês — preenchido quando tipo='anual')
     anual_dia = models.IntegerField(null=True, blank=True, help_text="Dia do vencimento anual (1-31)")
     anual_mes = models.IntegerField(null=True, blank=True, help_text="Mês do vencimento anual (1-12)")
 
@@ -163,41 +137,25 @@ class ConfiguracaoDF(models.Model):
         verbose_name = "Configuração de DF"
         verbose_name_plural = "Configurações de DFs"
         constraints = [
-            models.UniqueConstraint(fields=['fundo', 'tipo'], name='uq_configuracaodf_fundo_tipo')
+            models.UniqueConstraint(fields=['fundo'], name='uq_configuracaodf_fundo')
         ]
 
     def __str__(self):
-        tipo_label = dict(self.TIPO_CHOICES).get(self.tipo, self.tipo)
-        return f"Config DF {tipo_label}: {self.fundo.nome}"
+        return f"Config DF Anual: {self.fundo.nome}"
 
     def clean(self):
         from django.core.exceptions import ValidationError
         from datetime import date
 
-        if self.tipo == 'trimestral':
-            for i in range(1, 5):
-                dia = getattr(self, f'trim{i}_dia')
-                mes = getattr(self, f'trim{i}_mes')
-                if dia is not None and (dia < 1 or dia > 31):
-                    raise ValidationError(f'Dia do {i}º trimestre deve estar entre 1 e 31')
-                if mes is not None and (mes < 1 or mes > 12):
-                    raise ValidationError(f'Mês do {i}º trimestre deve estar entre 1 e 12')
-                if dia is not None and mes is not None:
-                    try:
-                        date(2000, mes, dia)
-                    except ValueError:
-                        raise ValidationError(f'Data inválida para {i}º trimestre: dia {dia} não existe no mês {mes}')
-
-        elif self.tipo == 'anual':
-            if self.anual_dia is not None and (self.anual_dia < 1 or self.anual_dia > 31):
-                raise ValidationError('Dia anual deve estar entre 1 e 31')
-            if self.anual_mes is not None and (self.anual_mes < 1 or self.anual_mes > 12):
-                raise ValidationError('Mês anual deve estar entre 1 e 12')
-            if self.anual_dia is not None and self.anual_mes is not None:
-                try:
-                    date(2000, self.anual_mes, self.anual_dia)
-                except ValueError:
-                    raise ValidationError(f'Data inválida para anual: dia {self.anual_dia} não existe no mês {self.anual_mes}')
+        if self.anual_dia is not None and (self.anual_dia < 1 or self.anual_dia > 31):
+            raise ValidationError('Dia anual deve estar entre 1 e 31')
+        if self.anual_mes is not None and (self.anual_mes < 1 or self.anual_mes > 12):
+            raise ValidationError('Mês anual deve estar entre 1 e 12')
+        if self.anual_dia is not None and self.anual_mes is not None:
+            try:
+                date(2000, self.anual_mes, self.anual_dia)
+            except ValueError:
+                raise ValidationError(f'Data inválida para anual: dia {self.anual_dia} não existe no mês {self.anual_mes}')
 
 
 # =========================
@@ -205,8 +163,8 @@ class ConfiguracaoDF(models.Model):
 # =========================
 class PeriodoDF(models.Model):
     """
-    Representa um período específico de DF (ex: "2025 1º Tri", "2025 Anual").
-    Períodos trimestrais e anuais são gerados automaticamente.
+    Representa um período específico de DF (ex: "2025 Anual").
+    Períodos anuais são gerados automaticamente.
     Períodos transitórios e de encerramento são criados manualmente.
     """
     fundo = models.ForeignKey(
@@ -225,7 +183,6 @@ class PeriodoDF(models.Model):
     )
     
     TIPO_PERIODO_CHOICES = [
-        ('trimestral', 'Trimestral'),
         ('anual', 'Anual'),
         ('transitoria', 'Transitória'),
         ('encerramento', 'Encerramento'),
@@ -235,13 +192,8 @@ class PeriodoDF(models.Model):
         choices=TIPO_PERIODO_CHOICES,
         help_text="Tipo deste período"
     )
-    
+
     ano = models.IntegerField(help_text="Ano do período (ex: 2025)")
-    trimestre = models.IntegerField(
-        null=True,
-        blank=True,
-        help_text="Número do trimestre (1-4) para tipo trimestral, null para outros"
-    )
     
     data_vencimento = models.DateField(
         help_text="Data de vencimento deste período"
@@ -290,12 +242,12 @@ class PeriodoDF(models.Model):
     class Meta:
         verbose_name = "Período de DF"
         verbose_name_plural = "Períodos de DFs"
-        ordering = ["empresa", "fundo", "-ano", "-trimestre"]
+        ordering = ["empresa", "fundo", "-ano"]
         constraints = [
             models.UniqueConstraint(
-                fields=["fundo", "tipo_periodo", "ano", "trimestre"],
-                name="uq_periodo_fundo_tipo_ano_tri",
-                condition=models.Q(tipo_periodo__in=['trimestral', 'anual'])
+                fields=["fundo", "tipo_periodo", "ano"],
+                name="uq_periodo_fundo_tipo_ano",
+                condition=models.Q(tipo_periodo='anual')
             ),
         ]
         indexes = [
@@ -309,11 +261,8 @@ class PeriodoDF(models.Model):
     
     @property
     def nome_exibicao(self):
-        """Retorna nome amigável para exibição: '2025 1º Tri', '2025 Anual', etc."""
-        if self.tipo_periodo == 'trimestral':
-            trimestres = {1: '1º Tri', 2: '2º Tri', 3: '3º Tri', 4: '4º Tri'}
-            return f"{self.ano} {trimestres.get(self.trimestre, f'{self.trimestre}º Tri')}"
-        elif self.tipo_periodo == 'anual':
+        """Retorna nome amigável para exibição: '2025 Anual', '2025 Transitória', etc."""
+        if self.tipo_periodo == 'anual':
             return f"{self.ano} Anual"
         elif self.tipo_periodo == 'transitoria':
             desc = f" - {self.descricao}" if self.descricao else ""

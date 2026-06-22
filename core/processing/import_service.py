@@ -37,16 +37,10 @@ def _to_decimal(v: Optional[float]) -> Optional[Decimal]:
 def calcular_data_referencia_periodo(periodo_df) -> date:
     """
     Retorna a data de fechamento do balancete para um período.
-    Trimestral: último dia do mês de fechamento do trimestre (mar/jun/set/dez).
     Anual: 31/12 do ano.
     Transitória/Encerramento: usa data_vencimento.
     """
-    import calendar
-    if periodo_df.tipo_periodo == 'trimestral':
-        mes_fim = periodo_df.trimestre * 3
-        ultimo_dia = calendar.monthrange(periodo_df.ano, mes_fim)[1]
-        return date(periodo_df.ano, mes_fim, ultimo_dia)
-    elif periodo_df.tipo_periodo == 'anual':
+    if periodo_df.tipo_periodo == 'anual':
         return date(periodo_df.ano, 12, 31)
     else:
         return periodo_df.data_vencimento
@@ -57,14 +51,7 @@ def calcular_data_referencia_periodo_anterior(periodo_df):
     Retorna a data de fechamento do período ANTERIOR para usar como saldo_anterior.
     Retorna None para tipos manuais (transitória/encerramento).
     """
-    import calendar
-    if periodo_df.tipo_periodo == 'trimestral':
-        if periodo_df.trimestre == 1:
-            return date(periodo_df.ano - 1, 12, 31)
-        mes_fim = (periodo_df.trimestre - 1) * 3
-        ultimo_dia = calendar.monthrange(periodo_df.ano, mes_fim)[1]
-        return date(periodo_df.ano, mes_fim, ultimo_dia)
-    elif periodo_df.tipo_periodo == 'anual':
+    if periodo_df.tipo_periodo == 'anual':
         return date(periodo_df.ano - 1, 12, 31)
     return None
 
