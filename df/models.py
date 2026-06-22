@@ -4,6 +4,32 @@ from usuarios.models import Empresa, Usuario
 
 
 # =========================
+# GESTORAS (escopo por empresa)
+# =========================
+class Gestora(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="gestoras",
+        db_index=True,
+    )
+    nome = models.CharField(max_length=255)
+    cnpj = models.CharField(max_length=20)
+
+    class Meta:
+        verbose_name = "Gestora"
+        verbose_name_plural = "Gestoras"
+        ordering = ["nome"]
+        constraints = [
+            models.UniqueConstraint(fields=["empresa", "nome"], name="uq_gestora_empresa_nome"),
+            models.UniqueConstraint(fields=["empresa", "cnpj"], name="uq_gestora_empresa_cnpj"),
+        ]
+
+    def __str__(self):
+        return self.nome
+
+
+# =========================
 # FUNDOS (escopo por empresa)
 # =========================
 class Fundo(models.Model):
@@ -13,6 +39,13 @@ class Fundo(models.Model):
         related_name="fundos",
         db_index=True,
         help_text="Empresa (tenant) proprietária deste fundo."
+    )
+    gestora = models.ForeignKey(
+        Gestora,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="fundos",
     )
     nome = models.CharField(max_length=255)
     cnpj = models.CharField(max_length=20)

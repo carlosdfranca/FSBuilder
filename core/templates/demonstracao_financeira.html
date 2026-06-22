@@ -77,16 +77,30 @@
     </div>
   </div>
 
-  <!-- Seletor de fundo -->
+  <!-- Seletor de gestora + fundo -->
   <div class="card border-0 shadow-sm mb-4">
     <div class="card-body py-3 px-4">
+      {% if gestoras %}
+      <div class="mb-3">
+        <label class="form-label small fw-semibold text-muted mb-2" for="select-gestora">
+          <i class="bi bi-building me-1"></i>Gestora
+        </label>
+        <select class="form-select" id="select-gestora">
+          <option value="">Todas as gestoras</option>
+          {% for g in gestoras %}
+            <option value="{{ g.id }}">{{ g.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
       <label class="form-label small fw-semibold text-muted mb-2" for="select-fundo">
         <i class="bi bi-briefcase me-1"></i>Fundo
       </label>
       <select class="form-select" id="select-fundo">
-        <option selected disabled>Selecione um fundo...</option>
+        <option selected disabled value="">Selecione um fundo...</option>
         {% for fundo in fundos %}
-          <option value="{{ fundo.id }}">{{ fundo.nome }}</option>
+          <option value="{{ fundo.id }}"
+                  data-gestora-id="{{ fundo.gestora_id|default:'' }}">{{ fundo.nome }}</option>
         {% endfor %}
       </select>
     </div>
@@ -356,12 +370,37 @@
 <script>
   document.addEventListener("DOMContentLoaded", function () {
     const selectFundo   = document.getElementById("select-fundo");
+    const selectGestora = document.getElementById("select-gestora");
     const dfContainer   = document.getElementById("df-container");
     let periodosPorFundo = {{ fundos_periodos|safe }};
     const prazosPorFundo = {{ fundos_prazos|safe }};
     const canEnviarBalancete = {{ can_enviar_balancete|yesno:"true,false" }};
     let fundoAtual  = null;
     let dtPeriodos  = null;   // instância DataTables da tabela de períodos
+
+    // ── Filtro de gestora ─────────────────────────────────────
+    function filtrarFundosPorGestora(gestoraId) {
+      const options = selectFundo.querySelectorAll('option[value]');
+      options.forEach(function(opt) {
+        if (!opt.value) return;
+        const match = !gestoraId || opt.dataset.gestoraId === gestoraId;
+        opt.hidden = !match;
+        opt.disabled = !match;
+      });
+      // Se o fundo atual ficou oculto, resetar
+      const currentOpt = selectFundo.querySelector(`option[value="${selectFundo.value}"]`);
+      if (currentOpt && currentOpt.hidden) {
+        selectFundo.value = '';
+        dfContainer.style.display = 'none';
+        fundoAtual = null;
+      }
+    }
+
+    if (selectGestora) {
+      selectGestora.addEventListener('change', function() {
+        filtrarFundosPorGestora(this.value);
+      });
+    }
 
     // Pré-selecionar fundo via ?fundo=<id> (ex: retorno do DF Final)
     const params = new URLSearchParams(window.location.search);

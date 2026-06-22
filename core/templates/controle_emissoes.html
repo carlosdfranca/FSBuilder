@@ -191,6 +191,75 @@
 
   </div>
 
+  <!-- [C] Filtros -->
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-3 px-4">
+      <div class="row g-3 align-items-end">
+
+        <!-- Gestora -->
+        {% if gestoras_lista %}
+        <div class="col-12 col-sm-6 col-lg-4">
+          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-gestora">
+            <i class="bi bi-building me-1"></i>Gestora
+          </label>
+          <select id="filtro-gestora" class="form-select form-select-sm">
+            <option value="">Todas as gestoras</option>
+            {% for g in gestoras_lista %}
+            <option value="{{ g.id }}" {% if gestora_filtro == g.id|stringformat:'s' %}selected{% endif %}>
+              {{ g.nome }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+
+        <!-- Fundo -->
+        <div class="col-12 col-sm-6 col-lg-{% if gestoras_lista %}3{% else %}5{% endif %}">
+          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-fundo">
+            <i class="bi bi-briefcase me-1"></i>Fundo
+          </label>
+          <select id="filtro-fundo" class="form-select form-select-sm">
+            <option value="">Todos os fundos</option>
+            {% for f in fundos_lista %}
+            <option value="{{ f.id }}" {% if fundo_filtro == f.id|stringformat:'s' %}selected{% endif %}>
+              {{ f.nome }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Ano -->
+        <div class="col-6 col-sm-3 col-lg-2">
+          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-ano">
+            <i class="bi bi-calendar3 me-1"></i>Ano
+          </label>
+          <select id="filtro-ano" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            {% for ano in anos_disponiveis %}
+            <option value="{{ ano }}" {% if ano_filtro == ano|stringformat:'s' %}selected{% endif %}>
+              {{ ano }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Ações + contador -->
+        <div class="col-6 col-sm-3 col-lg-{% if gestoras_lista %}3{% else %}5{% endif %} d-flex align-items-center gap-3 justify-content-end">
+          {% if ano_filtro or fundo_filtro or gestora_filtro %}
+          <a href="?{% if status_filtro %}status={{ status_filtro }}{% endif %}"
+             class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-x-circle me-1"></i>Limpar
+          </a>
+          {% endif %}
+          <span class="text-muted small">
+            <strong>{{ periodos|length }}</strong> período{{ periodos|length|pluralize }}
+          </span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <!-- [D] Tabela de períodos -->
   <div class="card border-0 shadow-sm mb-4">
     <div class="card-body p-0">
@@ -200,6 +269,7 @@
             <thead class="table-light">
               <tr>
                 <th class="ps-3">Fundo</th>
+                <th>Gestora</th>
                 <th>Período</th>
                 <th>Tipo</th>
                 <th>Vencimento</th>
@@ -212,6 +282,13 @@
               {% for item in periodos %}
               <tr class="{% if item.urgencia == 'vencida' %}table-danger{% elif item.urgencia == 'urgente' %}table-warning{% elif item.urgencia == 'finalizada' %}table-success{% elif item.urgencia == 'aviso' %}row-aviso{% endif %}">
                 <td class="ps-3 fw-semibold">{{ item.periodo.fundo.nome }}</td>
+                <td class="text-muted small">
+                  {% if item.periodo.fundo.gestora %}
+                    {{ item.periodo.fundo.gestora.nome }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
                 <td>{{ item.periodo.nome_exibicao }}</td>
                 <td>
                   {% if item.periodo.tipo_periodo == 'anual' %}
@@ -272,7 +349,7 @@
 
       {% else %}
         <div class="p-4">
-          {% if status_filtro or ano_filtro %}
+          {% if status_filtro or ano_filtro or fundo_filtro or gestora_filtro %}
             <div class="empty-state">
               <i class="bi bi-funnel empty-state__icon"></i>
               <p class="empty-state__title">Nenhum período encontrado</p>
@@ -303,34 +380,38 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-// Aplica filtros de fundo e ano preservando o status ativo
+// Aplica filtros de gestora, fundo e ano preservando o status ativo
 function aplicarFiltros() {
-  const fundo = document.getElementById('filtro-fundo').value;
-  const ano   = document.getElementById('filtro-ano').value;
-  const params = new URLSearchParams();
-  const status = '{{ status_filtro }}';
-  if (status) params.set('status', status);
-  if (fundo)  params.set('fundo', fundo);
-  if (ano)    params.set('ano', ano);
+  const gestora = document.getElementById('filtro-gestora') ? document.getElementById('filtro-gestora').value : '';
+  const fundo   = document.getElementById('filtro-fundo').value;
+  const ano     = document.getElementById('filtro-ano').value;
+  const params  = new URLSearchParams();
+  const status  = '{{ status_filtro }}';
+  if (status)  params.set('status', status);
+  if (gestora) params.set('gestora', gestora);
+  if (fundo)   params.set('fundo', fundo);
+  if (ano)     params.set('ano', ano);
   window.location.href = '?' + params.toString();
 }
 
 document.addEventListener("DOMContentLoaded", function () {
 
   // Bind selects
-  const selFundo = document.getElementById('filtro-fundo');
-  const selAno   = document.getElementById('filtro-ano');
-  if (selFundo) selFundo.addEventListener('change', aplicarFiltros);
-  if (selAno)   selAno.addEventListener('change', aplicarFiltros);
+  const selGestora = document.getElementById('filtro-gestora');
+  const selFundo   = document.getElementById('filtro-fundo');
+  const selAno     = document.getElementById('filtro-ano');
+  if (selGestora) selGestora.addEventListener('change', aplicarFiltros);
+  if (selFundo)   selFundo.addEventListener('change', aplicarFiltros);
+  if (selAno)     selAno.addEventListener('change', aplicarFiltros);
 
-  // DataTables
+  // DataTables — coluna Gestora adicionada na posição 1, Vencimento em 4, Ações em 7
   const tabela = document.getElementById('tabela-periodos');
   if (tabela) {
     $(tabela).DataTable({
       language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json' },
       pageLength: 25,
-      order: [[3, 'asc']],
-      columnDefs: [{ orderable: false, targets: [6] }]
+      order: [[4, 'asc']],
+      columnDefs: [{ orderable: false, targets: [7] }]
     });
   }
 
