@@ -1210,6 +1210,11 @@ nav.navbar {
 /* ================================
    DataTables — dark overrides
 ================================ */
+.dataTables_wrapper .dataTables_length { padding: 0.75rem 0 0.5rem 1.25rem; }
+.dataTables_wrapper .dataTables_filter { padding: 0.75rem 1.25rem 0.5rem 0; }
+.dataTables_wrapper .dataTables_info   { padding: 0.5rem 0 0.85rem 1.25rem; }
+.dataTables_wrapper .dataTables_paginate { padding: 0.5rem 1.25rem 0.85rem 0; }
+
 .dataTables_wrapper .dataTables_paginate .page-item.active .page-link,
 .dataTables_wrapper .dataTables_paginate .page-link.active {
     background-color: var(--accent-primary) !important;
