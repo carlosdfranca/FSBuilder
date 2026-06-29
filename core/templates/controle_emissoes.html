@@ -546,6 +546,25 @@ function _openSd(trigger) {
   _sd.style.top  = (window.innerHeight - r.bottom > sdH + 8) ? (r.bottom + 4) + 'px' : (r.top - sdH - 4) + 'px';
 }
 
+function _calcPrazoHtml(novoStatus, dataVencStr) {
+  if (novoStatus === 'finalizada') {
+    return '<span class="text-success small"><i class="bi bi-check-circle me-1"></i>Entregue</span>';
+  }
+  if (!dataVencStr) return '<span class="text-muted">—</span>';
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const venc = new Date(dataVencStr + 'T00:00:00');
+  const dias = Math.round((venc - hoje) / 86400000);
+  if (novoStatus === 'vencida' || dias < 0) {
+    const atraso = Math.abs(dias);
+    return atraso > 0
+      ? `<span class="badge bg-danger">${atraso} dia${atraso !== 1 ? 's' : ''} atraso</span>`
+      : '<span class="badge bg-danger">Vencida hoje</span>';
+  }
+  if (dias <= 7)  return `<span class="badge bg-danger">${dias} dia${dias !== 1 ? 's' : ''}</span>`;
+  if (dias <= 30) return `<span class="badge bg-warning text-dark">${dias} dias</span>`;
+  return `<span class="text-muted small">${dias} dias</span>`;
+}
+
 function _selectSd(novoStatus) {
   const fd = new FormData();
   fd.append('status', novoStatus);
@@ -566,6 +585,18 @@ function _selectSd(novoStatus) {
         badge.style.cursor = 'pointer';
         badge.dataset.status = novoStatus;
         badge.innerHTML = c.label + ' <i class="bi bi-chevron-down" style="font-size:.6em;opacity:.75;vertical-align:middle;"></i>';
+
+        // Atualiza célula Prazo e cor da linha sem reload
+        const row = badge.closest('tr');
+        if (row) {
+          const tds = row.querySelectorAll('td');
+          const dataVenc = tds[4] ? tds[4].dataset.order : null; // formato YYYY-MM-DD
+          if (tds[5]) tds[5].innerHTML = _calcPrazoHtml(novoStatus, dataVenc);
+
+          row.classList.remove('table-danger', 'table-warning', 'table-success', 'row-aviso');
+          if (novoStatus === 'finalizada') row.classList.add('table-success');
+          else if (novoStatus === 'vencida') row.classList.add('table-danger');
+        }
       }
     }
     _closeSd();
