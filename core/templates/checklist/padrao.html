@@ -1,0 +1,343 @@
+{% extends 'base/base.html' %}
+
+{% block title %}Checklist de Documentos Padrão{% endblock %}
+
+{% block conteudo %}
+{% include 'base/navbar.html' %}
+
+<div class="container py-5">
+
+  <div class="page-header mb-4">
+    <div class="page-header__titles">
+      <h1 class="page-header__title">
+        <i class="bi bi-card-checklist me-2"></i>Checklist de Documentos Padrão
+      </h1>
+      <p class="page-header__subtitle text-muted">
+        Estes itens são copiados automaticamente para cada novo período de DF criado.
+      </p>
+    </div>
+  </div>
+
+  <div id="feedback-area"></div>
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">Itens do Checklist</h5>
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-secondary btn-sm" id="btn-popular-existentes"
+                  title="Aplicar o checklist atual a todos os períodos que ainda não têm itens">
+            <i class="bi bi-arrow-repeat me-1"></i>Aplicar a períodos existentes
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="abrirAdicionarItemPadrao()">
+            <i class="bi bi-plus-circle me-1"></i>Adicionar Item
+          </button>
+        </div>
+      </div>
+
+      {% if itens %}
+        <div id="lista-itens-padrao">
+          {% for item in itens %}
+          <div class="d-flex align-items-center gap-3 py-2 border-bottom checklist-padrao-row"
+               data-item-id="{{ item.id }}">
+            <span class="badge bg-secondary" style="min-width:2rem;">{{ item.ordem }}</span>
+            <span class="flex-grow-1" id="item-texto-{{ item.id }}">{{ item.texto }}</span>
+            <button class="btn btn-outline-secondary btn-sm"
+                    onclick="abrirEditarItemPadrao({{ item.id }}, '{{ item.texto|escapejs }}')">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-outline-danger btn-sm"
+                    onclick="abrirExcluirItemPadrao({{ item.id }}, '{{ item.texto|escapejs }}')">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state text-center py-4" id="lista-itens-padrao">
+          <i class="bi bi-card-checklist" style="font-size:2.5rem;opacity:.35;"></i>
+          <p class="mt-2 text-muted">Nenhum item cadastrado. Adicione o primeiro item.</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal: Adicionar Item -->
+<div class="modal fade" id="modalAdicionarItemPadrao" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Adicionar Item</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label for="add-item-texto" class="form-label">Descrição do documento</label>
+        <input type="text" id="add-item-texto" class="form-control" maxlength="255"
+               placeholder="Ex: Balancete do mês de referência">
+        <div id="add-item-error" class="text-danger mt-1 small" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btn-submit-adicionar">
+          <span class="spinner-border spinner-border-sm me-1" style="display:none;" id="spinner-add"></span>
+          Adicionar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar Item -->
+<div class="modal fade" id="modalEditarItemPadrao" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Editar Item</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit-item-id">
+        <label for="edit-item-texto" class="form-label">Descrição do documento</label>
+        <input type="text" id="edit-item-texto" class="form-control" maxlength="255">
+        <div id="edit-item-error" class="text-danger mt-1 small" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btn-submit-editar">
+          <span class="spinner-border spinner-border-sm me-1" style="display:none;" id="spinner-edit"></span>
+          Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Excluir Item -->
+<div class="modal fade" id="modalExcluirItemPadrao" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title text-danger"><i class="bi bi-trash me-2"></i>Excluir Item</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="excluir-item-id">
+        <p>Deseja excluir o item: <strong id="excluir-item-texto"></strong>?</p>
+        <p class="text-muted small">Esta ação não afeta checklists de períodos já criados.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="btn-submit-excluir">
+          <span class="spinner-border spinner-border-sm me-1" style="display:none;" id="spinner-excluir"></span>
+          Excluir
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const csrfToken = '{{ csrf_token }}';
+
+  function mkFormData(extra) {
+    const fd = new FormData();
+    fd.append('csrfmiddlewaretoken', csrfToken);
+    if (extra) Object.entries(extra).forEach(([k, v]) => fd.append(k, v));
+    return fd;
+  }
+
+  function ajaxHeaders() {
+    return { 'X-Requested-With': 'XMLHttpRequest' };
+  }
+
+  function showFeedback(msg, type) {
+    const area = document.getElementById('feedback-area');
+    area.innerHTML = `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
+      ${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
+  }
+
+  function getModal(id) {
+    return bootstrap.Modal.getOrCreateInstance(document.getElementById(id));
+  }
+
+  // ── Adicionar ──────────────────────────────────────
+  window.abrirAdicionarItemPadrao = function () {
+    document.getElementById('add-item-texto').value = '';
+    document.getElementById('add-item-error').style.display = 'none';
+    getModal('modalAdicionarItemPadrao').show();
+    setTimeout(() => document.getElementById('add-item-texto').focus(), 300);
+  };
+
+  document.getElementById('btn-submit-adicionar').addEventListener('click', async function () {
+    const texto = document.getElementById('add-item-texto').value.trim();
+    if (!texto) {
+      document.getElementById('add-item-error').textContent = 'Informe o texto do item.';
+      document.getElementById('add-item-error').style.display = '';
+      return;
+    }
+    const btn = this;
+    const spinner = document.getElementById('spinner-add');
+    btn.disabled = true; spinner.style.display = '';
+    document.getElementById('add-item-error').style.display = 'none';
+    try {
+      const resp = await fetch('{% url "adicionar_item_padrao" %}', {
+        method: 'POST', headers: ajaxHeaders(), body: mkFormData({ texto }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        getModal('modalAdicionarItemPadrao').hide();
+        appendItemPadrao(data.item);
+        showFeedback('Item adicionado com sucesso.', 'success');
+      } else {
+        document.getElementById('add-item-error').textContent = data.error || 'Erro ao adicionar.';
+        document.getElementById('add-item-error').style.display = '';
+      }
+    } catch {
+      document.getElementById('add-item-error').textContent = 'Erro de comunicação.';
+      document.getElementById('add-item-error').style.display = '';
+    } finally {
+      btn.disabled = false; spinner.style.display = 'none';
+    }
+  });
+
+  function appendItemPadrao(item) {
+    const lista = document.getElementById('lista-itens-padrao');
+    // Remove empty state se existir
+    const emptyState = lista.querySelector('.empty-state');
+    if (emptyState) lista.innerHTML = '';
+
+    const div = document.createElement('div');
+    div.className = 'd-flex align-items-center gap-3 py-2 border-bottom checklist-padrao-row';
+    div.dataset.itemId = item.id;
+    div.innerHTML = `
+      <span class="badge bg-secondary" style="min-width:2rem;">${item.ordem}</span>
+      <span class="flex-grow-1" id="item-texto-${item.id}">${escapeHtml(item.texto)}</span>
+      <button class="btn btn-outline-secondary btn-sm"
+              onclick="abrirEditarItemPadrao(${item.id}, '${escapeJs(item.texto)}')">
+        <i class="bi bi-pencil"></i>
+      </button>
+      <button class="btn btn-outline-danger btn-sm"
+              onclick="abrirExcluirItemPadrao(${item.id}, '${escapeJs(item.texto)}')">
+        <i class="bi bi-trash"></i>
+      </button>`;
+    lista.appendChild(div);
+  }
+
+  // ── Editar ─────────────────────────────────────────
+  window.abrirEditarItemPadrao = function (id, texto) {
+    document.getElementById('edit-item-id').value = id;
+    document.getElementById('edit-item-texto').value = texto;
+    document.getElementById('edit-item-error').style.display = 'none';
+    getModal('modalEditarItemPadrao').show();
+    setTimeout(() => document.getElementById('edit-item-texto').focus(), 300);
+  };
+
+  document.getElementById('btn-submit-editar').addEventListener('click', async function () {
+    const itemId = document.getElementById('edit-item-id').value;
+    const texto = document.getElementById('edit-item-texto').value.trim();
+    if (!texto) {
+      document.getElementById('edit-item-error').textContent = 'Informe o texto do item.';
+      document.getElementById('edit-item-error').style.display = '';
+      return;
+    }
+    const btn = this;
+    const spinner = document.getElementById('spinner-edit');
+    btn.disabled = true; spinner.style.display = '';
+    document.getElementById('edit-item-error').style.display = 'none';
+    try {
+      const resp = await fetch(`/api/checklist-padrao/${itemId}/editar/`, {
+        method: 'POST', headers: ajaxHeaders(), body: mkFormData({ texto }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        getModal('modalEditarItemPadrao').hide();
+        const span = document.getElementById(`item-texto-${data.item.id}`);
+        if (span) span.textContent = data.item.texto;
+        // Atualiza onclick dos botões da linha
+        const row = document.querySelector(`.checklist-padrao-row[data-item-id="${data.item.id}"]`);
+        if (row) {
+          const btns = row.querySelectorAll('button');
+          btns[0].setAttribute('onclick', `abrirEditarItemPadrao(${data.item.id}, '${escapeJs(data.item.texto)}')`);
+          btns[1].setAttribute('onclick', `abrirExcluirItemPadrao(${data.item.id}, '${escapeJs(data.item.texto)}')`);
+        }
+        showFeedback('Item atualizado com sucesso.', 'success');
+      } else {
+        document.getElementById('edit-item-error').textContent = data.error || 'Erro ao salvar.';
+        document.getElementById('edit-item-error').style.display = '';
+      }
+    } catch {
+      document.getElementById('edit-item-error').textContent = 'Erro de comunicação.';
+      document.getElementById('edit-item-error').style.display = '';
+    } finally {
+      btn.disabled = false; spinner.style.display = 'none';
+    }
+  });
+
+  // ── Excluir ────────────────────────────────────────
+  window.abrirExcluirItemPadrao = function (id, texto) {
+    document.getElementById('excluir-item-id').value = id;
+    document.getElementById('excluir-item-texto').textContent = texto;
+    getModal('modalExcluirItemPadrao').show();
+  };
+
+  document.getElementById('btn-submit-excluir').addEventListener('click', async function () {
+    const itemId = document.getElementById('excluir-item-id').value;
+    const btn = this;
+    const spinner = document.getElementById('spinner-excluir');
+    btn.disabled = true; spinner.style.display = '';
+    try {
+      const resp = await fetch(`/api/checklist-padrao/${itemId}/excluir/`, {
+        method: 'POST', headers: ajaxHeaders(), body: mkFormData(),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        getModal('modalExcluirItemPadrao').hide();
+        const row = document.querySelector(`.checklist-padrao-row[data-item-id="${itemId}"]`);
+        if (row) row.remove();
+        showFeedback('Item excluído com sucesso.', 'success');
+      }
+    } catch {
+      showFeedback('Erro ao excluir o item.', 'danger');
+    } finally {
+      btn.disabled = false; spinner.style.display = 'none';
+    }
+  });
+
+  // ── Popular períodos existentes ────────────────────
+  document.getElementById('btn-popular-existentes').addEventListener('click', async function () {
+    if (!confirm('Aplicar o checklist padrão atual a todos os períodos que ainda não têm itens?')) return;
+    const btn = this;
+    btn.disabled = true;
+    try {
+      const resp = await fetch('{% url "popular_periodos_existentes" %}', {
+        method: 'POST', headers: ajaxHeaders(), body: mkFormData(),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        showFeedback(`Checklist aplicado a ${data.total} período(s) com sucesso.`, 'success');
+      }
+    } catch {
+      showFeedback('Erro ao aplicar checklist.', 'danger');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // ── Utilitários ────────────────────────────────────
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function escapeJs(str) {
+    return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  }
+});
+</script>
+{% endblock %}

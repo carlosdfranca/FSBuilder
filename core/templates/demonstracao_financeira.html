@@ -363,6 +363,39 @@
 </div>
 {% endif %}
 
+<!-- Modal: Checklist de Documentos do Período -->
+<div class="modal fade" id="modalChecklist" tabindex="-1" aria-labelledby="modalChecklistLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalChecklistLabel">
+          <i class="bi bi-card-checklist me-2"></i>
+          <span id="checklist-periodo-nome"></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body" style="min-height:200px;">
+        <div id="checklist-loading" class="text-center py-4">
+          <span class="spinner-border spinner-border-sm me-2"></span>Carregando...
+        </div>
+        <div id="checklist-itens-container" style="display:none;"></div>
+        {% if can_enviar_balancete %}
+        <div id="checklist-add-area" style="display:none;" class="mt-3">
+          <hr>
+          <div class="input-group">
+            <input type="text" id="checklist-novo-texto" class="form-control"
+                   placeholder="Descreva o documento a receber..." maxlength="255">
+            <button class="btn btn-primary" id="btn-adicionar-item-checklist">
+              <i class="bi bi-plus-circle me-1"></i>Adicionar
+            </button>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 
@@ -377,6 +410,7 @@
     const canEnviarBalancete = {{ can_enviar_balancete|yesno:"true,false" }};
     let fundoAtual  = null;
     let dtPeriodos  = null;   // instância DataTables da tabela de períodos
+    let checklistPeriodoId = null;
 
     // ── Filtro de gestora ─────────────────────────────────────
     function filtrarFundosPorGestora(gestoraId) {
@@ -589,6 +623,7 @@
                 <th>Status</th>
                 <th>Vencimento</th>
                 <th>Balancete em</th>
+                <th class="text-center">Documentos</th>
                 <th class="text-center">Ações</th>
               </tr>
             </thead>
@@ -601,8 +636,8 @@
         pageLength: 10,
         order: [[3, "asc"]],
         columnDefs: [
-          { orderable: false, targets: [5] },
-          { searchable: false, targets: [5] },
+          { orderable: false, targets: [5, 6] },
+          { searchable: false, targets: [5, 6] },
         ],
       });
     }
@@ -675,12 +710,28 @@
            </button>`
         : "";
 
+      const clSum = p.checklist_summary || {total: 0, recebidos: 0};
+      let clBadgeCls = 'bg-secondary';
+      if (clSum.total > 0) {
+        clBadgeCls = clSum.recebidos === clSum.total ? 'bg-success'
+                   : clSum.recebidos > 0             ? 'bg-warning text-dark'
+                   :                                   'bg-danger';
+      }
+      const docBtn = `<button class="btn btn-sm btn-outline-secondary"
+                               data-checklist-pid="${p.id}"
+                               title="Documentos do checklist"
+                               onclick="abrirModalChecklist(${p.id}, '${escapeHtml(p.nome)}')">
+        <i class="bi bi-card-checklist"></i>
+        <span class="badge ${clBadgeCls} ms-1">${clSum.recebidos}/${clSum.total}</span>
+      </button>`;
+
       return `<tr class="${rowClass}">
         <td class="fw-semibold">${escapeHtml(p.nome)}</td>
         <td>${tipoBadge}</td>
         <td>${statusBadge}</td>
         <td data-order="${p.data_vencimento || ''}">${vencimentoCell}</td>
         <td data-order="${p.data_referencia || ''}">${dataRef}</td>
+        <td class="text-center">${docBtn}</td>
         <td class="text-center" style="white-space:nowrap;">${verBtn} ${importBtn}</td>
       </tr>`;
     }
@@ -695,6 +746,241 @@
         .replace(/&/g, "&amp;").replace(/</g, "&lt;")
         .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
+    }
+
+    function escapeJs(str) {
+      return String(str).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    }
+
+    function mkFormData(extra) {
+      const fd = new FormData();
+      fd.append("csrfmiddlewaretoken", "{{ csrf_token }}");
+      if (extra) Object.entries(extra).forEach(([k, v]) => fd.append(k, v));
+      return fd;
+    }
+
+    // ── Checklist Modal ───────────────────────────────────────
+    window.abrirModalChecklist = function (periodoId, periodoNome) {
+      checklistPeriodoId = periodoId;
+      document.getElementById("checklist-periodo-nome").textContent = periodoNome;
+      document.getElementById("checklist-loading").style.display = "";
+      document.getElementById("checklist-itens-container").style.display = "none";
+      const addArea = document.getElementById("checklist-add-area");
+      if (addArea) addArea.style.display = "none";
+
+      bootstrap.Modal.getOrCreateInstance(document.getElementById("modalChecklist")).show();
+
+      fetch(`/api/periodo/${periodoId}/checklist/`, {
+        headers: { "X-Requested-With": "XMLHttpRequest" }
+      })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById("checklist-loading").style.display = "none";
+        renderChecklistItens(data.items, data.summary);
+        document.getElementById("checklist-itens-container").style.display = "";
+        if (addArea) addArea.style.display = "";
+        const novoTexto = document.getElementById("checklist-novo-texto");
+        if (novoTexto) novoTexto.value = "";
+      })
+      .catch(() => {
+        document.getElementById("checklist-loading").innerHTML =
+          '<span class="text-danger">Erro ao carregar checklist.</span>';
+      });
+    };
+
+    function renderChecklistItens(items, summary) {
+      const container = document.getElementById("checklist-itens-container");
+      if (!items.length) {
+        container.innerHTML = '<p class="text-muted text-center py-3">Nenhum documento no checklist deste período.</p>';
+        return;
+      }
+      const resumo = `<p class="text-muted small mb-2">${summary.recebidos} de ${summary.total} documento(s) recebido(s)</p>`;
+      const linhas = items.map(item => {
+        const riscado = item.recebido ? 'text-decoration-line-through text-muted' : '';
+        const checked = item.recebido ? 'checked' : '';
+        const checkbox = canEnviarBalancete
+          ? `<input type="checkbox" class="form-check-input flex-shrink-0" ${checked}
+                    onchange="toggleItemChecklist(${item.id}, this)">`
+          : `<input type="checkbox" class="form-check-input flex-shrink-0" ${checked} disabled>`;
+        const editBtn = canEnviarBalancete
+          ? `<button class="btn btn-outline-secondary btn-sm flex-shrink-0"
+                     onclick="iniciarEdicaoItemChecklist(${item.id}, '${escapeJs(item.texto)}')" title="Editar">
+               <i class="bi bi-pencil"></i>
+             </button>`
+          : '';
+        const delBtn = canEnviarBalancete
+          ? `<button class="btn btn-outline-danger btn-sm flex-shrink-0"
+                     onclick="excluirItemChecklist(${item.id}, '${escapeJs(item.texto)}')" title="Excluir">
+               <i class="bi bi-trash"></i>
+             </button>`
+          : '';
+        return `<div class="d-flex align-items-center gap-2 py-2 border-bottom checklist-item-row"
+                     data-item-id="${item.id}">
+          ${checkbox}
+          <span class="flex-grow-1 ${riscado}" id="cl-texto-${item.id}">${escapeHtml(item.texto)}</span>
+          ${editBtn}${delBtn}
+        </div>`;
+      }).join('');
+      container.innerHTML = `<div id="checklist-summary-line">${resumo}</div>${linhas}`;
+    }
+
+    window.toggleItemChecklist = function (itemId, el) {
+      el.disabled = true;
+      fetch(`/api/checklist-item/${itemId}/toggle/`, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: mkFormData(),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          el.checked = data.recebido;
+          const span = document.getElementById(`cl-texto-${itemId}`);
+          if (span) {
+            span.className = span.className.replace(/text-decoration-line-through|text-muted/g, '').trim();
+            if (data.recebido) span.className += ' text-decoration-line-through text-muted';
+          }
+          atualizarBadgeChecklist(data.summary);
+        }
+      })
+      .catch(() => { el.checked = !el.checked; })
+      .finally(() => { el.disabled = false; });
+    };
+
+    window.iniciarEdicaoItemChecklist = function (itemId, textoAtual) {
+      const span = document.getElementById(`cl-texto-${itemId}`);
+      if (!span) return;
+      span.outerHTML = `<span class="flex-grow-1 d-flex gap-1 align-items-center" id="cl-edit-wrap-${itemId}">
+        <input type="text" class="form-control form-control-sm" id="cl-input-${itemId}" value="${escapeHtml(textoAtual)}" maxlength="255">
+        <button class="btn btn-success btn-sm" onclick="salvarEdicaoItemChecklist(${itemId})"><i class="bi bi-check-lg"></i></button>
+        <button class="btn btn-secondary btn-sm" onclick="cancelarEdicaoItemChecklist(${itemId}, '${escapeJs(textoAtual)}')"><i class="bi bi-x-lg"></i></button>
+      </span>`;
+      const inp = document.getElementById(`cl-input-${itemId}`);
+      if (inp) { inp.focus(); inp.select(); }
+    };
+
+    window.salvarEdicaoItemChecklist = function (itemId) {
+      const inp = document.getElementById(`cl-input-${itemId}`);
+      if (!inp) return;
+      const texto = inp.value.trim();
+      if (!texto) { inp.classList.add('is-invalid'); return; }
+      fetch(`/api/checklist-item/${itemId}/editar/`, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: mkFormData({ texto }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          const wrap = document.getElementById(`cl-edit-wrap-${itemId}`);
+          if (wrap) {
+            const riscado = data.item.recebido ? 'text-decoration-line-through text-muted' : '';
+            wrap.outerHTML = `<span class="flex-grow-1 ${riscado}" id="cl-texto-${itemId}">${escapeHtml(data.item.texto)}</span>`;
+          }
+        }
+      })
+      .catch(() => {});
+    };
+
+    window.cancelarEdicaoItemChecklist = function (itemId, textoOriginal) {
+      const wrap = document.getElementById(`cl-edit-wrap-${itemId}`);
+      if (wrap) {
+        const span = document.getElementById(`cl-texto-${itemId}`);
+        const riscado = span ? (span.className.includes('line-through') ? 'text-decoration-line-through text-muted' : '') : '';
+        wrap.outerHTML = `<span class="flex-grow-1 ${riscado}" id="cl-texto-${itemId}">${escapeHtml(textoOriginal)}</span>`;
+      }
+    };
+
+    window.excluirItemChecklist = function (itemId, texto) {
+      if (!confirm(`Excluir o item "${texto}"?`)) return;
+      fetch(`/api/checklist-item/${itemId}/excluir/`, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: mkFormData(),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          const row = document.querySelector(`.checklist-item-row[data-item-id="${itemId}"]`);
+          if (row) row.remove();
+          atualizarBadgeChecklist(data.summary);
+        }
+      })
+      .catch(() => {});
+    };
+
+    function atualizarBadgeChecklist(summary) {
+      const btn = document.querySelector(`[data-checklist-pid="${checklistPeriodoId}"]`);
+      if (btn) {
+        const badge = btn.querySelector('.badge');
+        if (badge) {
+          badge.textContent = `${summary.recebidos}/${summary.total}`;
+          badge.className = 'badge ms-1 ' + (
+            summary.total === 0         ? 'bg-secondary' :
+            summary.recebidos === summary.total ? 'bg-success' :
+            summary.recebidos > 0       ? 'bg-warning text-dark' : 'bg-danger'
+          );
+        }
+      }
+      // Atualiza cache em memória para re-renderização futura
+      if (fundoAtual && periodosPorFundo[fundoAtual]) {
+        const p = periodosPorFundo[fundoAtual].find(x => x.id === checklistPeriodoId);
+        if (p) p.checklist_summary = summary;
+      }
+      // Atualiza linha de resumo no modal
+      const summaryLine = document.getElementById('checklist-summary-line');
+      if (summaryLine) {
+        summaryLine.innerHTML = `<p class="text-muted small mb-2">${summary.recebidos} de ${summary.total} documento(s) recebido(s)</p>`;
+      }
+    }
+
+    // ── Adicionar item no modal de checklist ──────────────────
+    const btnAdicionarItem = document.getElementById("btn-adicionar-item-checklist");
+    if (btnAdicionarItem) {
+      btnAdicionarItem.addEventListener("click", function () {
+        const novoTexto = document.getElementById("checklist-novo-texto");
+        const texto = novoTexto ? novoTexto.value.trim() : '';
+        if (!texto) { if (novoTexto) novoTexto.classList.add('is-invalid'); return; }
+        if (novoTexto) novoTexto.classList.remove('is-invalid');
+        const btn = this;
+        btn.disabled = true;
+        fetch(`/api/periodo/${checklistPeriodoId}/checklist/adicionar/`, {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          body: mkFormData({ texto }),
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok) {
+            if (novoTexto) novoTexto.value = '';
+            // Adiciona novo item no container
+            const container = document.getElementById("checklist-itens-container");
+            const item = data.item;
+            const novaLinha = document.createElement('div');
+            novaLinha.className = 'd-flex align-items-center gap-2 py-2 border-bottom checklist-item-row';
+            novaLinha.dataset.itemId = item.id;
+            novaLinha.innerHTML = `
+              <input type="checkbox" class="form-check-input flex-shrink-0"
+                     onchange="toggleItemChecklist(${item.id}, this)">
+              <span class="flex-grow-1" id="cl-texto-${item.id}">${escapeHtml(item.texto)}</span>
+              <button class="btn btn-outline-secondary btn-sm flex-shrink-0"
+                      onclick="iniciarEdicaoItemChecklist(${item.id}, '${escapeJs(item.texto)}')">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button class="btn btn-outline-danger btn-sm flex-shrink-0"
+                      onclick="excluirItemChecklist(${item.id}, '${escapeJs(item.texto)}')">
+                <i class="bi bi-trash"></i>
+              </button>`;
+            // Remove empty state se presente
+            const emptyMsg = container.querySelector('p.text-center');
+            if (emptyMsg) emptyMsg.remove();
+            container.appendChild(novaLinha);
+            atualizarBadgeChecklist(data.summary);
+          }
+        })
+        .catch(() => {})
+        .finally(() => { btn.disabled = false; });
+      });
     }
 
     // ── AJAX: Criar Período Manual ──────────────────────────

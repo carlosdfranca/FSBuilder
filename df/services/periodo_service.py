@@ -74,6 +74,8 @@ def gerar_periodos_anuais(fundo, ano_inicial, ano_final=None):
 
         if created:
             periodos_criados.append(periodo)
+            from df.services.checklist_service import criar_checklist_para_periodo
+            criar_checklist_para_periodo(periodo)
 
     return periodos_criados
 
