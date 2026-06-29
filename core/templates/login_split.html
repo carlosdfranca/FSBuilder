@@ -1,0 +1,76 @@
+{% extends 'base/base.html' %}
+
+{% block title %}Acesso{% endblock %}
+
+{% block extra_head %}
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+  }
+
+  .split-portal {
+    display: flex;
+    height: 100vh;
+    width: 100%;
+  }
+
+  .split-portal__pane {
+    flex: 1;
+    position: relative;
+  }
+
+  .split-portal__pane + .split-portal__pane {
+    border-left: 1px solid var(--border-color, #2a2a2a);
+  }
+
+  .split-portal__iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+  }
+
+  @media (max-width: 768px) {
+    .split-portal {
+      flex-direction: column;
+      height: auto;
+      overflow: auto;
+    }
+
+    body {
+      overflow: auto;
+    }
+
+    .split-portal__pane {
+      height: 100vh;
+    }
+
+    .split-portal__pane + .split-portal__pane {
+      border-left: none;
+      border-top: 1px solid var(--border-color, #2a2a2a);
+    }
+  }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+<div class="split-portal">
+  <div class="split-portal__pane">
+    <iframe
+      class="split-portal__iframe"
+      src="/login/?embed=1&next=/portal-redirect/"
+      title="Cinnamon"
+      scrolling="no">
+    </iframe>
+  </div>
+  <div class="split-portal__pane">
+    <iframe
+      class="split-portal__iframe"
+      src="https://fidc-gestao.fsbuilder.com.br/login/"
+      title="FIDC Gestão"
+      scrolling="no">
+    </iframe>
+  </div>
+</div>
+{% endblock %}

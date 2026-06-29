@@ -4,6 +4,15 @@ from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
+
+
+def login_split(request):
+    return render(request, 'login_split.html')
+
+
+@login_required
+def portal_redirect(request):
+    return render(request, 'portal_redirect.html')
 from datetime import date
 import json
 

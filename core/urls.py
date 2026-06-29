@@ -1,11 +1,16 @@
 from django.urls import path, include
 from django.contrib.auth import views as auth_views
+from django.views.decorators.clickjacking import xframe_options_exempt
 from .views import *
 from usuarios.views import trocar_empresa_ativa
 
 urlpatterns = [
+    # Portal split login
+    path('portal/', login_split, name='login_split'),
+    path('portal-redirect/', xframe_options_exempt(portal_redirect), name='portal_redirect'),
+
     # User Views
-    path('login/', auth_views.LoginView.as_view(template_name='login.html'), name='login'),
+    path('login/', xframe_options_exempt(auth_views.LoginView.as_view(template_name='login.html')), name='login'),
     path('logout/', auth_views.LogoutView.as_view(next_page='login'), name='logout'),
     path('perfil/', editar_perfil, name='editar_perfil'),
     path('trocar-empresa/', trocar_empresa_ativa, name='trocar_empresa_ativa'),

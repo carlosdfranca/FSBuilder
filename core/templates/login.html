@@ -4,8 +4,16 @@
 
 {% block title %}Login{% endblock %}
 
+{% block extra_head %}
+{% if request.GET.embed %}
+<style>
+  .login-panel--brand { display: none !important; }
+</style>
+{% endif %}
+{% endblock %}
+
 {% block conteudo %}
-<div class="login-page">
+<div class="login-page{% if request.GET.embed %} login-page--embed{% endif %}">
 
   <!-- Painel esquerdo: branding -->
   <div class="login-panel login-panel--brand">
