@@ -48,6 +48,85 @@
     background-color: var(--accent-primary);
     border-color: var(--accent-primary);
   }
+
+  /* ── Checklist Modal ──────────────────────────────────── */
+  #modalChecklist .modal-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: .5rem;
+    padding-bottom: 1rem;
+  }
+  .checklist-modal-title-icon {
+    font-size: 1.1rem;
+    color: var(--accent-primary);
+    opacity: .85;
+  }
+  .checklist-progress-track {
+    height: 5px;
+    border-radius: 10px;
+    background: var(--surface-3);
+    overflow: hidden;
+  }
+  .checklist-progress-fill {
+    border-radius: 10px;
+    transition: width .5s ease, background-color .3s;
+  }
+  .checklist-item-row {
+    display: flex;
+    align-items: center;
+    gap: .875rem;
+    padding: .875rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    border-left: 3px solid transparent;
+    transition: background .12s, border-left-color .25s;
+  }
+  .checklist-item-row:last-child { border-bottom: 0; }
+  .checklist-item-row:hover { background: var(--surface-2); }
+  .checklist-item-row.is-received { border-left-color: #22c55e; }
+  .checklist-cb { cursor: pointer; }
+  .checklist-item-text {
+    font-size: .9375rem;
+    transition: color .2s;
+  }
+  .checklist-item-text.is-done {
+    text-decoration: line-through;
+    color: var(--text-muted);
+  }
+  .checklist-item-actions { display: flex; gap: .25rem; flex-shrink: 0; }
+  .btn-icon-action {
+    width: 30px; height: 30px; padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted);
+    cursor: pointer; font-size: .8rem;
+    transition: all .15s;
+  }
+  .btn-icon-action:hover {
+    background: var(--surface-3);
+    color: var(--text-primary);
+  }
+  .btn-icon-action--danger:hover {
+    border-color: #ef4444;
+    color: #ef4444;
+    background: rgba(239,68,68,.08);
+  }
+  .checklist-add-area {
+    border-top: 1px solid var(--border-color);
+    padding: 1rem 1.5rem 1.25rem;
+  }
+  .checklist-empty {
+    text-align: center;
+    padding: 3rem 1.5rem 2.5rem;
+    color: var(--text-muted);
+  }
+  .checklist-empty i {
+    font-size: 2.5rem;
+    opacity: .2;
+    display: block;
+    margin-bottom: .625rem;
+  }
 </style>
 {% endblock %}
 
@@ -368,20 +447,32 @@
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="modalChecklistLabel">
-          <i class="bi bi-card-checklist me-2"></i>
-          <span id="checklist-periodo-nome"></span>
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        <div class="d-flex align-items-center justify-content-between w-100">
+          <h5 class="modal-title d-flex align-items-center gap-2" id="modalChecklistLabel">
+            <i class="bi bi-card-checklist checklist-modal-title-icon"></i>
+            <span id="checklist-periodo-nome" class="fw-semibold"></span>
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div id="checklist-progress-section" style="display:none;" class="w-100">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="text-muted small" id="checklist-summary-text"></span>
+            <span class="small fw-semibold" id="checklist-pct-text" style="color:var(--accent-primary);"></span>
+          </div>
+          <div class="checklist-progress-track">
+            <div class="checklist-progress-fill" id="checklist-progress-bar"
+                 role="progressbar" style="height:100%;width:0%;"
+                 aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+          </div>
+        </div>
       </div>
-      <div class="modal-body" style="min-height:200px;">
-        <div id="checklist-loading" class="text-center py-4">
+      <div class="modal-body p-0" style="min-height:200px;">
+        <div id="checklist-loading" class="text-center py-4 px-4">
           <span class="spinner-border spinner-border-sm me-2"></span>Carregando...
         </div>
         <div id="checklist-itens-container" style="display:none;"></div>
         {% if can_enviar_balancete %}
-        <div id="checklist-add-area" style="display:none;" class="mt-3">
-          <hr>
+        <div id="checklist-add-area" style="display:none;" class="checklist-add-area">
           <div class="input-group">
             <input type="text" id="checklist-novo-texto" class="form-control"
                    placeholder="Descreva o documento a receber..." maxlength="255">
@@ -765,6 +856,8 @@
       document.getElementById("checklist-periodo-nome").textContent = periodoNome;
       document.getElementById("checklist-loading").style.display = "";
       document.getElementById("checklist-itens-container").style.display = "none";
+      const progressSection = document.getElementById("checklist-progress-section");
+      if (progressSection) progressSection.style.display = "none";
       const addArea = document.getElementById("checklist-add-area");
       if (addArea) addArea.style.display = "none";
 
@@ -790,38 +883,43 @@
 
     function renderChecklistItens(items, summary) {
       const container = document.getElementById("checklist-itens-container");
+      atualizarProgressBar(summary);
       if (!items.length) {
-        container.innerHTML = '<p class="text-muted text-center py-3">Nenhum documento no checklist deste período.</p>';
+        container.innerHTML = `
+          <div class="checklist-empty">
+            <i class="bi bi-clipboard-check"></i>
+            <p class="mb-0">Nenhum documento no checklist deste período.</p>
+          </div>`;
         return;
       }
-      const resumo = `<p class="text-muted small mb-2">${summary.recebidos} de ${summary.total} documento(s) recebido(s)</p>`;
       const linhas = items.map(item => {
-        const riscado = item.recebido ? 'text-decoration-line-through text-muted' : '';
-        const checked = item.recebido ? 'checked' : '';
+        const isRecebido = item.recebido;
+        const checked = isRecebido ? 'checked' : '';
+        const rowCls = isRecebido ? 'checklist-item-row is-received' : 'checklist-item-row';
+        const textCls = isRecebido ? 'checklist-item-text flex-grow-1 is-done' : 'checklist-item-text flex-grow-1';
         const checkbox = canEnviarBalancete
-          ? `<input type="checkbox" class="form-check-input flex-shrink-0" ${checked}
+          ? `<input type="checkbox" class="form-check-input checklist-cb flex-shrink-0" ${checked}
                     onchange="toggleItemChecklist(${item.id}, this)">`
-          : `<input type="checkbox" class="form-check-input flex-shrink-0" ${checked} disabled>`;
+          : `<input type="checkbox" class="form-check-input checklist-cb flex-shrink-0" ${checked} disabled>`;
         const editBtn = canEnviarBalancete
-          ? `<button class="btn btn-outline-secondary btn-sm flex-shrink-0"
+          ? `<button class="btn-icon-action"
                      onclick="iniciarEdicaoItemChecklist(${item.id}, '${escapeJs(item.texto)}')" title="Editar">
                <i class="bi bi-pencil"></i>
              </button>`
           : '';
         const delBtn = canEnviarBalancete
-          ? `<button class="btn btn-outline-danger btn-sm flex-shrink-0"
+          ? `<button class="btn-icon-action btn-icon-action--danger"
                      onclick="excluirItemChecklist(${item.id}, '${escapeJs(item.texto)}')" title="Excluir">
                <i class="bi bi-trash"></i>
              </button>`
           : '';
-        return `<div class="d-flex align-items-center gap-2 py-2 border-bottom checklist-item-row"
-                     data-item-id="${item.id}">
+        return `<div class="${rowCls}" data-item-id="${item.id}">
           ${checkbox}
-          <span class="flex-grow-1 ${riscado}" id="cl-texto-${item.id}">${escapeHtml(item.texto)}</span>
-          ${editBtn}${delBtn}
+          <span class="${textCls}" id="cl-texto-${item.id}">${escapeHtml(item.texto)}</span>
+          <div class="checklist-item-actions">${editBtn}${delBtn}</div>
         </div>`;
       }).join('');
-      container.innerHTML = `<div id="checklist-summary-line">${resumo}</div>${linhas}`;
+      container.innerHTML = linhas;
     }
 
     window.toggleItemChecklist = function (itemId, el) {
@@ -835,11 +933,10 @@
       .then(data => {
         if (data.ok) {
           el.checked = data.recebido;
+          const row = document.querySelector(`.checklist-item-row[data-item-id="${itemId}"]`);
+          if (row) row.classList.toggle('is-received', data.recebido);
           const span = document.getElementById(`cl-texto-${itemId}`);
-          if (span) {
-            span.className = span.className.replace(/text-decoration-line-through|text-muted/g, '').trim();
-            if (data.recebido) span.className += ' text-decoration-line-through text-muted';
-          }
+          if (span) span.classList.toggle('is-done', data.recebido);
           atualizarBadgeChecklist(data.summary);
         }
       })
@@ -850,6 +947,9 @@
     window.iniciarEdicaoItemChecklist = function (itemId, textoAtual) {
       const span = document.getElementById(`cl-texto-${itemId}`);
       if (!span) return;
+      const row = span.closest('.checklist-item-row');
+      const actionsDiv = row && row.querySelector('.checklist-item-actions');
+      if (actionsDiv) actionsDiv.style.visibility = 'hidden';
       span.outerHTML = `<span class="flex-grow-1 d-flex gap-1 align-items-center" id="cl-edit-wrap-${itemId}">
         <input type="text" class="form-control form-control-sm" id="cl-input-${itemId}" value="${escapeHtml(textoAtual)}" maxlength="255">
         <button class="btn btn-success btn-sm" onclick="salvarEdicaoItemChecklist(${itemId})"><i class="bi bi-check-lg"></i></button>
@@ -864,6 +964,8 @@
       if (!inp) return;
       const texto = inp.value.trim();
       if (!texto) { inp.classList.add('is-invalid'); return; }
+      const wrap = document.getElementById(`cl-edit-wrap-${itemId}`);
+      const row = wrap ? wrap.closest('.checklist-item-row') : null;
       fetch(`/api/checklist-item/${itemId}/editar/`, {
         method: 'POST',
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -872,10 +974,14 @@
       .then(r => r.json())
       .then(data => {
         if (data.ok) {
-          const wrap = document.getElementById(`cl-edit-wrap-${itemId}`);
-          if (wrap) {
-            const riscado = data.item.recebido ? 'text-decoration-line-through text-muted' : '';
-            wrap.outerHTML = `<span class="flex-grow-1 ${riscado}" id="cl-texto-${itemId}">${escapeHtml(data.item.texto)}</span>`;
+          const wrap2 = document.getElementById(`cl-edit-wrap-${itemId}`);
+          if (wrap2) {
+            const doneClass = data.item.recebido ? 'is-done' : '';
+            wrap2.outerHTML = `<span class="checklist-item-text flex-grow-1 ${doneClass}" id="cl-texto-${itemId}">${escapeHtml(data.item.texto)}</span>`;
+          }
+          if (row) {
+            const actionsDiv = row.querySelector('.checklist-item-actions');
+            if (actionsDiv) actionsDiv.style.visibility = '';
           }
         }
       })
@@ -884,10 +990,14 @@
 
     window.cancelarEdicaoItemChecklist = function (itemId, textoOriginal) {
       const wrap = document.getElementById(`cl-edit-wrap-${itemId}`);
-      if (wrap) {
-        const span = document.getElementById(`cl-texto-${itemId}`);
-        const riscado = span ? (span.className.includes('line-through') ? 'text-decoration-line-through text-muted' : '') : '';
-        wrap.outerHTML = `<span class="flex-grow-1 ${riscado}" id="cl-texto-${itemId}">${escapeHtml(textoOriginal)}</span>`;
+      if (!wrap) return;
+      const row = wrap.closest('.checklist-item-row');
+      const isReceived = row && row.classList.contains('is-received');
+      const doneClass = isReceived ? 'is-done' : '';
+      wrap.outerHTML = `<span class="checklist-item-text flex-grow-1 ${doneClass}" id="cl-texto-${itemId}">${escapeHtml(textoOriginal)}</span>`;
+      if (row) {
+        const actionsDiv = row.querySelector('.checklist-item-actions');
+        if (actionsDiv) actionsDiv.style.visibility = '';
       }
     };
 
@@ -909,6 +1019,24 @@
       .catch(() => {});
     };
 
+    function atualizarProgressBar(summary) {
+      const section = document.getElementById('checklist-progress-section');
+      const bar     = document.getElementById('checklist-progress-bar');
+      const txtSum  = document.getElementById('checklist-summary-text');
+      const txtPct  = document.getElementById('checklist-pct-text');
+      if (!section || !bar) return;
+      if (summary.total === 0) { section.style.display = 'none'; return; }
+      section.style.display = '';
+      const pct = Math.round((summary.recebidos / summary.total) * 100);
+      const cor = pct === 100 ? '#22c55e' : pct > 0 ? '#f59e0b' : '#ef4444';
+      bar.style.width = pct + '%';
+      bar.style.backgroundColor = cor;
+      bar.setAttribute('aria-valuenow', pct);
+      const pl = summary.total !== 1 ? 's' : '';
+      if (txtSum) txtSum.textContent = `${summary.recebidos} de ${summary.total} documento${pl} recebido${pl}`;
+      if (txtPct) txtPct.textContent = pct + '%';
+    }
+
     function atualizarBadgeChecklist(summary) {
       const btn = document.querySelector(`[data-checklist-pid="${checklistPeriodoId}"]`);
       if (btn) {
@@ -916,22 +1044,17 @@
         if (badge) {
           badge.textContent = `${summary.recebidos}/${summary.total}`;
           badge.className = 'badge ms-1 ' + (
-            summary.total === 0         ? 'bg-secondary' :
-            summary.recebidos === summary.total ? 'bg-success' :
-            summary.recebidos > 0       ? 'bg-warning text-dark' : 'bg-danger'
+            summary.total === 0                  ? 'bg-secondary' :
+            summary.recebidos === summary.total  ? 'bg-success' :
+            summary.recebidos > 0                ? 'bg-warning text-dark' : 'bg-danger'
           );
         }
       }
-      // Atualiza cache em memória para re-renderização futura
       if (fundoAtual && periodosPorFundo[fundoAtual]) {
         const p = periodosPorFundo[fundoAtual].find(x => x.id === checklistPeriodoId);
         if (p) p.checklist_summary = summary;
       }
-      // Atualiza linha de resumo no modal
-      const summaryLine = document.getElementById('checklist-summary-line');
-      if (summaryLine) {
-        summaryLine.innerHTML = `<p class="text-muted small mb-2">${summary.recebidos} de ${summary.total} documento(s) recebido(s)</p>`;
-      }
+      atualizarProgressBar(summary);
     }
 
     // ── Adicionar item no modal de checklist ──────────────────
@@ -957,22 +1080,23 @@
             const container = document.getElementById("checklist-itens-container");
             const item = data.item;
             const novaLinha = document.createElement('div');
-            novaLinha.className = 'd-flex align-items-center gap-2 py-2 border-bottom checklist-item-row';
+            novaLinha.className = 'checklist-item-row';
             novaLinha.dataset.itemId = item.id;
             novaLinha.innerHTML = `
-              <input type="checkbox" class="form-check-input flex-shrink-0"
+              <input type="checkbox" class="form-check-input checklist-cb flex-shrink-0"
                      onchange="toggleItemChecklist(${item.id}, this)">
-              <span class="flex-grow-1" id="cl-texto-${item.id}">${escapeHtml(item.texto)}</span>
-              <button class="btn btn-outline-secondary btn-sm flex-shrink-0"
-                      onclick="iniciarEdicaoItemChecklist(${item.id}, '${escapeJs(item.texto)}')">
-                <i class="bi bi-pencil"></i>
-              </button>
-              <button class="btn btn-outline-danger btn-sm flex-shrink-0"
-                      onclick="excluirItemChecklist(${item.id}, '${escapeJs(item.texto)}')">
-                <i class="bi bi-trash"></i>
-              </button>`;
-            // Remove empty state se presente
-            const emptyMsg = container.querySelector('p.text-center');
+              <span class="checklist-item-text flex-grow-1" id="cl-texto-${item.id}">${escapeHtml(item.texto)}</span>
+              <div class="checklist-item-actions">
+                <button class="btn-icon-action"
+                        onclick="iniciarEdicaoItemChecklist(${item.id}, '${escapeJs(item.texto)}')">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn-icon-action btn-icon-action--danger"
+                        onclick="excluirItemChecklist(${item.id}, '${escapeJs(item.texto)}')">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </div>`;
+            const emptyMsg = container.querySelector('.checklist-empty');
             if (emptyMsg) emptyMsg.remove();
             container.appendChild(novaLinha);
             atualizarBadgeChecklist(data.summary);

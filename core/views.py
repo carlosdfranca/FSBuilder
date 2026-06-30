@@ -7,7 +7,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from datetime import date
 import json
 
-from df.models import Fundo, BalanceteItem, HistoricoEmissaoDF, PeriodoDF, Gestora, ChecklistItemPadrao, ChecklistItemPeriodo
+from df.models import Fundo, BalanceteItem, HistoricoEmissaoDF, PeriodoDF, Gestora, ChecklistItemPeriodo
 from usuarios.models import Empresa, Membership
 from usuarios.utils.company_scope import query_por_empresa_ativa
 from usuarios.permissions import (
@@ -1176,92 +1176,6 @@ def _checklist_summary(periodo):
     return {'total': total, 'recebidos': recebidos}
 
 
-@login_required
-@company_can_manage_fundos
-def gerenciar_checklist_padrao(request):
-    empresa = get_empresa_escopo(request)
-    itens = ChecklistItemPadrao.objects.filter(empresa=empresa).order_by('ordem')
-    return render(request, 'checklist/padrao.html', {'itens': itens})
-
-
-@login_required
-@company_can_manage_fundos
-def adicionar_item_padrao(request):
-    if request.method != 'POST':
-        return JsonResponse({'ok': False}, status=405)
-    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
-        return JsonResponse({'ok': False}, status=400)
-
-    empresa = get_empresa_escopo(request)
-    texto = request.POST.get('texto', '').strip()
-    if not texto or len(texto) > 255:
-        return JsonResponse({'ok': False, 'error': 'Texto inválido.'}, status=400)
-
-    from django.db.models import Max
-    max_ordem = ChecklistItemPadrao.objects.filter(empresa=empresa).aggregate(m=Max('ordem'))['m'] or 0
-    item = ChecklistItemPadrao.objects.create(empresa=empresa, texto=texto, ordem=max_ordem + 1)
-    return JsonResponse({'ok': True, 'item': {'id': item.id, 'texto': item.texto, 'ordem': item.ordem}})
-
-
-@login_required
-@company_can_manage_fundos
-def editar_item_padrao(request, item_id):
-    if request.method != 'POST':
-        return JsonResponse({'ok': False}, status=405)
-    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
-        return JsonResponse({'ok': False}, status=400)
-
-    empresa = get_empresa_escopo(request)
-    item = get_object_or_404(ChecklistItemPadrao, id=item_id, empresa=empresa)
-    texto = request.POST.get('texto', '').strip()
-    if not texto or len(texto) > 255:
-        return JsonResponse({'ok': False, 'error': 'Texto inválido.'}, status=400)
-
-    item.texto = texto
-    item.save(update_fields=['texto'])
-    return JsonResponse({'ok': True, 'item': {'id': item.id, 'texto': item.texto, 'ordem': item.ordem}})
-
-
-@login_required
-@company_can_manage_fundos
-def excluir_item_padrao(request, item_id):
-    if request.method != 'POST':
-        return JsonResponse({'ok': False}, status=405)
-    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
-        return JsonResponse({'ok': False}, status=400)
-
-    empresa = get_empresa_escopo(request)
-    item = get_object_or_404(ChecklistItemPadrao, id=item_id, empresa=empresa)
-    item.delete()
-    return JsonResponse({'ok': True})
-
-
-@login_required
-@company_can_manage_fundos
-def popular_periodos_existentes(request):
-    if request.method != 'POST':
-        return JsonResponse({'ok': False}, status=405)
-    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
-        return JsonResponse({'ok': False}, status=400)
-
-    empresa = get_empresa_escopo(request)
-    from df.services.checklist_service import criar_checklist_para_periodo
-    from django.db.models import Count
-
-    periodos_sem_checklist = (
-        PeriodoDF.objects
-        .filter(empresa=empresa)
-        .annotate(n_items=Count('checklist_items'))
-        .filter(n_items=0)
-    )
-
-    total = 0
-    for periodo in periodos_sem_checklist:
-        resultado = criar_checklist_para_periodo(periodo)
-        if resultado:
-            total += 1
-
-    return JsonResponse({'ok': True, 'total': total})
 
 
 @login_required
