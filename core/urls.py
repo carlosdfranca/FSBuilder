@@ -39,13 +39,6 @@ urlpatterns = [
     path('fundos/<int:fundo_id>/periodos/gerar-historico/', gerar_periodos_historicos, name='gerar_periodos_historicos'),
     path('fundos/<int:fundo_id>/periodos/<int:periodo_id>/excluir/', excluir_periodo, name='excluir_periodo'),
 
-    # Checklist Padrão
-    path('checklist-padrao/', gerenciar_checklist_padrao, name='checklist_padrao'),
-    path('api/checklist-padrao/adicionar/', adicionar_item_padrao, name='adicionar_item_padrao'),
-    path('api/checklist-padrao/popular-existentes/', popular_periodos_existentes, name='popular_periodos_existentes'),
-    path('api/checklist-padrao/<int:item_id>/editar/', editar_item_padrao, name='editar_item_padrao'),
-    path('api/checklist-padrao/<int:item_id>/excluir/', excluir_item_padrao, name='excluir_item_padrao'),
-
     # Checklist por Período
     path('api/periodo/<int:periodo_id>/checklist/', api_checklist_periodo, name='api_checklist_periodo'),
     path('api/periodo/<int:periodo_id>/checklist/adicionar/', adicionar_item_checklist, name='adicionar_item_checklist'),
