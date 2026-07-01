@@ -118,11 +118,11 @@
     <!-- Tabela de períodos -->
     <div class="card border-0 shadow-sm mb-4">
       <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
           <h6 class="fw-semibold mb-0">
             <i class="bi bi-calendar-range me-2 text-muted"></i>Períodos
           </h6>
-          <div id="period-actions" class="d-flex gap-2" style="display:none;">
+          <div id="period-actions" class="d-flex flex-column flex-sm-row flex-wrap gap-2" style="display:none;">
             <a id="link-criar-periodo" href="#" class="btn btn-sm btn-outline-secondary">
               <i class="bi bi-gear me-1"></i>Gerenciar períodos
             </a>
@@ -153,11 +153,11 @@
           {% csrf_token %}
           <input type="hidden" name="fundo_id" id="mec-fundo-id" value="">
           <div class="row align-items-end g-3">
-            <div class="col-md-8">
+            <div class="col-12 col-md-8">
               <label class="form-label small fw-semibold text-muted mb-1">Arquivo .xlsx / .xls</label>
               <input type="file" class="form-control" name="arquivo_mec" accept=".xlsx,.xls" required>
             </div>
-            <div class="col-md-4">
+            <div class="col-12 col-md-4">
               <button type="submit" class="btn btn-primary w-100">
                 <i class="bi bi-upload me-2"></i>Enviar MEC
               </button>
@@ -198,7 +198,7 @@
      Modal: Importar Balancete
 ════════════════════════════════════════ -->
 <div class="modal fade" id="modal-importar" tabindex="-1" aria-labelledby="modal-importar-label" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
+  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
     <div class="modal-content">
       <form method="POST" action="{% url 'importar_balancete' %}" enctype="multipart/form-data">
         {% csrf_token %}
@@ -581,7 +581,7 @@
       const rows = periodos.map(p => buildPeriodoRow(p, fundoId)).join("");
       container.innerHTML = `
         <div class="table-responsive">
-          <table id="tabela-periodos" class="table table-ds table-hover align-middle mb-0">
+          <table id="tabela-periodos" class="table table-ds table-hover align-middle mb-0 table-cards-sm">
             <thead class="table-light">
               <tr>
                 <th>Período</th>
@@ -599,6 +599,7 @@
       dtPeriodos = $("#tabela-periodos").DataTable({
         language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json" },
         pageLength: 10,
+        autoWidth: false,
         order: [[3, "asc"]],
         columnDefs: [
           { orderable: false, targets: [5] },
@@ -676,12 +677,12 @@
         : "";
 
       return `<tr class="${rowClass}">
-        <td class="fw-semibold">${escapeHtml(p.nome)}</td>
-        <td>${tipoBadge}</td>
-        <td>${statusBadge}</td>
-        <td data-order="${p.data_vencimento || ''}">${vencimentoCell}</td>
-        <td data-order="${p.data_referencia || ''}">${dataRef}</td>
-        <td class="text-center" style="white-space:nowrap;">${verBtn} ${importBtn}</td>
+        <td class="fw-semibold" data-label="Período">${escapeHtml(p.nome)}</td>
+        <td data-label="Tipo">${tipoBadge}</td>
+        <td data-label="Status">${statusBadge}</td>
+        <td data-order="${p.data_vencimento || ''}" data-label="Vencimento">${vencimentoCell}</td>
+        <td data-order="${p.data_referencia || ''}" data-label="Balancete em">${dataRef}</td>
+        <td class="text-center" style="white-space:nowrap;" data-label="Ações">${verBtn} ${importBtn}</td>
       </tr>`;
     }
 
@@ -788,7 +789,9 @@
     const r = trigger.getBoundingClientRect();
     _sd.style.display = 'block';
     const sdH = _sd.offsetHeight;
-    _sd.style.left = r.left + 'px';
+    const sdW = _sd.offsetWidth;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - sdW - 8));
+    _sd.style.left = left + 'px';
     _sd.style.top  = (window.innerHeight - r.bottom > sdH + 8) ? (r.bottom + 4) + 'px' : (r.top - sdH - 4) + 'px';
   }
 

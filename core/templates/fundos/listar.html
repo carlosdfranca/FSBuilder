@@ -40,7 +40,7 @@
     <div class="tab-pane fade show active" id="tab-fundos" role="tabpanel">
       <div class="card">
         <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center mb-4">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
             <h4 class="mb-0">Fundos de Investimento</h4>
             {% if can_manage_fundos %}
               <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAdicionarFundo">
@@ -51,7 +51,7 @@
 
           {% if fundos %}
             <div class="table-responsive">
-              <table class="table table-striped table-hover align-middle" id="tabela-fundos">
+              <table class="table table-hover align-middle table-cards-sm" id="tabela-fundos">
                 <thead>
                   <tr>
                     <th scope="col" style="width: 26%;">Nome</th>
@@ -60,24 +60,23 @@
                     <th scope="col" style="width: 20%;">DFs Configuradas</th>
                     <th scope="col" style="width: 10%;" class="text-center">Períodos</th>
                     {% if can_manage_fundos %}
-                      <th scope="col" style="width: 4%;" class="text-center">Editar</th>
-                      <th scope="col" style="width: 4%;" class="text-center">Excluir</th>
+                      <th scope="col" style="width: 8%;" class="text-center">Ações</th>
                     {% endif %}
                   </tr>
                 </thead>
                 <tbody>
                   {% for fundo in fundos %}
                     <tr>
-                      <td class="fw-bold">{{ fundo.nome }}</td>
-                      <td>{{ fundo.cnpj }}</td>
-                      <td>
+                      <td class="fw-bold" data-label="Nome">{{ fundo.nome }}</td>
+                      <td data-label="CNPJ">{{ fundo.cnpj }}</td>
+                      <td data-label="Gestora">
                         {% if fundo.gestora %}
                           {{ fundo.gestora.nome }}
                         {% else %}
                           <span class="text-muted">—</span>
                         {% endif %}
                       </td>
-                      <td>
+                      <td data-label="DFs Configuradas">
                         {% with configs=fundo.configuracoes_df.all %}
                           {% if configs %}
                             {% for config in configs %}
@@ -92,19 +91,17 @@
                           {% endif %}
                         {% endwith %}
                       </td>
-                      <td class="text-center">
+                      <td class="text-center" data-label="Períodos">
                         <a href="{% url 'gerenciar_periodos' fundo.id %}" class="btn btn-sm btn-outline-primary" title="Gerenciar períodos de DF">
                           <i class="bi bi-calendar3"></i>
                         </a>
                       </td>
                       {% if can_manage_fundos %}
-                      <td class="text-center">
-                        <a href="#" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalEditarFundo{{ fundo.id }}">
+                      <td class="text-center" data-label="Ações">
+                        <a href="#" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalEditarFundo{{ fundo.id }}" title="Editar">
                           <i class="bi bi-pencil"></i>
                         </a>
-                      </td>
-                      <td class="text-center">
-                        <a href="{% url 'excluir_fundo' fundo.id %}" class="btn btn-sm btn-outline-danger">
+                        <a href="{% url 'excluir_fundo' fundo.id %}" class="btn btn-sm btn-outline-danger" title="Excluir">
                           <i class="bi bi-trash3-fill"></i>
                         </a>
                       </td>
@@ -125,7 +122,7 @@
     <div class="tab-pane fade" id="tab-gestoras" role="tabpanel">
       <div class="card">
         <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center mb-4">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
             <h4 class="mb-0">Gestoras de Fundos</h4>
             {% if can_manage_fundos %}
               <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAdicionarGestora">
@@ -136,32 +133,29 @@
 
           {% if gestoras %}
             <div class="table-responsive">
-              <table class="table table-striped table-hover align-middle" id="tabela-gestoras">
+              <table class="table table-hover align-middle table-cards-sm" id="tabela-gestoras">
                 <thead>
                   <tr>
                     <th scope="col" style="width: 40%;">Nome</th>
                     <th scope="col" style="width: 25%;">CNPJ</th>
                     <th scope="col" style="width: 20%;" class="text-center">Fundos Vinculados</th>
                     {% if can_manage_fundos %}
-                      <th scope="col" style="width: 7%;" class="text-center">Editar</th>
-                      <th scope="col" style="width: 8%;" class="text-center">Excluir</th>
+                      <th scope="col" style="width: 15%;" class="text-center">Ações</th>
                     {% endif %}
                   </tr>
                 </thead>
                 <tbody>
                   {% for gestora in gestoras %}
                     <tr>
-                      <td class="fw-bold">{{ gestora.nome }}</td>
-                      <td>{{ gestora.cnpj }}</td>
-                      <td class="text-center">{{ gestora.fundos.count }}</td>
+                      <td class="fw-bold" data-label="Nome">{{ gestora.nome }}</td>
+                      <td data-label="CNPJ">{{ gestora.cnpj }}</td>
+                      <td class="text-center" data-label="Fundos Vinculados">{{ gestora.fundos.count }}</td>
                       {% if can_manage_fundos %}
-                      <td class="text-center">
-                        <a href="#" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalEditarGestora{{ gestora.id }}">
+                      <td class="text-center" data-label="Ações">
+                        <a href="#" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalEditarGestora{{ gestora.id }}" title="Editar">
                           <i class="bi bi-pencil"></i>
                         </a>
-                      </td>
-                      <td class="text-center">
-                        <a href="{% url 'excluir_gestora' gestora.id %}" class="btn btn-sm btn-outline-danger">
+                        <a href="{% url 'excluir_gestora' gestora.id %}" class="btn btn-sm btn-outline-danger" title="Excluir">
                           <i class="bi bi-trash3-fill"></i>
                         </a>
                       </td>
@@ -187,7 +181,7 @@
      Modal Adicionar Fundo
 ════════════════════════════════════ -->
 <div class="modal fade" id="modalAdicionarFundo" tabindex="-1" aria-labelledby="modalAdicionarFundoLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
+  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
     <div class="modal-content">
       <form method="POST" action="{% url 'adicionar_fundo' %}">
         {% csrf_token %}
@@ -249,7 +243,7 @@
 ════════════════════════════════════ -->
 {% for fundo in fundos %}
 <div class="modal fade" id="modalEditarFundo{{ fundo.id }}" tabindex="-1" aria-labelledby="modalEditarFundoLabel{{ fundo.id }}" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
+  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
     <div class="modal-content">
       <form method="POST" action="{% url 'editar_fundo' fundo.id %}">
         {% csrf_token %}
@@ -393,18 +387,20 @@
     $('#tabela-fundos').DataTable({
       language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json' },
       pageLength: 25,
+      autoWidth: false,
       order: [[0, 'asc']],
       columnDefs: [
-        { orderable: false, targets: [4{% if can_manage_fundos %}, 5, 6{% endif %}] }
+        { orderable: false, targets: [4{% if can_manage_fundos %}, 5{% endif %}] }
       ]
     });
 
     $('#tabela-gestoras').DataTable({
       language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json' },
       pageLength: 25,
+      autoWidth: false,
       order: [[0, 'asc']],
       {% if can_manage_fundos %}
-      columnDefs: [{ orderable: false, targets: [3, 4] }],
+      columnDefs: [{ orderable: false, targets: [3] }],
       {% endif %}
     });
 

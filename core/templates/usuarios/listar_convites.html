@@ -21,7 +21,7 @@
   <div class="card">
     <div class="card-body">
       <!-- Header -->
-      <div class="d-flex justify-content-between align-items-center mb-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div>
           <h4 class="mb-0">Convites de Usuários</h4>
           <small class="text-muted">{{ empresa_nome }}</small>
@@ -77,7 +77,7 @@
       <!-- Tabela -->
       {% if convites %}
       <div class="table-responsive">
-        <table class="table table-hover align-middle">
+        <table class="table table-hover align-middle table-cards-sm">
           <thead>
             <tr>
               {% if is_global and empresa_nome == "Todas as Empresas" %}
@@ -96,11 +96,11 @@
             {% for convite in convites %}
             <tr>
               {% if is_global and empresa_nome == "Todas as Empresas" %}
-              <td>
+              <td data-label="Empresa">
                 <span class="badge-empresa">{{ convite.empresa.nome|truncatechars:25 }}</span>
               </td>
               {% endif %}
-              <td>
+              <td class="table-cards-sm__title" data-label="Email">
                 <div class="d-flex flex-column">
                   <span class="fw-semibold">{{ convite.email }}</span>
                   {% if convite.tentativas_envio > 1 %}
@@ -110,7 +110,7 @@
                   {% endif %}
                 </div>
               </td>
-              <td>
+              <td data-label="Papel">
                 {% if convite.role == 'MASTER' %}
                 <span class="badge bg-dark">MASTER</span>
                 {% elif convite.role == 'ADMIN' %}
@@ -121,7 +121,7 @@
                 <span class="badge bg-info">VIEWER</span>
                 {% endif %}
               </td>
-              <td>
+              <td data-label="Status">
                 {% if convite.status == 'PENDING' %}
                 <span class="status-badge status-badge--pending">
                   <i class="bi bi-clock"></i> Pendente
@@ -140,7 +140,7 @@
                 </span>
                 {% endif %}
               </td>
-              <td>
+              <td data-label="Convidado por">
                 {% if convite.convidado_por %}
                 <span class="text-muted">
                   {{ convite.convidado_por.get_full_name|default:convite.convidado_por.username }}
@@ -149,10 +149,10 @@
                 <em class="text-muted">Sistema</em>
                 {% endif %}
               </td>
-              <td>
+              <td data-label="Criado em">
                 <span class="text-muted">{{ convite.criado_em|date:"d/m/Y H:i" }}</span>
               </td>
-              <td>
+              <td data-label="Expira em">
                 <div class="d-flex flex-column">
                   <span class="text-muted">{{ convite.expira_em|date:"d/m/Y H:i" }}</span>
                   {% if convite.status == 'PENDING' and convite.expira_em|timeuntil %}
@@ -162,7 +162,7 @@
                   {% endif %}
                 </div>
               </td>
-              <td class="text-center">
+              <td class="text-center" data-label="Ações">
                 <div class="d-flex gap-1 justify-content-center">
                   {% if convite.status == 'PENDING' %}
                   <form method="post" action="{% url 'reenviar_convite' convite.id %}" style="display:inline;" 

@@ -50,8 +50,25 @@
     <div class="card-body py-3 px-4">
       <div class="row g-3 align-items-end">
 
+        <!-- Gestora -->
+        {% if gestoras_lista %}
+        <div class="col-12 col-sm-6 col-lg-4">
+          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-gestora">
+            <i class="bi bi-building me-1"></i>Gestora
+          </label>
+          <select id="filtro-gestora" class="form-select form-select-sm">
+            <option value="">Todas as gestoras</option>
+            {% for g in gestoras_lista %}
+            <option value="{{ g.id }}" {% if gestora_filtro == g.id|stringformat:'s' %}selected{% endif %}>
+              {{ g.nome }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+
         <!-- Fundo -->
-        <div class="col-12 col-sm-6 col-lg-5">
+        <div class="col-12 col-sm-6 col-lg-{% if gestoras_lista %}3{% else %}5{% endif %}">
           <label class="form-label small fw-semibold text-muted mb-1" for="filtro-fundo">
             <i class="bi bi-briefcase me-1"></i>Fundo
           </label>
@@ -66,7 +83,7 @@
         </div>
 
         <!-- Ano -->
-        <div class="col-6 col-sm-3 col-lg-2">
+        <div class="col-12 col-sm-3 col-lg-2">
           <label class="form-label small fw-semibold text-muted mb-1" for="filtro-ano">
             <i class="bi bi-calendar3 me-1"></i>Ano
           </label>
@@ -81,8 +98,8 @@
         </div>
 
         <!-- Ações + contador -->
-        <div class="col-6 col-sm-3 col-lg-5 d-flex align-items-center gap-3 justify-content-end">
-          {% if ano_filtro or fundo_filtro %}
+        <div class="col-12 col-sm-3 col-lg-{% if gestoras_lista %}3{% else %}5{% endif %} d-flex align-items-center gap-3 justify-content-between justify-content-sm-end">
+          {% if ano_filtro or fundo_filtro or gestora_filtro %}
           <a href="?{% if status_filtro %}status={{ status_filtro }}{% endif %}"
              class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-x-circle me-1"></i>Limpar
@@ -97,37 +114,8 @@
     </div>
   </div>
 
-  <!-- [E] Gráficos -->
-  {% if metricas.total > 0 %}
-  <div class="row g-4 pb-3">
-
-    <div class="col-md-5">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body">
-          <h6 class="fw-semibold mb-3">Distribuição por Status</h6>
-          <div class="chart-wrap">
-            <canvas id="chartStatus"></canvas>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-md-7">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body">
-          <h6 class="fw-semibold mb-3">Períodos por Ano</h6>
-          <div class="chart-wrap">
-            <canvas id="chartAnos"></canvas>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-  {% endif %}
-
-  <!-- [B] KPI Cards -->
-  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));">
+  <!-- [B] KPI Cards (também funcionam como filtro por status) -->
+  <div class="kpi-grid kpi-grid--compact">
 
     <a href="?{{ filtros_base }}"
        class="kpi-card-link {% if not status_filtro %}kpi-card-link--active{% endif %}">
@@ -191,81 +179,41 @@
 
   </div>
 
-  <!-- [C] Filtros -->
-  <div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-3 px-4">
-      <div class="row g-3 align-items-end">
+  <!-- [E] Gráficos -->
+  {% if metricas.total > 0 %}
+  <div class="row g-4 pb-3">
 
-        <!-- Gestora -->
-        {% if gestoras_lista %}
-        <div class="col-12 col-sm-6 col-lg-4">
-          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-gestora">
-            <i class="bi bi-building me-1"></i>Gestora
-          </label>
-          <select id="filtro-gestora" class="form-select form-select-sm">
-            <option value="">Todas as gestoras</option>
-            {% for g in gestoras_lista %}
-            <option value="{{ g.id }}" {% if gestora_filtro == g.id|stringformat:'s' %}selected{% endif %}>
-              {{ g.nome }}
-            </option>
-            {% endfor %}
-          </select>
+    <div class="col-md-5">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-3">Distribuição por Status</h6>
+          <div class="chart-wrap">
+            <canvas id="chartStatus"></canvas>
+          </div>
         </div>
-        {% endif %}
-
-        <!-- Fundo -->
-        <div class="col-12 col-sm-6 col-lg-{% if gestoras_lista %}3{% else %}5{% endif %}">
-          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-fundo">
-            <i class="bi bi-briefcase me-1"></i>Fundo
-          </label>
-          <select id="filtro-fundo" class="form-select form-select-sm">
-            <option value="">Todos os fundos</option>
-            {% for f in fundos_lista %}
-            <option value="{{ f.id }}" {% if fundo_filtro == f.id|stringformat:'s' %}selected{% endif %}>
-              {{ f.nome }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <!-- Ano -->
-        <div class="col-6 col-sm-3 col-lg-2">
-          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-ano">
-            <i class="bi bi-calendar3 me-1"></i>Ano
-          </label>
-          <select id="filtro-ano" class="form-select form-select-sm">
-            <option value="">Todos</option>
-            {% for ano in anos_disponiveis %}
-            <option value="{{ ano }}" {% if ano_filtro == ano|stringformat:'s' %}selected{% endif %}>
-              {{ ano }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <!-- Ações + contador -->
-        <div class="col-6 col-sm-3 col-lg-{% if gestoras_lista %}3{% else %}5{% endif %} d-flex align-items-center gap-3 justify-content-end">
-          {% if ano_filtro or fundo_filtro or gestora_filtro %}
-          <a href="?{% if status_filtro %}status={{ status_filtro }}{% endif %}"
-             class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-x-circle me-1"></i>Limpar
-          </a>
-          {% endif %}
-          <span class="text-muted small">
-            <strong>{{ periodos|length }}</strong> período{{ periodos|length|pluralize }}
-          </span>
-        </div>
-
       </div>
     </div>
+
+    <div class="col-md-7">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-3">Períodos por Ano</h6>
+          <div class="chart-wrap">
+            <canvas id="chartAnos"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
+  {% endif %}
 
   <!-- [D] Tabela de períodos -->
   <div class="card border-0 shadow-sm mb-4">
     <div class="card-body p-0">
       {% if periodos %}
         <div class="table-responsive">
-          <table class="table table-ds table-hover align-middle mb-0" id="tabela-periodos">
+          <table class="table table-ds table-hover align-middle mb-0 table-cards-sm" id="tabela-periodos">
             <thead class="table-light">
               <tr>
                 <th class="ps-3">Fundo</th>
@@ -281,16 +229,16 @@
             <tbody>
               {% for item in periodos %}
               <tr class="{% if item.urgencia == 'vencida' %}table-danger{% elif item.urgencia == 'urgente' %}table-warning{% elif item.urgencia == 'finalizada' %}table-success{% elif item.urgencia == 'aviso' %}row-aviso{% endif %}">
-                <td class="ps-3 fw-semibold">{{ item.periodo.fundo.nome }}</td>
-                <td class="text-muted small">
+                <td class="ps-3 fw-semibold" data-label="Fundo">{{ item.periodo.fundo.nome }}</td>
+                <td class="text-muted small" data-label="Gestora">
                   {% if item.periodo.fundo.gestora %}
                     {{ item.periodo.fundo.gestora.nome }}
                   {% else %}
                     —
                   {% endif %}
                 </td>
-                <td>{{ item.periodo.nome_exibicao }}</td>
-                <td>
+                <td data-label="Período">{{ item.periodo.nome_exibicao }}</td>
+                <td data-label="Tipo">
                   {% if item.periodo.tipo_periodo == 'anual' %}
                     <span class="badge bg-info text-dark">Anual</span>
                   {% elif item.periodo.tipo_periodo == 'transitoria' %}
@@ -299,14 +247,14 @@
                     <span class="badge bg-dark">Encerramento</span>
                   {% endif %}
                 </td>
-                <td data-order="{{ item.periodo.data_vencimento|date:'Y-m-d' }}">
+                <td data-order="{{ item.periodo.data_vencimento|date:'Y-m-d' }}" data-label="Vencimento">
                   {% if item.periodo.data_vencimento %}
                     {{ item.periodo.data_vencimento|date:"d/m/Y" }}
                   {% else %}
                     <span class="text-muted">—</span>
                   {% endif %}
                 </td>
-                <td>
+                <td data-label="Prazo">
                   {% if item.urgencia == 'finalizada' %}
                     <span class="text-success small"><i class="bi bi-check-circle me-1"></i>Entregue</span>
                   {% elif item.urgencia == 'vencida' %}
@@ -323,7 +271,7 @@
                     <span class="text-muted small">{{ item.dias_ate_vencimento }} dias</span>
                   {% endif %}
                 </td>
-                <td>
+                <td data-label="Status">
                   {% if item.periodo.status == 'finalizada' %}
                     <span class="badge bg-success" {% if can_manage_fundos %}data-pid="{{ item.periodo.id }}" data-status="finalizada"{% endif %}>Finalizada</span>
                   {% elif item.periodo.status == 'em_andamento' %}
@@ -334,7 +282,7 @@
                     <span class="badge bg-secondary" {% if can_manage_fundos %}data-pid="{{ item.periodo.id }}" data-status="nao_iniciada"{% endif %}>Não Iniciada</span>
                   {% endif %}
                 </td>
-                <td class="text-center pe-3">
+                <td class="text-center pe-3" data-label="Ações">
                   <a href="{% url 'demonstracao_financeira' %}?fundo={{ item.periodo.fundo.id }}"
                      class="btn btn-sm btn-outline-primary"
                      title="Abrir DF deste fundo">
@@ -410,6 +358,7 @@ document.addEventListener("DOMContentLoaded", function () {
     $(tabela).DataTable({
       language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json' },
       pageLength: 25,
+      autoWidth: false,
       order: [[4, 'asc']],
       columnDefs: [{ orderable: false, targets: [7] }]
     });
@@ -542,7 +491,9 @@ function _openSd(trigger) {
   const r = trigger.getBoundingClientRect();
   _sd.style.display = 'block';
   const sdH = _sd.offsetHeight;
-  _sd.style.left = r.left + 'px';
+  const sdW = _sd.offsetWidth;
+  const left = Math.max(8, Math.min(r.left, window.innerWidth - sdW - 8));
+  _sd.style.left = left + 'px';
   _sd.style.top  = (window.innerHeight - r.bottom > sdH + 8) ? (r.bottom + 4) + 'px' : (r.top - sdH - 4) + 'px';
 }
 

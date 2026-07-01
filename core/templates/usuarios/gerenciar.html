@@ -21,10 +21,10 @@
 
   <div class="card">
     <div class="card-body">
-      <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <h4 class="mb-0">Usuários da empresa: <span class="fw-bold">{{ empresa.nome }}</span></h4>
         {% if can_manage %}
-          <div class="d-flex gap-2">
+          <div class="d-flex flex-wrap gap-2">
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalConvidarUsuario">
               <i class="bi bi-envelope-plus me-1"></i> Convidar Usuário
             </button>
@@ -35,7 +35,7 @@
         {% endif %}
       </div>
       <div class="table-responsive">
-        <table class="table table-striped table-hover align-middle" id="tabela-usuarios">
+        <table class="table table-hover align-middle table-cards-sm" id="tabela-usuarios">
           <thead>
             <tr>
               <th scope="col" style="width: 20%;">Nome</th>
@@ -43,18 +43,17 @@
               <th scope="col" style="width: 30%;">Email</th>
               <th scope="col" style="width: 10%;" class="text-center">Papel</th>
               {% if can_manage %}
-                <th scope="col" style="width: 10%;" class="text-center">Editar</th>
-                <th scope="col" style="width: 10%;" class="text-center">Remover</th>
+                <th scope="col" style="width: 20%;" class="text-center">Ações</th>
               {% endif %}
             </tr>
           </thead>
           <tbody>
             {% for m in memberships %}
               <tr>
-                <td class="fw-semibold">{{ m.usuario.first_name|default:"—" }}</td>
-                <td>{{ m.usuario.username }}</td>
-                <td>{{ m.usuario.email|default:"—" }}</td>
-                <td class="text-center">
+                <td class="fw-semibold" data-label="Nome">{{ m.usuario.first_name|default:"—" }}</td>
+                <td data-label="Username">{{ m.usuario.username }}</td>
+                <td data-label="Email">{{ m.usuario.email|default:"—" }}</td>
+                <td class="text-center" data-label="Papel">
                   {% if m.role == "MASTER" %}
                     <span class="badge bg-dark">MASTER</span>
                   {% elif m.role == "ADMIN" %}
@@ -67,24 +66,19 @@
                 </td>
 
                 {% if can_manage %}
-                <td class="text-center">
+                <td class="text-center" data-label="Ações">
                   {% if m.role == "MASTER" %}
                     <button class="btn btn-sm btn-outline-secondary" disabled title="MASTER não pode ser editado pela interface">
                       <i class="bi bi-lock-fill"></i>
                     </button>
-                  {% else %}
-                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalEditUser{{ m.id }}">
-                      <i class="bi bi-pencil"></i>
-                    </button>
-                  {% endif %}
-                </td>
-                <td class="text-center">
-                  {% if m.role == "MASTER" %}
                     <button class="btn btn-sm btn-outline-danger" disabled title="MASTER não pode ser removido pela interface">
                       <i class="bi bi-lock-fill"></i>
                     </button>
                   {% else %}
-                    <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalDeleteUser{{ m.id }}">
+                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalEditUser{{ m.id }}" title="Editar">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalDeleteUser{{ m.id }}" title="Remover">
                       <i class="bi bi-trash3"></i>
                     </button>
                   {% endif %}

@@ -489,7 +489,95 @@ label {
 .table-responsive {
     border-radius: var(--border-radius-sm);
     border: 1px solid var(--border-color);
-    overflow: hidden;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+/* Quando a tabela vira cards no mobile, garante que não sobra scroll horizontal */
+@media (max-width: 767.98px) {
+    .table-responsive:has(.table-cards-sm) {
+        overflow-x: hidden;
+    }
+}
+
+/* Demonstrações financeiras (DRE/DFC/DMPL/DPF): mantém os valores numéricos
+   em uma única linha para o scroll horizontal ficar legível no mobile. */
+.df-table th.text-end,
+.df-table td.text-end {
+    white-space: nowrap;
+}
+
+/* ================================
+   Tabela vira lista de cards no mobile (sem scroll horizontal)
+   Uso: <table class="table table-cards-sm">, <td data-label="Nome">valor</td>
+   Escape hatch: .table-cards-sm__title marca explicitamente qual td é o
+   "título" do card quando não é a 1ª coluna (ex.: convites com Empresa antes do Email)
+================================ */
+@media (max-width: 767.98px) {
+    .table-cards-sm thead {
+        display: none;
+    }
+    .table-cards-sm,
+    .table-cards-sm tbody,
+    .table-cards-sm tr,
+    .table-cards-sm td {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    .table-cards-sm tbody tr {
+        margin-bottom: 0.75rem;
+        padding: 0.85rem 1rem;
+        border: 1px solid var(--border-color) !important;
+        border-radius: var(--border-radius-sm);
+        background: var(--surface-2);
+    }
+    .table-cards-sm tbody tr:last-child {
+        margin-bottom: 0;
+    }
+    .table-cards-sm td {
+        position: relative;
+        padding: 0.4rem 0 0.4rem 42% !important;
+        min-height: 1.6rem;
+        border: none !important;
+        border-bottom: 1px dashed var(--border-color) !important;
+        text-align: right !important;
+        overflow-wrap: break-word;
+        word-break: break-word;
+    }
+    .table-cards-sm td:last-child {
+        border-bottom: none !important;
+    }
+    .table-cards-sm td[data-label]::before {
+        content: attr(data-label);
+        position: absolute;
+        left: 0;
+        top: 0.4rem;
+        width: 38%;
+        font-size: 0.64rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-secondary);
+        text-align: left;
+        white-space: normal;
+    }
+    /* Título do card: 1ª coluna por padrão, ou .table-cards-sm__title explícito */
+    .table-cards-sm tr:not(:has(.table-cards-sm__title)) td:first-child,
+    .table-cards-sm td.table-cards-sm__title {
+        padding-left: 0 !important;
+        text-align: left !important;
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        padding-bottom: 0.6rem !important;
+        margin-bottom: 0.35rem;
+        border-bottom: 1px solid var(--border-color) !important;
+    }
+    .table-cards-sm tr:not(:has(.table-cards-sm__title)) td:first-child::before,
+    .table-cards-sm td.table-cards-sm__title::before {
+        content: none;
+    }
 }
 
 /* ================================
@@ -650,8 +738,8 @@ label {
     letter-spacing: 0.02em;
 }
 
-/* ── Responsivo: mobile oculta branding ── */
-@media (max-width: 768px) {
+/* ── Responsivo: oculta branding em tablets/mobile (evita form espremido) ── */
+@media (max-width: 991.98px) {
     .login-panel--brand { display: none; }
     .login-panel--form { padding: 2rem 1.25rem; }
 }
@@ -766,7 +854,7 @@ html[data-theme="light"] .site-nav__logo--light { display: block; }
     padding-right: 1rem;
     cursor: pointer;
     outline: none;
-    max-width: 180px;
+    max-width: 220px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -785,7 +873,7 @@ html[data-theme="light"] .site-nav__logo--light { display: block; }
 
 /* Nav links */
 .site-nav__links {
-    display: flex !important;
+    display: flex;
     align-items: center;
     flex: 1;
     gap: 0;
@@ -1065,7 +1153,7 @@ html[data-theme="light"] .site-nav__logo--light { display: block; }
     }
     .site-nav__empresa-select {
         font-size: 0.82rem;
-        max-width: 150px;
+        max-width: 190px;
     }
 }
 
@@ -1623,7 +1711,7 @@ html[data-theme="light"] .shadow-lg { box-shadow: none !important; }
 .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
 .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; }
 .form-field--span2 { grid-column: span 2; }
-@media (max-width: 640px) {
+@media (max-width: 767.98px) {
     .form-row-2, .form-row-3 { grid-template-columns: 1fr; }
     .form-field--span2 { grid-column: span 1; }
 }
@@ -1704,6 +1792,45 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
     margin-bottom: 2rem;
     animation: fadeInUp 0.4s ease both;
     animation-delay: 0.04s;
+}
+/* Variante mais densa (ex.: dashboard de controle de emissões, 6 cards) */
+.kpi-grid--compact {
+    grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+}
+/* Mobile: garante ao menos 2 colunas em telas pequenas e 1 nas menores */
+@media (max-width: 575.98px) {
+    .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+    }
+}
+@media (max-width: 400px) {
+    .kpi-grid {
+        grid-template-columns: 1fr;
+    }
+}
+/* Variante compacta no mobile: mantém a função (clique = filtro), mas em
+   miniatura — 3 colunas fixas, cards menores, sem sub-texto/ícone decorativo */
+@media (max-width: 575.98px) {
+    .kpi-grid--compact {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.5rem;
+    }
+    .kpi-grid--compact .kpi-card {
+        padding: 0.6rem 0.5rem;
+    }
+    .kpi-grid--compact .kpi-card__label {
+        font-size: 0.56rem;
+        letter-spacing: 0.02em;
+    }
+    .kpi-grid--compact .kpi-card__value {
+        font-size: clamp(0.85rem, 4vw, 1.05rem);
+        margin-bottom: 0.1rem;
+    }
+    .kpi-grid--compact .kpi-card__sub,
+    .kpi-grid--compact .kpi-card__ghost-icon {
+        display: none;
+    }
 }
 .kpi-card {
     background: var(--surface-2);
@@ -1825,6 +1952,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
     gap: 1.25rem;
+}
+/* Mobile: coluna única e min-width menor para não desperdiçar espaço */
+@media (max-width: 575.98px) {
+    .fundo-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
 }
 .fundo-card {
     background: rgba(20, 23, 30, 0.92);

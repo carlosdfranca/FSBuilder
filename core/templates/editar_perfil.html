@@ -58,7 +58,7 @@
 
                         <div class="row">
                             <!-- Nome -->
-                            <div class="col-md-6 mb-3">
+                            <div class="col-12 col-md-6 mb-3">
                                 <label for="{{ form.first_name.id_for_label }}" class="form-label required">{{ form.first_name.label }}</label>
                                 {{ form.first_name }}
                                 {% if form.first_name.errors %}
@@ -72,7 +72,7 @@
                             </div>
 
                             <!-- Sobrenome -->
-                            <div class="col-md-6 mb-3">
+                            <div class="col-12 col-md-6 mb-3">
                                 <label for="{{ form.last_name.id_for_label }}" class="form-label required">{{ form.last_name.label }}</label>
                                 {{ form.last_name }}
                                 {% if form.last_name.errors %}
@@ -116,7 +116,7 @@
                     <div class="form-section__body">
                         <div class="row">
                             <!-- Nova Senha -->
-                            <div class="col-md-6 mb-3">
+                            <div class="col-12 col-md-6 mb-3">
                                 <label for="{{ form.password1.id_for_label }}" class="form-label">{{ form.password1.label }}</label>
                                 {{ form.password1 }}
                                 {% if form.password1.errors %}
@@ -130,7 +130,7 @@
                             </div>
 
                             <!-- Confirmar Nova Senha -->
-                            <div class="col-md-6 mb-3">
+                            <div class="col-12 col-md-6 mb-3">
                                 <label for="{{ form.password2.id_for_label }}" class="form-label">{{ form.password2.label }}</label>
                                 {{ form.password2 }}
                                 {% if form.password2.errors %}
