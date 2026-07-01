@@ -622,7 +622,6 @@
                 <th>Tipo</th>
                 <th>Status</th>
                 <th>Vencimento</th>
-                <th>Balancete em</th>
                 <th class="text-center">Documentos</th>
                 <th class="text-center">Ações</th>
               </tr>
@@ -636,8 +635,8 @@
         pageLength: 10,
         order: [[3, "asc"]],
         columnDefs: [
-          { orderable: false, targets: [5, 6] },
-          { searchable: false, targets: [5, 6] },
+          { orderable: false, targets: [4, 5] },
+          { searchable: false, targets: [4, 5] },
         ],
       });
     }
@@ -691,10 +690,6 @@
         vencimentoCell = `${dataFmt}${prazoTag}`;
       }
 
-      const dataRef = p.data_referencia
-        ? formatDate(p.data_referencia)
-        : '<span class="text-muted">—</span>';
-
       const verBtn = p.tem_balancete
         ? `<a href="/dre-resultado/${p.id}/" class="btn btn-sm btn-outline-primary" title="Ver DF">
              <i class="bi bi-graph-up"></i>
@@ -730,7 +725,6 @@
         <td>${tipoBadge}</td>
         <td>${statusBadge}</td>
         <td data-order="${p.data_vencimento || ''}">${vencimentoCell}</td>
-        <td data-order="${p.data_referencia || ''}">${dataRef}</td>
         <td class="text-center">${docBtn}</td>
         <td class="text-center" style="white-space:nowrap;">${verBtn} ${importBtn}</td>
       </tr>`;
@@ -1098,6 +1092,34 @@
           badge.setAttribute('style', c.style + 'cursor:pointer;');
           badge.dataset.status = novoStatus;
           badge.innerHTML = c.label + ' ' + chv;
+
+          // Atualiza célula Vencimento e cor da linha sem reload
+          const row = badge.closest('tr');
+          if (row) {
+            const tds = row.querySelectorAll('td');
+            const vencTd = tds[3];
+            if (vencTd && vencTd.dataset.order) {
+              const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+              const venc = new Date(vencTd.dataset.order + 'T00:00:00');
+              const dias = Math.round((venc - hoje) / 86400000);
+              const dataFmt = venc.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+              let prazoTag = '';
+
+              row.classList.remove('table-success', 'table-danger', 'table-warning');
+              if (novoStatus === 'finalizada') {
+                row.classList.add('table-success');
+              } else if (novoStatus === 'vencida' || dias < 0) {
+                row.classList.add('table-danger');
+                prazoTag = `<span class="badge bg-danger ms-2">${Math.abs(dias)}d atraso</span>`;
+              } else if (dias <= 7) {
+                row.classList.add('table-warning');
+                prazoTag = `<span class="badge bg-danger ms-2">${dias}d</span>`;
+              } else if (dias <= 30) {
+                prazoTag = `<span class="badge bg-warning text-dark ms-2">${dias}d</span>`;
+              }
+              vencTd.innerHTML = dataFmt + prazoTag;
+            }
+          }
         }
       }
       _closeSd();
