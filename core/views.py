@@ -7,7 +7,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from datetime import date
 import json
 
-from df.models import Fundo, BalanceteItem, HistoricoEmissaoDF, PeriodoDF, Gestora
+from df.models import Fundo, BalanceteItem, HistoricoEmissaoDF, PeriodoDF, Gestora, ChecklistItemPeriodo
 from usuarios.models import Empresa, Membership
 from usuarios.utils.company_scope import query_por_empresa_ativa
 from usuarios.permissions import (
@@ -87,6 +87,8 @@ def demonstracao_financeira(request):
         periodos_data = []
         for p in periodos:
             data_ref_calculada = calcular_data_referencia_periodo(p)
+            cl_total = p.checklist_items.count()
+            cl_recebidos = p.checklist_items.filter(recebido=True).count()
             periodos_data.append({
                 'id': p.id,
                 'nome': p.nome_exibicao,
@@ -97,6 +99,7 @@ def demonstracao_financeira(request):
                 'data_referencia': p.data_referencia.isoformat() if p.data_referencia else None,
                 'data_referencia_calculada': data_ref_calculada.isoformat() if data_ref_calculada else None,
                 'data_vencimento': p.data_vencimento.isoformat() if p.data_vencimento else None,
+                'checklist_summary': {'total': cl_total, 'recebidos': cl_recebidos},
             })
         fundos_periodos[str(fundo.id)] = periodos_data
 
@@ -464,6 +467,8 @@ def api_periodos_fundo(request, fundo_id):
     periodos_data = []
     for p in periodos:
         data_ref_calc = calcular_data_referencia_periodo(p)
+        cl_total = p.checklist_items.count()
+        cl_recebidos = p.checklist_items.filter(recebido=True).count()
         periodos_data.append({
             "id": p.id,
             "nome": p.nome_exibicao,
@@ -474,6 +479,7 @@ def api_periodos_fundo(request, fundo_id):
             "data_referencia": p.data_referencia.isoformat() if p.data_referencia else None,
             "data_referencia_calculada": data_ref_calc.isoformat() if data_ref_calc else None,
             "data_vencimento": p.data_vencimento.isoformat() if p.data_vencimento else None,
+            "checklist_summary": {"total": cl_total, "recebidos": cl_recebidos},
         })
     return JsonResponse({"periodos": periodos_data})
 
@@ -1026,6 +1032,8 @@ def criar_periodo_manual(request, fundo_id):
         form = PeriodoDFManualForm(request.POST, fundo=fundo)
         if form.is_valid():
             periodo = form.save()
+            from df.services.checklist_service import criar_checklist_para_periodo
+            criar_checklist_para_periodo(periodo)
             if is_ajax:
                 return JsonResponse({'ok': True, 'message': f'Período {periodo.nome_exibicao} criado com sucesso.'})
             messages.success(request, "Período criado com sucesso.")
@@ -1156,3 +1164,115 @@ def editar_perfil(request):
         form = EditarPerfilForm(instance=user)
 
     return render(request, "editar_perfil.html", {'form': form})
+
+
+# ===========================
+# CHECKLIST DE DOCUMENTOS
+# ===========================
+
+def _checklist_summary(periodo):
+    total = periodo.checklist_items.count()
+    recebidos = periodo.checklist_items.filter(recebido=True).count()
+    return {'total': total, 'recebidos': recebidos}
+
+
+
+
+@login_required
+@company_can_view_data
+def api_checklist_periodo(request, periodo_id):
+    if request.method != 'GET':
+        return JsonResponse({'ok': False}, status=405)
+
+    empresa = get_empresa_escopo(request)
+    periodo = get_object_or_404(PeriodoDF, id=periodo_id, empresa=empresa)
+    itens = list(ChecklistItemPeriodo.objects.filter(periodo_df=periodo).order_by('ordem'))
+    items_data = [
+        {'id': i.id, 'texto': i.texto, 'ordem': i.ordem, 'recebido': i.recebido}
+        for i in itens
+    ]
+    summary = {'total': len(itens), 'recebidos': sum(1 for i in itens if i.recebido)}
+    return JsonResponse({
+        'ok': True,
+        'items': items_data,
+        'summary': summary,
+        'periodo_nome': periodo.nome_exibicao,
+    })
+
+
+@login_required
+@company_can_manage_fundos
+def adicionar_item_checklist(request, periodo_id):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return JsonResponse({'ok': False}, status=400)
+
+    empresa = get_empresa_escopo(request)
+    periodo = get_object_or_404(PeriodoDF, id=periodo_id, empresa=empresa)
+    texto = request.POST.get('texto', '').strip()
+    if not texto or len(texto) > 255:
+        return JsonResponse({'ok': False, 'error': 'Texto inválido.'}, status=400)
+
+    from django.db.models import Max
+    max_ordem = ChecklistItemPeriodo.objects.filter(periodo_df=periodo).aggregate(m=Max('ordem'))['m'] or 0
+    item = ChecklistItemPeriodo.objects.create(periodo_df=periodo, texto=texto, ordem=max_ordem + 1)
+    return JsonResponse({
+        'ok': True,
+        'item': {'id': item.id, 'texto': item.texto, 'ordem': item.ordem, 'recebido': item.recebido},
+        'summary': _checklist_summary(periodo),
+    })
+
+
+@login_required
+@company_can_manage_fundos
+def toggle_item_checklist(request, item_id):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return JsonResponse({'ok': False}, status=400)
+
+    empresa = get_empresa_escopo(request)
+    item = get_object_or_404(ChecklistItemPeriodo, id=item_id, periodo_df__empresa=empresa)
+    item.recebido = not item.recebido
+    item.save(update_fields=['recebido'])
+    return JsonResponse({
+        'ok': True,
+        'recebido': item.recebido,
+        'item_id': item.id,
+        'summary': _checklist_summary(item.periodo_df),
+    })
+
+
+@login_required
+@company_can_manage_fundos
+def editar_item_checklist(request, item_id):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return JsonResponse({'ok': False}, status=400)
+
+    empresa = get_empresa_escopo(request)
+    item = get_object_or_404(ChecklistItemPeriodo, id=item_id, periodo_df__empresa=empresa)
+    texto = request.POST.get('texto', '').strip()
+    if not texto or len(texto) > 255:
+        return JsonResponse({'ok': False, 'error': 'Texto inválido.'}, status=400)
+
+    item.texto = texto
+    item.save(update_fields=['texto'])
+    return JsonResponse({'ok': True, 'item': {'id': item.id, 'texto': item.texto, 'recebido': item.recebido}})
+
+
+@login_required
+@company_can_manage_fundos
+def excluir_item_checklist(request, item_id):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return JsonResponse({'ok': False}, status=400)
+
+    empresa = get_empresa_escopo(request)
+    item = get_object_or_404(ChecklistItemPeriodo, id=item_id, periodo_df__empresa=empresa)
+    periodo = item.periodo_df
+    item.delete()
+    return JsonResponse({'ok': True, 'summary': _checklist_summary(periodo)})

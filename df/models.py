@@ -313,6 +313,54 @@ class PeriodoDF(models.Model):
 
 
 # =========================
+# CHECKLIST DE DOCUMENTOS
+# =========================
+class ChecklistItemPadrao(models.Model):
+    """Template de checklist em nível de empresa — copiado para cada novo PeriodoDF."""
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="checklist_itens_padrao",
+        db_index=True,
+    )
+    texto = models.CharField(max_length=255)
+    ordem = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Item de Checklist Padrão"
+        verbose_name_plural = "Itens de Checklist Padrão"
+        ordering = ["empresa", "ordem"]
+
+    def __str__(self):
+        return f"{self.texto} ({self.empresa.nome})"
+
+
+class ChecklistItemPeriodo(models.Model):
+    """Instância real do checklist para um PeriodoDF — editável individualmente."""
+    periodo_df = models.ForeignKey(
+        PeriodoDF,
+        on_delete=models.CASCADE,
+        related_name="checklist_items",
+        db_index=True,
+    )
+    texto = models.CharField(max_length=255)
+    ordem = models.PositiveIntegerField(default=0)
+    recebido = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Item de Checklist do Período"
+        verbose_name_plural = "Itens de Checklist do Período"
+        ordering = ["periodo_df", "ordem"]
+        indexes = [
+            models.Index(fields=["periodo_df", "recebido"], name="idx_checklist_periodo_recebido"),
+        ]
+
+    def __str__(self):
+        status = "✓" if self.recebido else "○"
+        return f"{status} {self.texto}"
+
+
+# =========================
 # GRUPÕES (nível 1)
 # =========================
 class GrupoGrande(models.Model):
