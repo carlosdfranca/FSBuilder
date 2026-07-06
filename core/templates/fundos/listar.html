@@ -57,7 +57,6 @@
                     <th scope="col" style="width: 26%;">Nome</th>
                     <th scope="col" style="width: 16%;">CNPJ</th>
                     <th scope="col" style="width: 20%;">Gestora</th>
-                    <th scope="col" style="width: 20%;">DFs Configuradas</th>
                     <th scope="col" style="width: 10%;" class="text-center">Períodos</th>
                     {% if can_manage_fundos %}
                       <th scope="col" style="width: 4%;" class="text-center">Editar</th>
@@ -76,21 +75,6 @@
                         {% else %}
                           <span class="text-muted">—</span>
                         {% endif %}
-                      </td>
-                      <td>
-                        {% with configs=fundo.configuracoes_df.all %}
-                          {% if configs %}
-                            {% for config in configs %}
-                              {% if config.tipo == 'trimestral' %}
-                                <span class="badge bg-primary">Trimestral</span>
-                              {% elif config.tipo == 'anual' %}
-                                <span class="badge bg-success">Anual</span>
-                              {% endif %}
-                            {% endfor %}
-                          {% else %}
-                            <span class="text-muted">Nenhuma DF configurada</span>
-                          {% endif %}
-                        {% endwith %}
                       </td>
                       <td class="text-center">
                         <a href="{% url 'gerenciar_periodos' fundo.id %}" class="btn btn-sm btn-outline-primary" title="Gerenciar períodos de DF">
@@ -395,7 +379,7 @@
       pageLength: 25,
       order: [[0, 'asc']],
       columnDefs: [
-        { orderable: false, targets: [4{% if can_manage_fundos %}, 5, 6{% endif %}] }
+        { orderable: false, targets: [3{% if can_manage_fundos %}, 4, 5{% endif %}] }
       ]
     });
 
@@ -411,61 +395,6 @@
     // ── Máscara CNPJ ────────────────────────────────────────
     document.querySelectorAll('input[id="id_cnpj"], input[id^="cnpj"], input[id="{{ gestora_form.cnpj.id_for_label }}"], input[id^="gestora-cnpj"]').forEach(function (input) {
       IMask(input, { mask: '00.000.000/0000-00' });
-    });
-
-    // ── Cards de tipo de DF ─────────────────────────────────
-    function applyCardStyle(card, checked) {
-      const color = card.dataset.color || 'primary';
-      if (checked) {
-        card.classList.add(`df-card-active-${color}`);
-      } else {
-        card.classList.remove(`df-card-active-primary`, `df-card-active-success`);
-      }
-    }
-
-    document.querySelectorAll('.df-card').forEach(function (card) {
-      const checkbox = card.querySelector('input[type="checkbox"]');
-      if (!checkbox) return;
-
-      applyCardStyle(card, checkbox.checked);
-
-      card.addEventListener('click', function (e) {
-        if (e.target === checkbox) return;
-        checkbox.checked = !checkbox.checked;
-        checkbox.dispatchEvent(new Event('change'));
-      });
-
-      checkbox.addEventListener('change', function () {
-        applyCardStyle(card, this.checked);
-      });
-    });
-
-    // ── Toggle seções no modal Adicionar ────────────────────
-    const cbTrim = document.getElementById('id_tem_trimestral');
-    const cbAnual = document.getElementById('id_tem_anual');
-    const secTrim = document.getElementById('config-trimestral');
-    const secAnual = document.getElementById('config-anual');
-
-    cbTrim?.addEventListener('change', function () {
-      if (secTrim) secTrim.style.display = this.checked ? 'block' : 'none';
-    });
-    cbAnual?.addEventListener('change', function () {
-      if (secAnual) secAnual.style.display = this.checked ? 'block' : 'none';
-    });
-
-    // ── Toggle seções nos modais Editar ─────────────────────
-    document.querySelectorAll('.checkbox-trimestral').forEach(function (checkbox) {
-      const sec = document.getElementById('config-trimestral' + checkbox.dataset.fundoId);
-      checkbox.addEventListener('change', function () {
-        if (sec) sec.style.display = this.checked ? 'block' : 'none';
-      });
-    });
-
-    document.querySelectorAll('.checkbox-anual').forEach(function (checkbox) {
-      const sec = document.getElementById('config-anual' + checkbox.dataset.fundoId);
-      checkbox.addEventListener('change', function () {
-        if (sec) sec.style.display = this.checked ? 'block' : 'none';
-      });
     });
   });
 </script>
