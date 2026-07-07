@@ -50,6 +50,20 @@ class Fundo(models.Model):
     nome = models.CharField(max_length=255)
     cnpj = models.CharField(max_length=20)
 
+    TIPO_FUNDO_CHOICES = [
+        ('FIDC', 'FIDC'),
+        ('FIF', 'FIF'),
+        ('FII', 'FII'),
+        ('FIP', 'FIP'),
+    ]
+    tipo_fundo = models.CharField(
+        max_length=10,
+        choices=TIPO_FUNDO_CHOICES,
+        default='FIDC',
+        db_index=True,
+        help_text="Tipo do fundo — define qual checklist de documentos padrão é aplicado."
+    )
+
     class Meta:
         verbose_name = "Fundo"
         verbose_name_plural = "Fundos"
@@ -316,23 +330,29 @@ class PeriodoDF(models.Model):
 # CHECKLIST DE DOCUMENTOS
 # =========================
 class ChecklistItemPadrao(models.Model):
-    """Template de checklist em nível de empresa — copiado para cada novo PeriodoDF."""
-    empresa = models.ForeignKey(
-        Empresa,
-        on_delete=models.CASCADE,
-        related_name="checklist_itens_padrao",
+    """Template global de checklist por tipo de fundo — copiado para cada novo PeriodoDF."""
+    tipo_fundo = models.CharField(
+        max_length=10,
+        choices=Fundo.TIPO_FUNDO_CHOICES,
         db_index=True,
+        help_text="Tipo de fundo ao qual este item de checklist padrão se aplica."
     )
+    secao = models.CharField(max_length=120, blank=True, default='')
     texto = models.CharField(max_length=255)
+    prazo = models.CharField(max_length=120, blank=True, default='')
+    responsavel = models.CharField(max_length=120, blank=True, default='')
     ordem = models.PositiveIntegerField(default=0)
 
     class Meta:
         verbose_name = "Item de Checklist Padrão"
         verbose_name_plural = "Itens de Checklist Padrão"
-        ordering = ["empresa", "ordem"]
+        ordering = ["tipo_fundo", "ordem"]
+        indexes = [
+            models.Index(fields=["tipo_fundo", "ordem"], name="idx_checklist_padrao_tipo"),
+        ]
 
     def __str__(self):
-        return f"{self.texto} ({self.empresa.nome})"
+        return f"[{self.tipo_fundo}] {self.texto}"
 
 
 class ChecklistItemPeriodo(models.Model):
@@ -343,7 +363,10 @@ class ChecklistItemPeriodo(models.Model):
         related_name="checklist_items",
         db_index=True,
     )
+    secao = models.CharField(max_length=120, blank=True, default='')
     texto = models.CharField(max_length=255)
+    prazo = models.CharField(max_length=120, blank=True, default='')
+    responsavel = models.CharField(max_length=120, blank=True, default='')
     ordem = models.PositiveIntegerField(default=0)
     recebido = models.BooleanField(default=False)
 

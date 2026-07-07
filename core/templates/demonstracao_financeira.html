@@ -73,13 +73,14 @@
   }
   .checklist-item-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: .875rem;
     padding: .875rem 1.5rem;
     border-bottom: 1px solid var(--border-color);
     border-left: 3px solid transparent;
     transition: background .12s, border-left-color .25s;
   }
+  .checklist-item-row .checklist-cb { margin-top: .15rem; }
   .checklist-item-row:last-child { border-bottom: 0; }
   .checklist-item-row:hover { background: var(--surface-2); }
   .checklist-item-row.is-received { border-left-color: #22c55e; }
@@ -92,7 +93,75 @@
     text-decoration: line-through;
     color: var(--text-muted);
   }
-  .checklist-item-actions { display: flex; gap: .25rem; flex-shrink: 0; }
+  .checklist-item-main { min-width: 0; }
+  .checklist-item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem .5rem;
+    margin-top: .4rem;
+  }
+  .checklist-meta-item {
+    font-size: .75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .15rem .5rem;
+    border-radius: 6px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-color);
+    line-height: 1.3;
+  }
+  .checklist-meta-item i { font-size: .8rem; }
+  .checklist-meta-resp i { color: var(--accent-primary); }
+  .checklist-meta-prazo i { color: #f59e0b; }
+  .checklist-item-row.is-received .checklist-meta-item { opacity: .55; }
+  .checklist-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--accent-primary);
+    background: var(--surface-2);
+    padding: .5rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .checklist-section-name { min-width: 0; }
+  .checklist-section-count {
+    flex-shrink: 0;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: normal;
+    padding: .1rem .5rem;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    font-variant-numeric: tabular-nums;
+  }
+  .checklist-section-count.is-complete {
+    color: #16a34a;
+    background: rgba(34,197,94,.12);
+    border-color: rgba(34,197,94,.3);
+  }
+  .checklist-section-count.is-partial {
+    color: #b45309;
+    background: rgba(245,158,11,.12);
+    border-color: rgba(245,158,11,.3);
+  }
+  .checklist-section-count.is-none,
+  .checklist-section-count.is-empty {
+    color: var(--text-muted);
+    background: var(--surface-3);
+    border-color: var(--border-color);
+  }
+  .checklist-item-actions { display: flex; gap: .25rem; flex-shrink: 0; align-items: flex-start; }
   .btn-icon-action {
     width: 30px; height: 30px; padding: 0;
     border: 1px solid var(--border-color);
@@ -179,7 +248,8 @@
         <option selected disabled value="">Selecione um fundo...</option>
         {% for fundo in fundos %}
           <option value="{{ fundo.id }}"
-                  data-gestora-id="{{ fundo.gestora_id|default:'' }}">{{ fundo.nome }}</option>
+                  data-gestora-id="{{ fundo.gestora_id|default:'' }}"
+                  data-tipo="{{ fundo.tipo_fundo }}">{{ fundo.nome }}</option>
         {% endfor %}
       </select>
     </div>
@@ -198,8 +268,9 @@
     <div class="card border-0 shadow-sm mb-4">
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-3">
-          <h6 class="fw-semibold mb-0">
-            <i class="bi bi-calendar-range me-2 text-muted"></i>Períodos
+          <h6 class="fw-semibold mb-0 d-flex align-items-center gap-2">
+            <i class="bi bi-calendar-range text-muted"></i>Períodos
+            <span id="fundo-tipo-badge" class="badge" style="display:none;"></span>
           </h6>
           <div id="period-actions" class="d-flex gap-2" style="display:none;">
             <a id="link-criar-periodo" href="#" class="btn btn-sm btn-outline-secondary">
@@ -502,6 +573,7 @@
     let fundoAtual  = null;
     let dtPeriodos  = null;   // instância DataTables da tabela de períodos
     let checklistPeriodoId = null;
+    let checklistItens = [];   // itens do checklist atualmente carregados no modal
 
     // ── Filtro de gestora ─────────────────────────────────────
     function filtrarFundosPorGestora(gestoraId) {
@@ -535,9 +607,33 @@
       selectFundo.dispatchEvent(new Event("change"));
     }
 
+    function tipoBadgeClass(tipo) {
+      switch (tipo) {
+        case 'FIDC': return 'bg-primary';
+        case 'FIF':  return 'bg-info text-dark';
+        case 'FII':  return 'bg-success';
+        case 'FIP':  return 'bg-warning text-dark';
+        default:     return 'bg-secondary';
+      }
+    }
+
     selectFundo.addEventListener("change", function () {
       fundoAtual = this.value;
       dfContainer.style.display = "block";
+
+      const opt = this.options[this.selectedIndex];
+      const tipoBadge = document.getElementById("fundo-tipo-badge");
+      if (tipoBadge) {
+        const tipo = opt ? opt.dataset.tipo : '';
+        if (tipo) {
+          tipoBadge.textContent = tipo;
+          tipoBadge.className = 'badge ' + tipoBadgeClass(tipo);
+          tipoBadge.title = 'Tipo do fundo';
+          tipoBadge.style.display = '';
+        } else {
+          tipoBadge.style.display = 'none';
+        }
+      }
 
       const mecFundoId = document.getElementById("mec-fundo-id");
       if (mecFundoId) mecFundoId.value = fundoAtual;
@@ -877,8 +973,9 @@
 
     function renderChecklistItens(items, summary) {
       const container = document.getElementById("checklist-itens-container");
+      checklistItens = items || [];
       atualizarProgressBar(summary);
-      if (!items.length) {
+      if (!checklistItens.length) {
         container.innerHTML = `
           <div class="checklist-empty">
             <i class="bi bi-clipboard-check"></i>
@@ -886,34 +983,94 @@
           </div>`;
         return;
       }
-      const linhas = items.map(item => {
-        const isRecebido = item.recebido;
-        const checked = isRecebido ? 'checked' : '';
-        const rowCls = isRecebido ? 'checklist-item-row is-received' : 'checklist-item-row';
-        const textCls = isRecebido ? 'checklist-item-text flex-grow-1 is-done' : 'checklist-item-text flex-grow-1';
-        const checkbox = canEnviarBalancete
-          ? `<input type="checkbox" class="form-check-input checklist-cb flex-shrink-0" ${checked}
-                    onchange="toggleItemChecklist(${item.id}, this)">`
-          : `<input type="checkbox" class="form-check-input checklist-cb flex-shrink-0" ${checked} disabled>`;
-        const editBtn = canEnviarBalancete
-          ? `<button class="btn-icon-action"
-                     onclick="iniciarEdicaoItemChecklist(${item.id}, '${escapeJs(item.texto)}')" title="Editar">
-               <i class="bi bi-pencil"></i>
-             </button>`
-          : '';
-        const delBtn = canEnviarBalancete
-          ? `<button class="btn-icon-action btn-icon-action--danger"
-                     onclick="excluirItemChecklist(${item.id}, '${escapeJs(item.texto)}')" title="Excluir">
-               <i class="bi bi-trash"></i>
-             </button>`
-          : '';
-        return `<div class="${rowCls}" data-item-id="${item.id}">
-          ${checkbox}
-          <span class="${textCls}" id="cl-texto-${item.id}">${escapeHtml(item.texto)}</span>
-          <div class="checklist-item-actions">${editBtn}${delBtn}</div>
+      // Agrupa por seção, preservando a ordem de aparição
+      const grupos = [];
+      const idxPorSecao = {};
+      checklistItens.forEach(item => {
+        const sec = item.secao || 'Outros';
+        if (!(sec in idxPorSecao)) {
+          idxPorSecao[sec] = grupos.length;
+          grupos.push({ secao: sec, itens: [] });
+        }
+        grupos[idxPorSecao[sec]].itens.push(item);
+      });
+      container.innerHTML = grupos.map((g, gi) => {
+        const recebidos = g.itens.filter(x => x.recebido).length;
+        const total = g.itens.length;
+        const header = `<div class="checklist-section-header" data-secao-idx="${gi}">
+          <span class="checklist-section-name">${escapeHtml(g.secao)}</span>
+          <span class="checklist-section-count ${secaoCountClass(recebidos, total)}">${recebidos}/${total}</span>
         </div>`;
+        return header + g.itens.map(buildChecklistRow).join('');
       }).join('');
-      container.innerHTML = linhas;
+    }
+
+    function secaoCountClass(recebidos, total) {
+      if (total === 0) return 'is-empty';
+      if (recebidos === total) return 'is-complete';
+      if (recebidos > 0) return 'is-partial';
+      return 'is-none';
+    }
+
+    function atualizarContadoresSecoes() {
+      // Reagrupa a partir do estado em memória e atualiza cada badge de seção
+      const grupos = [];
+      const idxPorSecao = {};
+      checklistItens.forEach(item => {
+        const sec = item.secao || 'Outros';
+        if (!(sec in idxPorSecao)) {
+          idxPorSecao[sec] = grupos.length;
+          grupos.push({ recebidos: 0, total: 0 });
+        }
+        const g = grupos[idxPorSecao[sec]];
+        g.total += 1;
+        if (item.recebido) g.recebidos += 1;
+      });
+      grupos.forEach((g, gi) => {
+        const header = document.querySelector(`.checklist-section-header[data-secao-idx="${gi}"]`);
+        if (!header) return;
+        const badge = header.querySelector('.checklist-section-count');
+        if (!badge) return;
+        badge.textContent = `${g.recebidos}/${g.total}`;
+        badge.className = 'checklist-section-count ' + secaoCountClass(g.recebidos, g.total);
+      });
+    }
+
+    function buildChecklistRow(item) {
+      const isRecebido = item.recebido;
+      const checked = isRecebido ? 'checked' : '';
+      const rowCls = isRecebido ? 'checklist-item-row is-received' : 'checklist-item-row';
+      const textCls = isRecebido ? 'checklist-item-text is-done' : 'checklist-item-text';
+      const checkbox = canEnviarBalancete
+        ? `<input type="checkbox" class="form-check-input checklist-cb flex-shrink-0" ${checked}
+                  onchange="toggleItemChecklist(${item.id}, this)">`
+        : `<input type="checkbox" class="form-check-input checklist-cb flex-shrink-0" ${checked} disabled>`;
+      const editBtn = canEnviarBalancete
+        ? `<button class="btn-icon-action"
+                   onclick="iniciarEdicaoItemChecklist(${item.id}, '${escapeJs(item.texto)}')" title="Editar">
+             <i class="bi bi-pencil"></i>
+           </button>`
+        : '';
+      const delBtn = canEnviarBalancete
+        ? `<button class="btn-icon-action btn-icon-action--danger"
+                   onclick="excluirItemChecklist(${item.id}, '${escapeJs(item.texto)}')" title="Excluir">
+             <i class="bi bi-trash"></i>
+           </button>`
+        : '';
+      const metaParts = [];
+      if (item.responsavel)
+        metaParts.push(`<span class="checklist-meta-item checklist-meta-resp"><i class="bi bi-person-fill"></i> ${escapeHtml(item.responsavel)}</span>`);
+      if (item.prazo)
+        metaParts.push(`<span class="checklist-meta-item checklist-meta-prazo"><i class="bi bi-clock-fill"></i> ${escapeHtml(item.prazo)}</span>`);
+      const meta = metaParts.length ? `<div class="checklist-item-meta">${metaParts.join('')}</div>` : '';
+      return `<div class="${rowCls}" data-item-id="${item.id}">
+        ${checkbox}
+        <div class="checklist-item-main flex-grow-1">
+          <span class="${textCls}" id="cl-texto-${item.id}">${escapeHtml(item.texto)}</span>
+          ${meta}
+        </div>
+        <div class="checklist-item-actions">${editBtn}${delBtn}</div>
+      </div>`;
     }
 
     window.toggleItemChecklist = function (itemId, el) {
@@ -931,6 +1088,9 @@
           if (row) row.classList.toggle('is-received', data.recebido);
           const span = document.getElementById(`cl-texto-${itemId}`);
           if (span) span.classList.toggle('is-done', data.recebido);
+          const cached = checklistItens.find(x => x.id === itemId);
+          if (cached) cached.recebido = data.recebido;
+          atualizarContadoresSecoes();
           atualizarBadgeChecklist(data.summary);
         }
       })
@@ -968,10 +1128,12 @@
       .then(r => r.json())
       .then(data => {
         if (data.ok) {
+          const cached = checklistItens.find(x => x.id === itemId);
+          if (cached) cached.texto = data.item.texto;
           const wrap2 = document.getElementById(`cl-edit-wrap-${itemId}`);
           if (wrap2) {
             const doneClass = data.item.recebido ? 'is-done' : '';
-            wrap2.outerHTML = `<span class="checklist-item-text flex-grow-1 ${doneClass}" id="cl-texto-${itemId}">${escapeHtml(data.item.texto)}</span>`;
+            wrap2.outerHTML = `<span class="checklist-item-text ${doneClass}" id="cl-texto-${itemId}">${escapeHtml(data.item.texto)}</span>`;
           }
           if (row) {
             const actionsDiv = row.querySelector('.checklist-item-actions');
@@ -1005,8 +1167,8 @@
       .then(r => r.json())
       .then(data => {
         if (data.ok) {
-          const row = document.querySelector(`.checklist-item-row[data-item-id="${itemId}"]`);
-          if (row) row.remove();
+          checklistItens = checklistItens.filter(x => x.id !== itemId);
+          renderChecklistItens(checklistItens, data.summary);
           atualizarBadgeChecklist(data.summary);
         }
       })
@@ -1070,29 +1232,8 @@
         .then(data => {
           if (data.ok) {
             if (novoTexto) novoTexto.value = '';
-            // Adiciona novo item no container
-            const container = document.getElementById("checklist-itens-container");
-            const item = data.item;
-            const novaLinha = document.createElement('div');
-            novaLinha.className = 'checklist-item-row';
-            novaLinha.dataset.itemId = item.id;
-            novaLinha.innerHTML = `
-              <input type="checkbox" class="form-check-input checklist-cb flex-shrink-0"
-                     onchange="toggleItemChecklist(${item.id}, this)">
-              <span class="checklist-item-text flex-grow-1" id="cl-texto-${item.id}">${escapeHtml(item.texto)}</span>
-              <div class="checklist-item-actions">
-                <button class="btn-icon-action"
-                        onclick="iniciarEdicaoItemChecklist(${item.id}, '${escapeJs(item.texto)}')">
-                  <i class="bi bi-pencil"></i>
-                </button>
-                <button class="btn-icon-action btn-icon-action--danger"
-                        onclick="excluirItemChecklist(${item.id}, '${escapeJs(item.texto)}')">
-                  <i class="bi bi-trash"></i>
-                </button>
-              </div>`;
-            const emptyMsg = container.querySelector('.checklist-empty');
-            if (emptyMsg) emptyMsg.remove();
-            container.appendChild(novaLinha);
+            checklistItens.push(data.item);
+            renderChecklistItens(checklistItens, data.summary);
             atualizarBadgeChecklist(data.summary);
           }
         })

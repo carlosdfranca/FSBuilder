@@ -33,10 +33,11 @@ class FundoForm(forms.ModelForm):
 
     class Meta:
         model = Fundo
-        fields = ['nome', 'cnpj', 'gestora']
+        fields = ['nome', 'cnpj', 'tipo_fundo', 'gestora']
         widgets = {
             'nome': forms.TextInput(attrs={'class': 'form-control'}),
             'cnpj': forms.TextInput(attrs={'class': 'form-control'}),
+            'tipo_fundo': forms.Select(attrs={'class': 'form-select'}),
         }
 
     def __init__(self, *args, empresa=None, **kwargs):
