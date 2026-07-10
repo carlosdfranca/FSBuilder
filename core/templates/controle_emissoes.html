@@ -50,8 +50,25 @@
     <div class="card-body py-3 px-4">
       <div class="row g-3 align-items-end">
 
+        <!-- Gestora -->
+        {% if gestoras_lista %}
+        <div class="col-12 col-sm-6 col-lg-3">
+          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-gestora">
+            <i class="bi bi-building me-1"></i>Gestora
+          </label>
+          <select id="filtro-gestora" class="form-select form-select-sm">
+            <option value="">Todas as gestoras</option>
+            {% for g in gestoras_lista %}
+            <option value="{{ g.id }}" {% if gestora_filtro == g.id|stringformat:'s' %}selected{% endif %}>
+              {{ g.nome }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+
         <!-- Fundo -->
-        <div class="col-12 col-sm-6 col-lg-5">
+        <div class="col-12 col-sm-6 col-lg-3">
           <label class="form-label small fw-semibold text-muted mb-1" for="filtro-fundo">
             <i class="bi bi-briefcase me-1"></i>Fundo
           </label>
@@ -60,6 +77,21 @@
             {% for f in fundos_lista %}
             <option value="{{ f.id }}" {% if fundo_filtro == f.id|stringformat:'s' %}selected{% endif %}>
               {{ f.nome }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Tipo do Fundo -->
+        <div class="col-6 col-sm-4 col-lg-2">
+          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-tipo-fundo">
+            <i class="bi bi-tags me-1"></i>Tipo do Fundo
+          </label>
+          <select id="filtro-tipo-fundo" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            {% for valor, rotulo in tipos_fundo %}
+            <option value="{{ valor }}" {% if tipo_fundo_filtro == valor %}selected{% endif %}>
+              {{ rotulo }}
             </option>
             {% endfor %}
           </select>
@@ -81,14 +113,14 @@
         </div>
 
         <!-- Ações + contador -->
-        <div class="col-6 col-sm-3 col-lg-5 d-flex align-items-center gap-3 justify-content-end">
-          {% if ano_filtro or fundo_filtro %}
+        <div class="col-12 col-lg-2 d-flex align-items-center gap-3 justify-content-end">
+          {% if ano_filtro or fundo_filtro or gestora_filtro or tipo_fundo_filtro %}
           <a href="?{% if status_filtro %}status={{ status_filtro }}{% endif %}"
              class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-x-circle me-1"></i>Limpar
           </a>
           {% endif %}
-          <span class="text-muted small">
+          <span class="text-muted small text-nowrap">
             <strong>{{ periodos|length }}</strong> período{{ periodos|length|pluralize }}
           </span>
         </div>
@@ -191,75 +223,6 @@
 
   </div>
 
-  <!-- [C] Filtros -->
-  <div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-3 px-4">
-      <div class="row g-3 align-items-end">
-
-        <!-- Gestora -->
-        {% if gestoras_lista %}
-        <div class="col-12 col-sm-6 col-lg-4">
-          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-gestora">
-            <i class="bi bi-building me-1"></i>Gestora
-          </label>
-          <select id="filtro-gestora" class="form-select form-select-sm">
-            <option value="">Todas as gestoras</option>
-            {% for g in gestoras_lista %}
-            <option value="{{ g.id }}" {% if gestora_filtro == g.id|stringformat:'s' %}selected{% endif %}>
-              {{ g.nome }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-        {% endif %}
-
-        <!-- Fundo -->
-        <div class="col-12 col-sm-6 col-lg-{% if gestoras_lista %}3{% else %}5{% endif %}">
-          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-fundo">
-            <i class="bi bi-briefcase me-1"></i>Fundo
-          </label>
-          <select id="filtro-fundo" class="form-select form-select-sm">
-            <option value="">Todos os fundos</option>
-            {% for f in fundos_lista %}
-            <option value="{{ f.id }}" {% if fundo_filtro == f.id|stringformat:'s' %}selected{% endif %}>
-              {{ f.nome }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <!-- Ano -->
-        <div class="col-6 col-sm-3 col-lg-2">
-          <label class="form-label small fw-semibold text-muted mb-1" for="filtro-ano">
-            <i class="bi bi-calendar3 me-1"></i>Ano
-          </label>
-          <select id="filtro-ano" class="form-select form-select-sm">
-            <option value="">Todos</option>
-            {% for ano in anos_disponiveis %}
-            <option value="{{ ano }}" {% if ano_filtro == ano|stringformat:'s' %}selected{% endif %}>
-              {{ ano }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <!-- Ações + contador -->
-        <div class="col-6 col-sm-3 col-lg-{% if gestoras_lista %}3{% else %}5{% endif %} d-flex align-items-center gap-3 justify-content-end">
-          {% if ano_filtro or fundo_filtro or gestora_filtro %}
-          <a href="?{% if status_filtro %}status={{ status_filtro }}{% endif %}"
-             class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-x-circle me-1"></i>Limpar
-          </a>
-          {% endif %}
-          <span class="text-muted small">
-            <strong>{{ periodos|length }}</strong> período{{ periodos|length|pluralize }}
-          </span>
-        </div>
-
-      </div>
-    </div>
-  </div>
-
   <!-- [D] Tabela de períodos -->
   <div class="card border-0 shadow-sm mb-4">
     <div class="card-body p-0">
@@ -349,7 +312,7 @@
 
       {% else %}
         <div class="p-4">
-          {% if status_filtro or ano_filtro or fundo_filtro or gestora_filtro %}
+          {% if status_filtro or ano_filtro or fundo_filtro or gestora_filtro or tipo_fundo_filtro %}
             <div class="empty-state">
               <i class="bi bi-funnel empty-state__icon"></i>
               <p class="empty-state__title">Nenhum período encontrado</p>
@@ -382,27 +345,31 @@
 <script>
 // Aplica filtros de gestora, fundo e ano preservando o status ativo
 function aplicarFiltros() {
-  const gestora = document.getElementById('filtro-gestora') ? document.getElementById('filtro-gestora').value : '';
-  const fundo   = document.getElementById('filtro-fundo').value;
-  const ano     = document.getElementById('filtro-ano').value;
-  const params  = new URLSearchParams();
-  const status  = '{{ status_filtro }}';
-  if (status)  params.set('status', status);
-  if (gestora) params.set('gestora', gestora);
-  if (fundo)   params.set('fundo', fundo);
-  if (ano)     params.set('ano', ano);
+  const gestora   = document.getElementById('filtro-gestora') ? document.getElementById('filtro-gestora').value : '';
+  const fundo     = document.getElementById('filtro-fundo').value;
+  const tipoFundo = document.getElementById('filtro-tipo-fundo') ? document.getElementById('filtro-tipo-fundo').value : '';
+  const ano       = document.getElementById('filtro-ano').value;
+  const params    = new URLSearchParams();
+  const status    = '{{ status_filtro }}';
+  if (status)    params.set('status', status);
+  if (gestora)   params.set('gestora', gestora);
+  if (fundo)     params.set('fundo', fundo);
+  if (tipoFundo) params.set('tipo_fundo', tipoFundo);
+  if (ano)       params.set('ano', ano);
   window.location.href = '?' + params.toString();
 }
 
 document.addEventListener("DOMContentLoaded", function () {
 
   // Bind selects
-  const selGestora = document.getElementById('filtro-gestora');
-  const selFundo   = document.getElementById('filtro-fundo');
-  const selAno     = document.getElementById('filtro-ano');
-  if (selGestora) selGestora.addEventListener('change', aplicarFiltros);
-  if (selFundo)   selFundo.addEventListener('change', aplicarFiltros);
-  if (selAno)     selAno.addEventListener('change', aplicarFiltros);
+  const selGestora   = document.getElementById('filtro-gestora');
+  const selFundo     = document.getElementById('filtro-fundo');
+  const selTipoFundo = document.getElementById('filtro-tipo-fundo');
+  const selAno       = document.getElementById('filtro-ano');
+  if (selGestora)   selGestora.addEventListener('change', aplicarFiltros);
+  if (selFundo)     selFundo.addEventListener('change', aplicarFiltros);
+  if (selTipoFundo) selTipoFundo.addEventListener('change', aplicarFiltros);
+  if (selAno)       selAno.addEventListener('change', aplicarFiltros);
 
   // DataTables — coluna Gestora adicionada na posição 1, Vencimento em 4, Ações em 7
   const tabela = document.getElementById('tabela-periodos');

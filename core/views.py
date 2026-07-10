@@ -167,6 +167,7 @@ def controle_emissoes(request):
     ano_filtro = request.GET.get('ano', '')
     fundo_filtro = request.GET.get('fundo', '')
     gestora_filtro = request.GET.get('gestora', '')
+    tipo_fundo_filtro = request.GET.get('tipo_fundo', '')
 
     qs = (
         PeriodoDF.objects
@@ -189,6 +190,12 @@ def controle_emissoes(request):
             qs = qs.filter(fundo__gestora_id=int(gestora_filtro))
         except ValueError:
             gestora_filtro = ''
+    if tipo_fundo_filtro:
+        tipos_validos = {c[0] for c in Fundo.TIPO_FUNDO_CHOICES}
+        if tipo_fundo_filtro in tipos_validos:
+            qs = qs.filter(fundo__tipo_fundo=tipo_fundo_filtro)
+        else:
+            tipo_fundo_filtro = ''
 
     todos = list(qs)
 
@@ -260,6 +267,8 @@ def controle_emissoes(request):
         _filtros_parts.append(f'fundo={fundo_filtro}')
     if gestora_filtro:
         _filtros_parts.append(f'gestora={gestora_filtro}')
+    if tipo_fundo_filtro:
+        _filtros_parts.append(f'tipo_fundo={tipo_fundo_filtro}')
     filtros_base = '&'.join(_filtros_parts)
 
     # Breakdown por ano para o gráfico de barras (usa todos, sem filtro de status)
@@ -296,9 +305,11 @@ def controle_emissoes(request):
         "ano_filtro": ano_filtro,
         "fundo_filtro": fundo_filtro,
         "gestora_filtro": gestora_filtro,
+        "tipo_fundo_filtro": tipo_fundo_filtro,
         "anos_disponiveis": anos_disponiveis,
         "fundos_lista": fundos_lista,
         "gestoras_lista": gestoras_lista,
+        "tipos_fundo": Fundo.TIPO_FUNDO_CHOICES,
         "filtros_base": filtros_base,
         "can_manage_fundos": _can_manage_fundos(request),
         "hoje": hoje,
