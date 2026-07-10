@@ -6,16 +6,26 @@ from .models import (
     MapeamentoContas,
     BalanceteItem,
     MecItem,
+    ChecklistItemPadrao,
 )
 from .admin_mixins import TenantScopedAdminMixin
 
 
 @admin.register(Fundo)
 class FundoAdmin(admin.ModelAdmin):
-    list_display = ("nome", "cnpj", "empresa")
-    list_filter = ("empresa",)
+    list_display = ("nome", "cnpj", "tipo_fundo", "empresa")
+    list_filter = ("tipo_fundo", "empresa")
     search_fields = ("nome", "cnpj", "empresa__nome")
     ordering = ("empresa", "nome")
+
+
+@admin.register(ChecklistItemPadrao)
+class ChecklistItemPadraoAdmin(admin.ModelAdmin):
+    list_display = ("tipo_fundo", "secao", "texto", "prazo", "responsavel", "ordem")
+    list_filter = ("tipo_fundo", "secao", "responsavel")
+    search_fields = ("texto", "secao", "responsavel")
+    ordering = ("tipo_fundo", "ordem")
+    list_editable = ("ordem",)
 
 
 @admin.register(GrupoGrande)

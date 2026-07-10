@@ -819,6 +819,7 @@ def listar_fundos(request):
         "gestoras": gestoras,
         "gestora_form": gestora_form,
         "aba_ativa": aba_ativa,
+        "tipo_fundo_choices": Fundo.TIPO_FUNDO_CHOICES,
     })
 
 
@@ -872,6 +873,7 @@ def adicionar_fundo(request):
 def editar_fundo(request, fundo_id):
     qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
     fundo = get_object_or_404(qs, id=fundo_id)
+    tipo_fundo_anterior = fundo.tipo_fundo
 
     if request.method == "POST":
         form = FundoForm(request.POST, instance=fundo)
@@ -889,6 +891,17 @@ def editar_fundo(request, fundo_id):
                     return redirect("listar_fundos")
             obj.save()
             form.save_configuracoes(obj)
+
+            if obj.tipo_fundo != tipo_fundo_anterior:
+                from df.services.checklist_service import ressincronizar_checklist_por_tipo
+                n = ressincronizar_checklist_por_tipo(obj)
+                if n:
+                    messages.info(
+                        request,
+                        f"Tipo alterado para {obj.tipo_fundo}: checklist de documentos "
+                        f"atualizado em {n} período(s) não finalizado(s)."
+                    )
+
             messages.success(request, "Fundo atualizado com sucesso.")
             return redirect("listar_fundos")
     else:
@@ -1188,7 +1201,15 @@ def api_checklist_periodo(request, periodo_id):
     periodo = get_object_or_404(PeriodoDF, id=periodo_id, empresa=empresa)
     itens = list(ChecklistItemPeriodo.objects.filter(periodo_df=periodo).order_by('ordem'))
     items_data = [
-        {'id': i.id, 'texto': i.texto, 'ordem': i.ordem, 'recebido': i.recebido}
+        {
+            'id': i.id,
+            'secao': i.secao,
+            'texto': i.texto,
+            'prazo': i.prazo,
+            'responsavel': i.responsavel,
+            'ordem': i.ordem,
+            'recebido': i.recebido,
+        }
         for i in itens
     ]
     summary = {'total': len(itens), 'recebidos': sum(1 for i in itens if i.recebido)}
@@ -1213,13 +1234,23 @@ def adicionar_item_checklist(request, periodo_id):
     texto = request.POST.get('texto', '').strip()
     if not texto or len(texto) > 255:
         return JsonResponse({'ok': False, 'error': 'Texto inválido.'}, status=400)
+    secao = request.POST.get('secao', '').strip()[:120]
+    prazo = request.POST.get('prazo', '').strip()[:120]
+    responsavel = request.POST.get('responsavel', '').strip()[:120]
 
     from django.db.models import Max
     max_ordem = ChecklistItemPeriodo.objects.filter(periodo_df=periodo).aggregate(m=Max('ordem'))['m'] or 0
-    item = ChecklistItemPeriodo.objects.create(periodo_df=periodo, texto=texto, ordem=max_ordem + 1)
+    item = ChecklistItemPeriodo.objects.create(
+        periodo_df=periodo, secao=secao, texto=texto,
+        prazo=prazo, responsavel=responsavel, ordem=max_ordem + 1,
+    )
     return JsonResponse({
         'ok': True,
-        'item': {'id': item.id, 'texto': item.texto, 'ordem': item.ordem, 'recebido': item.recebido},
+        'item': {
+            'id': item.id, 'secao': item.secao, 'texto': item.texto,
+            'prazo': item.prazo, 'responsavel': item.responsavel,
+            'ordem': item.ordem, 'recebido': item.recebido,
+        },
         'summary': _checklist_summary(periodo),
     })
 
@@ -1259,8 +1290,14 @@ def editar_item_checklist(request, item_id):
         return JsonResponse({'ok': False, 'error': 'Texto inválido.'}, status=400)
 
     item.texto = texto
-    item.save(update_fields=['texto'])
-    return JsonResponse({'ok': True, 'item': {'id': item.id, 'texto': item.texto, 'recebido': item.recebido}})
+    item.secao = request.POST.get('secao', item.secao).strip()[:120]
+    item.prazo = request.POST.get('prazo', item.prazo).strip()[:120]
+    item.responsavel = request.POST.get('responsavel', item.responsavel).strip()[:120]
+    item.save(update_fields=['texto', 'secao', 'prazo', 'responsavel'])
+    return JsonResponse({'ok': True, 'item': {
+        'id': item.id, 'secao': item.secao, 'texto': item.texto,
+        'prazo': item.prazo, 'responsavel': item.responsavel, 'recebido': item.recebido,
+    }})
 
 
 @login_required

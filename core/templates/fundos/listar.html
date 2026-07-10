@@ -54,10 +54,11 @@
               <table class="table table-striped table-hover align-middle" id="tabela-fundos">
                 <thead>
                   <tr>
-                    <th scope="col" style="width: 26%;">Nome</th>
-                    <th scope="col" style="width: 16%;">CNPJ</th>
-                    <th scope="col" style="width: 20%;">Gestora</th>
-                    <th scope="col" style="width: 10%;" class="text-center">Períodos</th>
+                    <th scope="col" style="width: 24%;">Nome</th>
+                    <th scope="col" style="width: 15%;">CNPJ</th>
+                    <th scope="col" style="width: 8%;" class="text-center">Tipo</th>
+                    <th scope="col" style="width: 19%;">Gestora</th>
+                    <th scope="col" style="width: 8%;" class="text-center">Períodos</th>
                     {% if can_manage_fundos %}
                       <th scope="col" style="width: 4%;" class="text-center">Editar</th>
                       <th scope="col" style="width: 4%;" class="text-center">Excluir</th>
@@ -69,6 +70,9 @@
                     <tr>
                       <td class="fw-bold">{{ fundo.nome }}</td>
                       <td>{{ fundo.cnpj }}</td>
+                      <td class="text-center">
+                        <span class="badge bg-secondary">{{ fundo.tipo_fundo }}</span>
+                      </td>
                       <td>
                         {% if fundo.gestora %}
                           {{ fundo.gestora.nome }}
@@ -194,6 +198,13 @@
             {{ form.cnpj|add_class:"form-control" }}
           </div>
           <div class="mb-3">
+            <label for="id_tipo_fundo" class="form-label">Tipo de Fundo *</label>
+            {{ form.tipo_fundo }}
+            <p class="text-muted mb-0 mt-1" style="font-size:.75rem;">
+              <i class="bi bi-info-circle me-1"></i>Define o checklist de documentos padrão aplicado a cada DF do fundo.
+            </p>
+          </div>
+          <div class="mb-3">
             <label for="id_gestora" class="form-label">Gestora</label>
             {{ form.gestora }}
           </div>
@@ -250,6 +261,14 @@
           <div class="mb-3">
             <label for="cnpj{{ fundo.id }}" class="form-label">CNPJ *</label>
             <input type="text" name="cnpj" id="cnpj{{ fundo.id }}" value="{{ fundo.cnpj }}" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label for="tipo_fundo{{ fundo.id }}" class="form-label">Tipo de Fundo *</label>
+            <select name="tipo_fundo" id="tipo_fundo{{ fundo.id }}" class="form-select" required>
+              {% for value, label in tipo_fundo_choices %}
+                <option value="{{ value }}" {% if fundo.tipo_fundo == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
           </div>
           <div class="mb-3">
             <label class="form-label">Gestora</label>
