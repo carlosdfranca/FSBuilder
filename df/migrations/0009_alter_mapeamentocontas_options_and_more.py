@@ -13,10 +13,16 @@ def associar_mapeamentos_empresa(apps, schema_editor):
     """
     Empresa = apps.get_model('usuarios', 'Empresa')
     MapeamentoContas = apps.get_model('df', 'MapeamentoContas')
-    
+
+    orfaos = MapeamentoContas.objects.filter(empresa__isnull=True)
+    if not orfaos.exists():
+        # Banco novo (ex.: banco de testes criado do zero) — não há nada para
+        # migrar, então não há motivo para exigir a empresa de teste.
+        return
+
     # Buscar empresa pelo CNPJ (não pelo ID, que pode variar entre ambientes)
     cnpj_teste = '11111111111111'
-    
+
     try:
         empresa = Empresa.objects.get(cnpj=cnpj_teste)
     except Empresa.DoesNotExist:
@@ -34,8 +40,8 @@ def associar_mapeamentos_empresa(apps, schema_editor):
         )
     
     # Associar todos os mapeamentos à empresa
-    count = MapeamentoContas.objects.filter(empresa__isnull=True).update(empresa=empresa)
-    
+    count = orfaos.update(empresa=empresa)
+
     print(f"✓ {count} mapeamentos associados à empresa '{empresa.nome}' (ID {empresa.id})")
 
 

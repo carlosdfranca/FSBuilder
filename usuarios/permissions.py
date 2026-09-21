@@ -38,10 +38,12 @@ def role_na_empresa(user, empresa):
     memb = Membership.objects.filter(usuario=user, empresa=empresa, is_active=True).only("role").first()
     return memb.role if memb else None
 
-def _redirect_to_select(request):
+def _redirect_to_select(request, msg=None):
     """Redireciona de forma segura para a página de seleção, sem criar loop nem spam de mensagens."""
     select_url = reverse("selecionar_empresa")
     if request.path != select_url:
+        if msg:
+            messages.warning(request, msg)
         return redirect("selecionar_empresa")
     # Já estamos na página de seleção → não redirecionar de novo
     return None
@@ -114,6 +116,43 @@ def company_can_manage_fundos(view):
             return view(request, *args, **kwargs)
         return HttpResponseForbidden("Você não tem permissão para gerenciar fundos desta empresa.")
     return _wrapped
+
+
+def platform_admin_required(view):
+    """
+    Acesso restrito à plataforma (Global Admin) — não é escopado por empresa.
+    Usado no painel administrativo de documentos: visão de operador sobre
+    todos os clientes, não uma tela de autogestão de uma empresa específica.
+    """
+    @wraps(view)
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect("login")
+        if not is_global_admin(request.user):
+            return HttpResponseForbidden("Acesso restrito a administradores da plataforma.")
+        return view(request, *args, **kwargs)
+    return _wrapped
+
+
+def pode_baixar_documentos(user, empresa) -> bool:
+    """
+    Quem pode baixar o CONTEÚDO de um documento anexado à DF (tem PII de
+    terceiros — kits cadastrais, extratos bancários de cotistas):
+    - Global ADMIN
+    - MASTER/ADMIN/MEMBER da empresa
+    (VIEWER da empresa e Global VIEWER NÃO podem — veem que o documento existe,
+    mas não baixam o arquivo. Minimização, LGPD Art. 6º, III.)
+
+    É uma função, não um decorator: a view de download precisa resolver o
+    documento primeiro (mesmo quando o acesso será negado) para registrar a
+    tentativa em LogAcessoDocumento — um decorator que barra antes da view
+    rodar esconderia essa tentativa do log de auditoria.
+    """
+    if not (user and user.is_authenticated and empresa):
+        return False
+    if is_global_admin(user):
+        return True
+    return role_na_empresa(user, empresa) in {Membership.Role.MASTER, Membership.Role.ADMIN, Membership.Role.MEMBER}
 
 
 def company_can_download_data(view):

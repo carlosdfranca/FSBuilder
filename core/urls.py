@@ -45,4 +45,15 @@ urlpatterns = [
     path('api/checklist-item/<int:item_id>/toggle/', toggle_item_checklist, name='toggle_item_checklist'),
     path('api/checklist-item/<int:item_id>/editar/', editar_item_checklist, name='editar_item_checklist'),
     path('api/checklist-item/<int:item_id>/excluir/', excluir_item_checklist, name='excluir_item_checklist'),
-]   
+
+    # Documentos anexados à DF
+    path('api/periodo/<int:periodo_id>/documento/upload/', upload_documento_periodo, name='upload_documento_periodo'),
+    path('documento/<int:documento_id>/download/', download_documento, name='download_documento'),
+    path('api/documento/<int:documento_id>/excluir/', excluir_documento, name='excluir_documento'),
+
+    # Painel administrativo de documentos (Fase 5 — só Global Admin)
+    path('painel-documentos/', painel_documentos, name='painel_documentos'),
+    path('painel-documentos/<int:empresa_id>/', painel_documentos_empresa, name='painel_documentos_empresa'),
+    path('painel-documentos/<int:empresa_id>/config/', painel_documentos_config, name='painel_documentos_config'),
+    path('painel-documentos/documento/<int:documento_id>/expurgar/', expurgar_documento, name='expurgar_documento'),
+]

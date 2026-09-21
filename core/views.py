@@ -2,12 +2,29 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
-from django.http import FileResponse, HttpResponse, JsonResponse
+from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
+from django.http import FileResponse, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
+from collections import defaultdict
 from datetime import date
 import json
 
-from df.models import Fundo, BalanceteItem, HistoricoEmissaoDF, PeriodoDF, Gestora, ChecklistItemPeriodo
+from df.models import (
+    Fundo, BalanceteItem, HistoricoEmissaoDF, PeriodoDF, Gestora,
+    ChecklistItemPeriodo, DocumentoDF, LogAcessoDocumento,
+)
+from df.validators import validar_documento_upload
+from df.services.documento_service import (
+    sugerir_contem_dados_pessoais,
+    registrar_acesso,
+    resolver_documento_escopo,
+    uso_documentos_bytes,
+    resposta_download,
+    estatisticas_por_empresa,
+    calcular_retencao_ate,
+    serie_crescimento_mensal,
+)
 from usuarios.models import Empresa, Membership
 from usuarios.utils.company_scope import query_por_empresa_ativa
 from usuarios.permissions import (
@@ -16,10 +33,12 @@ from usuarios.permissions import (
     get_empresa_escopo,
     role_na_empresa,
     is_global_admin,
-    company_can_download_data
+    company_can_download_data,
+    pode_baixar_documentos,
+    platform_admin_required,
 )
 
-from .forms import FundoForm, GestoraForm, EditarPerfilForm
+from .forms import FundoForm, GestoraForm, EditarPerfilForm, EmpresaDocumentosConfigForm
 from df.forms import PeriodoDFManualForm
 
 # Camadas novas (core)
@@ -60,6 +79,18 @@ def _can_manage_fundos(request):
         return True
     user_role = role_na_empresa(request.user, empresa)
     return user_role in {Membership.Role.MASTER, Membership.Role.ADMIN, Membership.Role.MEMBER}
+
+
+def _pode_anexar_documentos(request):
+    """
+    Habilita a UI de upload de documentos: mesma regra de _can_manage_fundos,
+    mais o gate de DPA (empresa.documentos_habilitados) — sem contrato de
+    operador assinado, o recurso nem aparece.
+    """
+    empresa = get_empresa_escopo(request)
+    if not empresa or not empresa.documentos_habilitados:
+        return False
+    return _can_manage_fundos(request)
 
 
 # ===============================
@@ -1215,6 +1246,17 @@ def _checklist_summary(periodo):
 
 
 
+def _documento_json(d):
+    return {
+        'id': d.id,
+        'nome': d.nome_original,
+        'tamanho': d.tamanho_bytes,
+        'enviado_em': d.enviado_em.isoformat(),
+        'enviado_por': str(d.enviado_por) if d.enviado_por else '—',
+        'contem_dados_pessoais': d.contem_dados_pessoais,
+    }
+
+
 @login_required
 @company_can_view_data
 def api_checklist_periodo(request, periodo_id):
@@ -1224,6 +1266,23 @@ def api_checklist_periodo(request, periodo_id):
     empresa = get_empresa_escopo(request)
     periodo = get_object_or_404(PeriodoDF, id=periodo_id, empresa=empresa)
     itens = list(ChecklistItemPeriodo.objects.filter(periodo_df=periodo).order_by('ordem'))
+
+    # Uma query só, agrupada em memória — nunca uma query por item (seriam
+    # ~38 queries por abertura de modal).
+    documentos = (
+        DocumentoDF.objects
+        .filter(periodo_df=periodo, excluido_em__isnull=True)
+        .select_related('enviado_por')
+        .order_by('-enviado_em')
+    )
+    docs_por_item = defaultdict(list)
+    docs_avulsos = []
+    for d in documentos:
+        if d.checklist_item_id:
+            docs_por_item[d.checklist_item_id].append(_documento_json(d))
+        else:
+            docs_avulsos.append(_documento_json(d))
+
     items_data = [
         {
             'id': i.id,
@@ -1233,6 +1292,7 @@ def api_checklist_periodo(request, periodo_id):
             'responsavel': i.responsavel,
             'ordem': i.ordem,
             'recebido': i.recebido,
+            'documentos': docs_por_item.get(i.id, []),
         }
         for i in itens
     ]
@@ -1242,6 +1302,10 @@ def api_checklist_periodo(request, periodo_id):
         'items': items_data,
         'summary': summary,
         'periodo_nome': periodo.nome_exibicao,
+        'documentos_avulsos': docs_avulsos,
+        'pode_baixar': pode_baixar_documentos(request.user, empresa),
+        'pode_anexar': _pode_anexar_documentos(request),
+        'periodo_finalizado': periodo.status == 'finalizada',
     })
 
 
@@ -1337,3 +1401,313 @@ def excluir_item_checklist(request, item_id):
     periodo = item.periodo_df
     item.delete()
     return JsonResponse({'ok': True, 'summary': _checklist_summary(periodo)})
+
+
+# ===========================
+# DOCUMENTOS ANEXADOS (upload/download/exclusão)
+# ===========================
+
+@login_required
+@company_can_manage_fundos
+def upload_documento_periodo(request, periodo_id):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return JsonResponse({'ok': False}, status=400)
+
+    empresa = get_empresa_escopo(request)
+    periodo = get_object_or_404(PeriodoDF, id=periodo_id, empresa=empresa)
+
+    if not empresa.documentos_habilitados:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Upload de documentos não habilitado para esta empresa.',
+        }, status=403)
+
+    arquivo = request.FILES.get('arquivo')
+    if not arquivo:
+        return JsonResponse({'ok': False, 'error': 'Nenhum arquivo enviado.'}, status=400)
+
+    try:
+        _ext, sha256 = validar_documento_upload(arquivo)
+    except ValidationError as e:
+        return JsonResponse({'ok': False, 'error': '; '.join(e.messages)}, status=400)
+
+    if empresa.quota_documentos_gb:
+        limite_bytes = empresa.quota_documentos_gb * 1024 ** 3
+        uso_atual = uso_documentos_bytes(empresa)
+        if uso_atual + arquivo.size > limite_bytes:
+            return JsonResponse({
+                'ok': False,
+                'error': (
+                    f'Quota de armazenamento excedida: '
+                    f'{uso_atual / 1024 ** 3:.1f} GB usados de {empresa.quota_documentos_gb} GB.'
+                ),
+            }, status=400)
+
+    checklist_item = None
+    checklist_item_id = request.POST.get('checklist_item_id')
+    if checklist_item_id:
+        checklist_item = get_object_or_404(ChecklistItemPeriodo, id=checklist_item_id, periodo_df=periodo)
+
+    texto_referencia = checklist_item.texto if checklist_item else ''
+    contem_dados_pessoais = sugerir_contem_dados_pessoais(texto_referencia)
+    if 'contem_dados_pessoais' in request.POST:
+        contem_dados_pessoais = request.POST.get('contem_dados_pessoais') in ('1', 'true', 'on', 'True')
+
+    documento = DocumentoDF.objects.create(
+        empresa=empresa,
+        periodo_df=periodo,
+        checklist_item=checklist_item,
+        checklist_texto=texto_referencia,
+        arquivo=arquivo,
+        nome_original=arquivo.name[:255],
+        tamanho_bytes=arquivo.size,
+        content_type=getattr(arquivo, 'content_type', '') or '',
+        sha256=sha256,
+        retencao_ate=calcular_retencao_ate(periodo, empresa),
+        contem_dados_pessoais=contem_dados_pessoais,
+        enviado_por=request.user,
+    )
+    registrar_acesso(documento, request, LogAcessoDocumento.Acao.UPLOAD)
+
+    return JsonResponse({
+        'ok': True,
+        'documento': _documento_json(documento),
+        'checklist_item_id': documento.checklist_item_id,
+    })
+
+
+@login_required
+def download_documento(request, documento_id):
+    # Não é AJAX — é navegação normal (window.location), então não exige o
+    # header X-Requested-With como as demais views desta seção.
+    empresa = get_empresa_escopo(request)
+    if not empresa:
+        return HttpResponseForbidden("Nenhuma empresa selecionada.")
+
+    documento = resolver_documento_escopo(documento_id, empresa, request)
+    if documento is None:
+        return HttpResponseForbidden("Você não tem permissão para acessar este documento.")
+
+    if documento.excluido_em:
+        return HttpResponseForbidden("Este documento foi excluído.")
+
+    if not pode_baixar_documentos(request.user, empresa):
+        registrar_acesso(documento, request, LogAcessoDocumento.Acao.NEGADO)
+        return HttpResponseForbidden("Seu papel nesta empresa não permite baixar documentos.")
+
+    registrar_acesso(documento, request, LogAcessoDocumento.Acao.DOWNLOAD)
+    return resposta_download(documento)
+
+
+@login_required
+@company_can_manage_fundos
+def excluir_documento(request, documento_id):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return JsonResponse({'ok': False}, status=400)
+
+    empresa = get_empresa_escopo(request)
+    documento = resolver_documento_escopo(documento_id, empresa, request)
+    if documento is None:
+        return JsonResponse({'ok': False, 'error': 'Você não tem permissão para excluir este documento.'}, status=403)
+
+    if documento.excluido_em:
+        return JsonResponse({'ok': False, 'error': 'Documento já foi excluído.'}, status=400)
+
+    if documento.periodo_df.status == 'finalizada':
+        return JsonResponse({
+            'ok': False,
+            'error': 'Período finalizado — exclusão de documentos bloqueada.',
+        }, status=403)
+
+    from django.utils import timezone
+    documento.excluido_em = timezone.now()
+    documento.excluido_por = request.user
+    documento.save(update_fields=['excluido_em', 'excluido_por'])
+    registrar_acesso(documento, request, LogAcessoDocumento.Acao.EXCLUSAO)
+
+    return JsonResponse({'ok': True})
+
+
+# ===========================
+# PAINEL ADMINISTRATIVO DE DOCUMENTOS (Fase 5 — só Global Admin)
+# ===========================
+
+@login_required
+@platform_admin_required
+def painel_documentos(request):
+    """Visão de operador da plataforma sobre uso de armazenamento por empresa.
+
+    Não escopado por empresa_ativa como o resto do sistema — é justamente o
+    contrário: uma única tela vendo todas as empresas de uma vez, por isso
+    não usa get_empresa_escopo/query_por_empresa_ativa.
+    """
+    empresas = []
+    uso_total_bytes = 0
+    documentos_ativos_total = 0
+    documentos_pii_total = 0
+    empresas_habilitadas_count = 0
+
+    for empresa in estatisticas_por_empresa():
+        uso_bytes = empresa.uso_bytes or 0
+        documentos_ativos = empresa.documentos_ativos or 0
+        documentos_pii = empresa.documentos_pii or 0
+        quota_bytes = empresa.quota_documentos_gb * 1024 ** 3
+        pct_uso = (uso_bytes / quota_bytes * 100) if quota_bytes else None
+
+        uso_total_bytes += uso_bytes
+        documentos_ativos_total += documentos_ativos
+        documentos_pii_total += documentos_pii
+        if empresa.documentos_habilitados:
+            empresas_habilitadas_count += 1
+
+        empresas.append({
+            'empresa': empresa,
+            'uso_bytes': uso_bytes,
+            'documentos_ativos': documentos_ativos,
+            'documentos_pii': documentos_pii,
+            'pct_uso': pct_uso,
+        })
+
+    # Gatilho de migração para S3 sugerido no plano (§5): ~100 GB de disco total.
+    limite_alerta_global_bytes = 100 * 1024 ** 3
+
+    # Fase 5.6 — gráfico de crescimento: disco físico real (não filtra
+    # excluído — ver docstring de serie_crescimento_mensal).
+    crescimento_labels, crescimento_total_gb, crescimento_series = serie_crescimento_mensal()
+    crescimento_data = json.dumps({
+        'labels': crescimento_labels,
+        'total_gb': crescimento_total_gb,
+        'series': crescimento_series,
+        'gatilho_gb': 100,
+    })
+
+    return render(request, 'painel_documentos/index.html', {
+        'empresas': empresas,
+        'uso_total_bytes': uso_total_bytes,
+        'documentos_ativos_total': documentos_ativos_total,
+        'documentos_pii_total': documentos_pii_total,
+        'empresas_habilitadas_count': empresas_habilitadas_count,
+        'disco_perto_do_limite': uso_total_bytes >= limite_alerta_global_bytes * 0.8,
+        'crescimento_data': crescimento_data,
+        'crescimento_tem_dados': bool(crescimento_labels),
+    })
+
+
+@login_required
+@platform_admin_required
+def painel_documentos_empresa(request, empresa_id):
+    """Detalhe de uma empresa no painel: lista de documentos ativos (com
+    filtro de PII), log de acesso filtrável por ação, e config rápida
+    (documentos_habilitados/retencao_anos/quota_documentos_gb), sem precisar
+    do Django /admin."""
+    empresa = get_object_or_404(Empresa, id=empresa_id)
+
+    # ---- Documentos (aba 1) — relatório de PII é este mesmo filtro (§6, item 7) ----
+    somente_pii = request.GET.get('pii') == '1'
+    documentos_qs = (
+        DocumentoDF.objects
+        .filter(empresa=empresa, excluido_em__isnull=True)
+        .select_related('enviado_por', 'periodo_df__fundo')
+        .order_by('-enviado_em')
+    )
+    if somente_pii:
+        documentos_qs = documentos_qs.filter(contem_dados_pessoais=True)
+    doc_paginator = Paginator(documentos_qs, 25)
+    doc_page_obj = doc_paginator.get_page(request.GET.get('doc_page'))
+
+    # ---- Log de acesso (aba 2) — append-only, só leitura aqui ----
+    log_acao_filtro = request.GET.get('log_acao', '')
+    logs_qs = (
+        LogAcessoDocumento.objects
+        .filter(empresa=empresa)
+        .select_related('usuario', 'documento')
+        .order_by('-ocorrido_em')
+    )
+    if log_acao_filtro:
+        logs_qs = logs_qs.filter(acao=log_acao_filtro)
+    log_paginator = Paginator(logs_qs, 25)
+    log_page_obj = log_paginator.get_page(request.GET.get('log_page'))
+
+    # ---- Vencidos (aba 3) — retenção expirada, ativos ou já excluídos ----
+    # Documento pode ter passado do prazo sem NUNCA ter sido excluído por
+    # ninguém — por isso não filtra excluido_em aqui, ao contrário da aba 1.
+    vencidos_qs = (
+        DocumentoDF.objects
+        .filter(empresa=empresa, retencao_ate__lt=date.today())
+        .select_related('enviado_por', 'periodo_df__fundo')
+        .order_by('retencao_ate')
+    )
+    vencidos_paginator = Paginator(vencidos_qs, 25)
+    vencidos_page_obj = vencidos_paginator.get_page(request.GET.get('vencidos_page'))
+
+    # Qual aba fica ativa ao recarregar a página — se o link veio de um
+    # filtro/página de outra aba, reabre nela em vez de voltar pra padrão.
+    if request.GET.get('vencidos') == '1' or request.GET.get('vencidos_page'):
+        tab_ativa = 'vencidos'
+    elif request.GET.get('log_page') or log_acao_filtro:
+        tab_ativa = 'log'
+    else:
+        tab_ativa = 'documentos'
+
+    uso_bytes = uso_documentos_bytes(empresa)
+    quota_bytes = empresa.quota_documentos_gb * 1024 ** 3
+    pct_uso = (uso_bytes / quota_bytes * 100) if quota_bytes else None
+
+    config_form = EmpresaDocumentosConfigForm(instance=empresa)
+
+    return render(request, 'painel_documentos/empresa.html', {
+        'empresa': empresa,
+        'page_obj': doc_page_obj,
+        'somente_pii': somente_pii,
+        'log_page_obj': log_page_obj,
+        'log_acao_filtro': log_acao_filtro,
+        'log_acoes': LogAcessoDocumento.Acao.choices,
+        'vencidos_page_obj': vencidos_page_obj,
+        'tab_ativa': tab_ativa,
+        'uso_bytes': uso_bytes,
+        'pct_uso': pct_uso,
+        'config_form': config_form,
+    })
+
+
+@login_required
+@platform_admin_required
+def expurgar_documento(request, documento_id):
+    """Apaga fisicamente o arquivo e o registro do documento. Só chega aqui
+    por um clique explícito com confirm() por documento — nunca em lote,
+    nunca automático (risco nº 12 do plano). O log de acesso sobrevive: o FK
+    documento vira NULL (SET_NULL) mas documento_id_hist preserva o rastro."""
+    if request.method != 'POST':
+        return HttpResponseForbidden()
+
+    documento = get_object_or_404(DocumentoDF, id=documento_id)
+    empresa_id = documento.empresa_id
+    nome = documento.nome_original
+
+    registrar_acesso(documento, request, LogAcessoDocumento.Acao.EXPURGO)
+    documento.arquivo.delete(save=False)
+    documento.delete()
+
+    messages.success(request, f'Documento "{nome}" expurgado definitivamente.')
+    from django.urls import reverse
+    return redirect(reverse('painel_documentos_empresa', args=[empresa_id]) + '?vencidos=1')
+
+
+@login_required
+@platform_admin_required
+def painel_documentos_config(request, empresa_id):
+    if request.method != 'POST':
+        return HttpResponseForbidden()
+
+    empresa = get_object_or_404(Empresa, id=empresa_id)
+    form = EmpresaDocumentosConfigForm(request.POST, instance=empresa)
+    if form.is_valid():
+        form.save()
+        messages.success(request, 'Configuração de documentos atualizada.')
+    else:
+        messages.error(request, 'Erro ao atualizar configuração. Verifique os campos informados.')
+    return redirect('painel_documentos_empresa', empresa_id=empresa.id)

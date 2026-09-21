@@ -181,6 +181,64 @@
     color: #ef4444;
     background: rgba(239,68,68,.08);
   }
+  .checklist-doc-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    margin-top: .5rem;
+  }
+  .checklist-doc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .75rem;
+    padding: .2rem .3rem .2rem .55rem;
+    border-radius: 6px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    max-width: 100%;
+  }
+  .checklist-doc-chip-link {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    color: inherit;
+    text-decoration: none;
+    min-width: 0;
+  }
+  a.checklist-doc-chip-link:hover { color: var(--text-primary); }
+  .checklist-doc-chip i.bi-paperclip { color: var(--accent-primary); opacity: .8; flex-shrink: 0; }
+  .checklist-doc-nome {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .checklist-doc-info { color: var(--text-muted); white-space: nowrap; }
+  .checklist-doc-pii { color: #f59e0b; flex-shrink: 0; }
+  .checklist-doc-del {
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    padding: 0 .1rem;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: .7rem;
+  }
+  .checklist-doc-del:hover { color: #ef4444; }
+  .checklist-doc-avulsos { padding: 1rem 1.5rem 0; }
+  .checklist-doc-avulsos-title {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: .5rem;
+  }
+
   .checklist-add-area {
     border-top: 1px solid var(--border-color);
     padding: 1rem 1.5rem 1.25rem;
@@ -267,6 +325,12 @@
     }
     .checklist-add-area {
       padding: 1rem 1rem 1.25rem;
+    }
+    .checklist-doc-avulsos {
+      padding: 1rem 1rem 0;
+    }
+    .checklist-doc-nome {
+      max-width: 130px;
     }
 
     /* No mobile as ações ficam reservando ~64px mesmo escondidas por
@@ -629,6 +693,8 @@
           <span class="spinner-border spinner-border-sm me-2"></span>Carregando...
         </div>
         <div id="checklist-itens-container" style="display:none;"></div>
+        <input type="file" id="checklist-doc-input" hidden
+               accept=".pdf,.doc,.docx,.xls,.xlsx,.ods,.csv,.txt,.xml,.png,.jpg,.jpeg,.zip,.p7s">
         {% if can_enviar_balancete %}
         <div id="checklist-add-area" style="display:none;" class="checklist-add-area">
           <div class="input-group">
@@ -666,6 +732,11 @@
     let dtPeriodos  = null;   // instância DataTables da tabela de períodos
     let checklistPeriodoId = null;
     let checklistItens = [];   // itens do checklist atualmente carregados no modal
+    let checklistDocumentosAvulsos = [];   // documentos sem item de checklist (ex.: item removido depois)
+    let checklistPodeBaixar = false;       // servidor: VIEWER vê metadado, não baixa (LGPD Art. 6º, III)
+    let checklistPodeAnexar = false;       // servidor: exige DPA (empresa.documentos_habilitados) + papel
+    let checklistPeriodoFinalizado = false; // bloqueia excluir anexo, não bloqueia anexar
+    let checklistUploadAlvoItemId = null;   // item ao qual o próximo arquivo escolhido será vinculado
 
     // ── Filtro de gestora ─────────────────────────────────────
     function filtrarFundosPorGestora(gestoraId) {
@@ -1198,6 +1269,10 @@
       .then(r => r.json())
       .then(data => {
         document.getElementById("checklist-loading").style.display = "none";
+        checklistPodeBaixar = !!data.pode_baixar;
+        checklistPodeAnexar = !!data.pode_anexar;
+        checklistPeriodoFinalizado = !!data.periodo_finalizado;
+        checklistDocumentosAvulsos = data.documentos_avulsos || [];
         renderChecklistItens(data.items, data.summary);
         document.getElementById("checklist-itens-container").style.display = "";
         if (addArea) addArea.style.display = "";
@@ -1214,8 +1289,9 @@
       const container = document.getElementById("checklist-itens-container");
       checklistItens = items || [];
       atualizarProgressBar(summary);
+      const avulsosHtml = buildDocumentosAvulsosBlock();
       if (!checklistItens.length) {
-        container.innerHTML = `
+        container.innerHTML = avulsosHtml + `
           <div class="checklist-empty">
             <i class="bi bi-clipboard-check"></i>
             <p class="mb-0">Nenhum documento no checklist deste período.</p>
@@ -1233,7 +1309,7 @@
         }
         grupos[idxPorSecao[sec]].itens.push(item);
       });
-      container.innerHTML = grupos.map((g, gi) => {
+      container.innerHTML = avulsosHtml + grupos.map((g, gi) => {
         const recebidos = g.itens.filter(x => x.recebido).length;
         const total = g.itens.length;
         const header = `<div class="checklist-section-header" data-secao-idx="${gi}">
@@ -1242,6 +1318,46 @@
         </div>`;
         return header + g.itens.map(buildChecklistRow).join('');
       }).join('');
+    }
+
+    function buildDocumentosAvulsosBlock() {
+      if (!checklistDocumentosAvulsos.length) return '';
+      const chips = checklistDocumentosAvulsos.map(d => buildDocChip(d, null)).join('');
+      return `<div class="checklist-doc-avulsos">
+        <div class="checklist-doc-avulsos-title">Documentos avulsos do período</div>
+        <div class="checklist-doc-list">${chips}</div>
+      </div>`;
+    }
+
+    function formatBytes(n) {
+      if (!n) return '0 KB';
+      const kb = n / 1024;
+      if (kb < 1024) return kb.toFixed(kb < 10 ? 1 : 0) + ' KB';
+      return (kb / 1024).toFixed(1) + ' MB';
+    }
+
+    // Chip de um documento anexado — usado tanto dentro de um item do
+    // checklist quanto na lista de avulsos (itemId null nesse caso). O link
+    // de download e o botão de excluir ficam como irmãos, nunca aninhados —
+    // um <button> dentro de um <a> é HTML inválido e o clique fica ambíguo.
+    function buildDocChip(doc, itemId) {
+      const piiIcon = doc.contem_dados_pessoais
+        ? `<i class="bi bi-shield-exclamation checklist-doc-pii" title="Contém dados pessoais de terceiros"></i>`
+        : '';
+      const conteudo = `<i class="bi bi-paperclip"></i>` +
+        `<span class="checklist-doc-nome" title="${escapeHtml(doc.nome)}">${escapeHtml(doc.nome)}</span>` +
+        piiIcon +
+        `<span class="checklist-doc-info">${formatBytes(doc.tamanho)} · ${formatDate(doc.enviado_em.slice(0, 10))}</span>`;
+      const link = checklistPodeBaixar
+        ? `<a class="checklist-doc-chip-link" href="/documento/${doc.id}/download/">${conteudo}</a>`
+        : `<span class="checklist-doc-chip-link">${conteudo}</span>`;
+      const delBtn = (checklistPodeAnexar && !checklistPeriodoFinalizado)
+        ? `<button type="button" class="checklist-doc-del" data-cl-act="delete-doc"
+                   data-doc-id="${doc.id}" data-item-id="${itemId ?? ''}" title="Excluir anexo">
+             <i class="bi bi-x-lg"></i>
+           </button>`
+        : '';
+      return `<span class="checklist-doc-chip">${link}${delBtn}</span>`;
     }
 
     function secaoCountClass(recebidos, total) {
@@ -1288,6 +1404,11 @@
              <i class="bi bi-pencil"></i>
            </button>`
         : '';
+      const uploadBtn = checklistPodeAnexar
+        ? `<button type="button" class="btn-icon-action" data-cl-act="upload" title="Anexar arquivo">
+             <i class="bi bi-paperclip"></i>
+           </button>`
+        : '';
       const delBtn = canEnviarBalancete
         ? `<button type="button" class="btn-icon-action btn-icon-action--danger" data-cl-act="delete" title="Excluir">
              <i class="bi bi-trash"></i>
@@ -1299,13 +1420,17 @@
       if (item.prazo)
         metaParts.push(`<span class="checklist-meta-item checklist-meta-prazo"><i class="bi bi-clock-fill"></i> ${escapeHtml(item.prazo)}</span>`);
       const meta = metaParts.length ? `<div class="checklist-item-meta">${metaParts.join('')}</div>` : '';
+      const docs = (item.documentos && item.documentos.length)
+        ? `<div class="checklist-doc-list">${item.documentos.map(d => buildDocChip(d, item.id)).join('')}</div>`
+        : '';
       return `<div class="${rowCls}" data-item-id="${item.id}">
         ${checkbox}
         <div class="checklist-item-main flex-grow-1">
           <span class="${textCls}" id="cl-texto-${item.id}">${escapeHtml(item.texto)}</span>
           ${meta}
+          ${docs}
         </div>
-        <div class="checklist-item-actions">${editBtn}${delBtn}</div>
+        <div class="checklist-item-actions">${uploadBtn}${editBtn}${delBtn}</div>
       </div>`;
     }
 
@@ -1326,6 +1451,21 @@
     checklistItensContainer.addEventListener("click", function (e) {
       const trigger = e.target.closest("[data-cl-act]");
       if (!trigger || trigger.dataset.clAct === "toggle") return;
+
+      // Ações de documento carregam o próprio alvo em data-doc-id/data-item-id
+      // e não dependem de um .checklist-item-row ancestral — documentos
+      // avulsos (item removido do checklist) não têm essa linha.
+      if (trigger.dataset.clAct === "upload") {
+        const row = trigger.closest("[data-item-id]");
+        checklistUploadAlvoItemId = row ? row.dataset.itemId : null;
+        document.getElementById("checklist-doc-input").click();
+        return;
+      }
+      if (trigger.dataset.clAct === "delete-doc") {
+        excluirDocumento(parseInt(trigger.dataset.docId, 10), trigger.dataset.itemId || null);
+        return;
+      }
+
       const row = trigger.closest("[data-item-id]");
       if (!row) return;
       const itemId = parseInt(row.dataset.itemId, 10);
@@ -1443,6 +1583,81 @@
         }
       })
       .catch(() => {});
+    }
+
+    // Recalcula o summary a partir do estado em memória (upload/exclusão de
+    // anexo nunca muda `recebido`, então não precisa vir do servidor).
+    function checklistSummaryAtual() {
+      return {
+        total: checklistItens.length,
+        recebidos: checklistItens.filter(x => x.recebido).length,
+      };
+    }
+
+    const checklistDocInput = document.getElementById("checklist-doc-input");
+    if (checklistDocInput) {
+      checklistDocInput.addEventListener("change", function () {
+        const inputEl = this;
+        const arquivo = inputEl.files && inputEl.files[0];
+        inputEl.value = ""; // permite escolher o mesmo arquivo de novo depois
+        if (!arquivo) return;
+        const itemId = checklistUploadAlvoItemId;
+        checklistUploadAlvoItemId = null;
+
+        const fd = mkFormData();
+        fd.append("arquivo", arquivo);
+        if (itemId) fd.append("checklist_item_id", itemId);
+
+        inputEl.disabled = true;
+        fetch(`/api/periodo/${checklistPeriodoId}/documento/upload/`, {
+          method: "POST",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          body: fd,
+        })
+        .then(r => r.json().then(data => ({ ok: r.ok, data })))
+        .then(({ ok, data }) => {
+          if (ok && data.ok) {
+            if (itemId) {
+              const item = checklistItens.find(x => String(x.id) === String(itemId));
+              if (item) {
+                item.documentos = item.documentos || [];
+                item.documentos.push(data.documento);
+              }
+            } else {
+              checklistDocumentosAvulsos.push(data.documento);
+            }
+            renderChecklistItens(checklistItens, checklistSummaryAtual());
+          } else {
+            alert(data.error || "Erro ao enviar o documento.");
+          }
+        })
+        .catch(() => alert("Erro inesperado ao enviar o documento."))
+        .finally(() => { inputEl.disabled = false; });
+      });
+    }
+
+    function excluirDocumento(documentoId, itemId) {
+      if (!confirm("Excluir este documento anexado?")) return;
+      fetch(`/api/documento/${documentoId}/excluir/`, {
+        method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        body: mkFormData(),
+      })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (ok && data.ok) {
+          if (itemId) {
+            const item = checklistItens.find(x => String(x.id) === String(itemId));
+            if (item && item.documentos) item.documentos = item.documentos.filter(d => d.id !== documentoId);
+          } else {
+            checklistDocumentosAvulsos = checklistDocumentosAvulsos.filter(d => d.id !== documentoId);
+          }
+          renderChecklistItens(checklistItens, checklistSummaryAtual());
+        } else {
+          alert(data.error || "Erro ao excluir o documento.");
+        }
+      })
+      .catch(() => alert("Erro inesperado ao excluir o documento."));
     }
 
     function atualizarProgressBar(summary) {

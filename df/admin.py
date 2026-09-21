@@ -7,6 +7,8 @@ from .models import (
     BalanceteItem,
     MecItem,
     ChecklistItemPadrao,
+    DocumentoDF,
+    LogAcessoDocumento,
 )
 from .admin_mixins import TenantScopedAdminMixin
 
@@ -26,6 +28,40 @@ class ChecklistItemPadraoAdmin(admin.ModelAdmin):
     search_fields = ("texto", "secao", "responsavel")
     ordering = ("tipo_fundo", "ordem")
     list_editable = ("ordem",)
+
+
+@admin.register(DocumentoDF)
+class DocumentoDFAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+    """Visão de suporte/auditoria — a criação/exclusão de verdade acontece pela
+    tela de checklist, com validação, log de acesso e cálculo de quota."""
+    list_display = ("nome_original", "empresa", "periodo_df", "tamanho_bytes",
+                     "contem_dados_pessoais", "enviado_por", "enviado_em", "excluido_em")
+    list_filter = ("empresa", "contem_dados_pessoais", "excluido_em")
+    search_fields = ("nome_original", "empresa__nome", "periodo_df__fundo__nome", "sha256")
+    ordering = ("-enviado_em",)
+    autocomplete_fields = ("enviado_por", "excluido_por")
+    readonly_fields = ("tamanho_bytes", "content_type", "sha256", "enviado_em")
+
+
+@admin.register(LogAcessoDocumento)
+class LogAcessoDocumentoAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+    """Append-only por design: sem add/change/delete pela UI do admin. Só existe
+    para dar visibilidade de auditoria — a gravação de verdade é sempre feita
+    por df.services.documento_service.registrar_acesso()."""
+    list_display = ("ocorrido_em", "acao", "documento_id_hist", "empresa", "usuario", "ip_address")
+    list_filter = ("acao", "empresa")
+    search_fields = ("documento_id_hist", "empresa__nome", "usuario__username", "ip_address")
+    ordering = ("-ocorrido_em",)
+    date_hierarchy = "ocorrido_em"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(GrupoGrande)

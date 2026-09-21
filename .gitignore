@@ -140,6 +140,11 @@ venv.bak/
 docker-compose.yml
 docker-compose.override.yml
 
+# Documentos da DF (dados de terceiros / PII de cotistas — nunca versionar)
+/private_media/
+/media/*
+!/media/doc/
+
 # Spyder project settings
 .spyderproject
 .spyproject

@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 from django.contrib.auth.password_validation import validate_password
 from datetime import date
 from df.models import Fundo, ConfiguracaoDF, Gestora
-from usuarios.models import Usuario
+from usuarios.models import Usuario, Empresa
 
 
 class GestoraForm(forms.ModelForm):
@@ -84,6 +84,27 @@ class FundoForm(forms.ModelForm):
         if commit:
             self.save_configuracoes(instance)
         return instance
+
+
+class EmpresaDocumentosConfigForm(forms.ModelForm):
+    """Config de documentos de uma empresa, usada no painel administrativo
+    (Fase 5.2) — as mesmas 3 colunas que hoje só dá pra editar pelo Django /admin."""
+    class Meta:
+        model = Empresa
+        fields = ['documentos_habilitados', 'retencao_anos', 'quota_documentos_gb']
+        widgets = {
+            'documentos_habilitados': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'retencao_anos': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'quota_documentos_gb': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+        }
+        labels = {
+            'documentos_habilitados': 'Upload de documentos habilitado',
+            'retencao_anos': 'Retenção (anos)',
+            'quota_documentos_gb': 'Quota (GB — 0 = sem limite)',
+        }
+        help_texts = {
+            'documentos_habilitados': 'Ligar somente após o contrato de operador (DPA) estar assinado.',
+        }
 
 
 class EditarPerfilForm(forms.ModelForm):

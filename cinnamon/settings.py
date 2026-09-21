@@ -131,6 +131,41 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# ===== Documentos da DF (armazenamento privado, fora do MEDIA público) =====
+# Nunca exposto via MEDIA_URL. Todo acesso passa pela view de download,
+# que valida escopo (empresa) e registra log (df.LogAcessoDocumento).
+# Em produção, apontar para fora da árvore do projeto, ex.:
+# DOCUMENTOS_ROOT=/var/lib/fsbuilder/documentos
+# `or` trata "DOCUMENTOS_ROOT=" vazio no .env como ausente — python-decouple só
+# aplica o default= quando a chave não existe, não quando está presente e em
+# branco. Sem essa proteção, um .env com a linha copiada do .env.example e
+# deixada em branco resolveria para o diretório de trabalho atual (Path('.')),
+# gravando documentos com PII fora do private_media e fora do .gitignore.
+DOCUMENTOS_ROOT = Path(config('DOCUMENTOS_ROOT', default='') or (BASE_DIR / 'private_media'))
+
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+    "documentos": {
+        # Trocar para "df.storages.DocumentosS3Storage" (via env) quando migrar para S3 —
+        # nenhuma migration é gerada por essa troca, ver df/storages.py.
+        "BACKEND": config('DOCUMENTOS_STORAGE_BACKEND', default='df.storages.DocumentosLocalStorage'),
+    },
+}
+
+# Limite de tamanho por arquivo enviado no upload de documentos da DF
+DOCUMENTOS_MAX_UPLOAD_MB = config('DOCUMENTOS_MAX_UPLOAD_MB', default=25, cast=int)
+
+# Limites gerais de upload (acima de FILE_UPLOAD_MAX_MEMORY_SIZE, o Django usa arquivo
+# temporário em disco em vez de manter tudo em memória)
+FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 30 * 1024 * 1024
+FILE_UPLOAD_PERMISSIONS = 0o640
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 

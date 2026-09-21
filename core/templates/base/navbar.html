@@ -98,6 +98,15 @@
           </a>
         </li>
         {% endif %}
+        {% if user_is_global_admin %}
+        <li>
+          <a href="{% url 'painel_documentos' %}"
+             class="site-nav__link{% if request.resolver_match.url_name == 'painel_documentos' %} is-active{% endif %}"
+             {% if request.resolver_match.url_name == 'painel_documentos' %}aria-current="page"{% endif %}>
+            <i class="bi bi-hdd-stack"></i> Painel de Documentos
+          </a>
+        </li>
+        {% endif %}
         <li>
           <a href="{% static 'docs/Tutorial FSbuilder.pptx' %}" download class="site-nav__link">
             <i class="bi bi-file-earmark-ppt-fill"></i> Tutorial

@@ -1,0 +1,17 @@
+{% comment %}
+Renders a LogAcessoDocumento.Acao as a Bootstrap badge.
+Usage: {% include 'partials/_acao_log_badge.html' with acao=log.acao %}
+{% endcomment %}
+{% if acao == "upload" %}
+  <span class="badge bg-primary"><i class="bi bi-upload"></i> Upload</span>
+{% elif acao == "download" %}
+  <span class="badge bg-info text-dark"><i class="bi bi-download"></i> Download</span>
+{% elif acao == "exclusao" %}
+  <span class="badge bg-warning text-dark"><i class="bi bi-trash"></i> Exclusão</span>
+{% elif acao == "negado" %}
+  <span class="badge bg-danger"><i class="bi bi-shield-x"></i> Negado</span>
+{% elif acao == "expurgo" %}
+  <span class="badge bg-dark"><i class="bi bi-fire"></i> Expurgo</span>
+{% else %}
+  <span class="badge bg-secondary">{{ acao }}</span>
+{% endif %}

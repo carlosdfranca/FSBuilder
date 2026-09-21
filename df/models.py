@@ -1,6 +1,11 @@
+import uuid
+from pathlib import Path
+
 from django.db import models
 from decimal import Decimal
 from usuarios.models import Empresa, Usuario
+
+from .storages import documentos_storage
 
 
 # =========================
@@ -381,6 +386,173 @@ class ChecklistItemPeriodo(models.Model):
     def __str__(self):
         status = "✓" if self.recebido else "○"
         return f"{status} {self.texto}"
+
+
+def documento_df_upload_to(instance, filename):
+    """Caminho opaco (UUID), não o nome original.
+
+    Elimina path traversal, nomes reservados do Windows (CON, PRN, NUL),
+    unicode problemático e colisões. Também evita vazar PII no caminho: nomes
+    reais chegam como "CPF_12345678900_joao_silva.pdf", e o caminho aparece em
+    log de servidor, backup e listagem de diretório. O nome original fica em
+    `nome_original` e volta no Content-Disposition do download.
+    """
+    ext = Path(filename).suffix.lower()[:10]
+    periodo = instance.periodo_df
+    return (
+        f"documentos/emp_{periodo.empresa_id}/fundo_{periodo.fundo_id}/"
+        f"{periodo.ano}/periodo_{periodo.id}/{uuid.uuid4().hex}{ext}"
+    )
+
+
+class DocumentoDF(models.Model):
+    """Arquivo anexado a um período de DF, opcionalmente vinculado a um item do checklist.
+
+    Model separado do checklist (não um FileField em ChecklistItemPeriodo) porque
+    ressincronizar_checklist_por_tipo() apaga e recria os itens de checklist quando
+    o tipo do fundo muda — um FileField ali perderia o arquivo nesse resync. Aqui o
+    vínculo usa SET_NULL e é refeito por texto, do mesmo jeito que `recebido` já é
+    preservado hoje.
+    """
+
+    # Tenant denormalizado — mesmo padrão de PeriodoDF e HistoricoEmissaoDF, para
+    # permitir restrict_by_empresa(qs, user, "empresa") em um hop.
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="documentos_df",
+        db_index=True,
+        help_text="Empresa (tenant) - para facilitar queries por escopo"
+    )
+    periodo_df = models.ForeignKey(
+        PeriodoDF,
+        on_delete=models.CASCADE,
+        related_name="documentos",
+        db_index=True,
+    )
+    checklist_item = models.ForeignKey(
+        ChecklistItemPeriodo,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="documentos",
+        help_text="Item de checklist ao qual este arquivo está vinculado, se houver."
+    )
+    checklist_texto = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Snapshot do texto do item no momento do upload — usado para "
+                   "re-vincular o documento por texto quando o checklist é resincronizado."
+    )
+
+    arquivo = models.FileField(
+        upload_to=documento_df_upload_to,
+        storage=documentos_storage,
+        max_length=500,
+    )
+    nome_original = models.CharField(max_length=255)
+    tamanho_bytes = models.PositiveBigIntegerField(default=0)
+    content_type = models.CharField(max_length=100, blank=True, default="")
+    sha256 = models.CharField(max_length=64, db_index=True, blank=True, default="")
+
+    contem_dados_pessoais = models.BooleanField(
+        default=False,
+        help_text="Arquivo contém dados pessoais de terceiros (ex.: kits cadastrais "
+                   "de cotistas). Usado para localizar PII em pedidos de titular (LGPD)."
+    )
+    retencao_ate = models.DateField(
+        null=True, blank=True,
+        help_text="Data a partir da qual o documento pode ser expurgado."
+    )
+
+    enviado_por = models.ForeignKey(
+        Usuario,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="documentos_enviados",
+    )
+    enviado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    excluido_em = models.DateTimeField(null=True, blank=True, db_index=True)
+    excluido_por = models.ForeignKey(
+        Usuario,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="documentos_excluidos",
+    )
+
+    class Meta:
+        verbose_name = "Documento da DF"
+        verbose_name_plural = "Documentos da DF"
+        ordering = ["-enviado_em"]
+        indexes = [
+            models.Index(fields=["periodo_df", "excluido_em"], name="idx_doc_periodo_ativo"),
+            models.Index(fields=["empresa", "excluido_em"], name="idx_doc_empresa_ativo"),
+            models.Index(fields=["empresa", "retencao_ate"], name="idx_doc_retencao"),
+        ]
+
+    def __str__(self):
+        return self.nome_original
+
+
+class LogAcessoDocumento(models.Model):
+    """Registro append-only de operações sobre documentos da DF — Art. 37 da LGPD
+    (registro das operações de tratamento).
+
+    Nunca deve haver update/delete numa linha aqui, nem na UI, nem no admin.
+    `documento_id_hist` preserva o rastro mesmo depois de um expurgo físico do
+    documento (quando `documento` vira NULL via SET_NULL).
+    """
+
+    class Acao(models.TextChoices):
+        UPLOAD = "upload", "Upload"
+        DOWNLOAD = "download", "Download"
+        EXCLUSAO = "exclusao", "Exclusão"
+        NEGADO = "negado", "Acesso negado"
+        EXPURGO = "expurgo", "Expurgo físico"
+
+    documento = models.ForeignKey(
+        DocumentoDF,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="logs_acesso",
+    )
+    documento_id_hist = models.BigIntegerField(
+        null=True,
+        help_text="Id do documento no momento do evento — sobrevive mesmo se o "
+                   "documento for expurgado fisicamente e o FK acima virar NULL."
+    )
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="logs_acesso_documentos",
+        db_index=True,
+    )
+    usuario = models.ForeignKey(
+        Usuario,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="logs_acesso_documentos",
+    )
+    acao = models.CharField(max_length=20, choices=Acao.choices, db_index=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True, default="")
+    ocorrido_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = "Log de Acesso a Documento"
+        verbose_name_plural = "Logs de Acesso a Documentos"
+        ordering = ["-ocorrido_em"]
+        indexes = [
+            models.Index(fields=["documento", "-ocorrido_em"], name="idx_logacesso_doc_data"),
+            models.Index(fields=["empresa", "-ocorrido_em"], name="idx_logacesso_emp_data"),
+        ]
+
+    def __str__(self):
+        return f"[{self.get_acao_display()}] doc #{self.documento_id_hist} — {self.ocorrido_em:%d/%m/%Y %H:%M}"
 
 
 # =========================

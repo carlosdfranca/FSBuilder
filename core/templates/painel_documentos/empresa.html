@@ -1,0 +1,378 @@
+{% extends 'base/base.html' %}
+{% load static %}
+
+{% block title %}{{ empresa.nome }} — Painel de Documentos{% endblock %}
+
+{% block conteudo %}
+{% include 'base/navbar.html' %}
+
+<div class="container py-4">
+  {% if messages %}
+    <div class="mb-3">
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="page-header">
+    <div class="page-header__titles">
+      <h4 class="page-header__title">{{ empresa.nome }}</h4>
+      <p class="page-header__subtitle">Documentos anexados e configuração de armazenamento</p>
+    </div>
+    <div class="page-header__actions">
+      <a href="{% url 'painel_documentos' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i> Voltar ao painel
+      </a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-body">
+          <ul class="nav nav-tabs mb-3" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link {% if tab_ativa == 'documentos' %}active{% endif %}"
+                      data-bs-toggle="tab" data-bs-target="#tab-documentos"
+                      type="button" role="tab" aria-controls="tab-documentos"
+                      aria-selected="{% if tab_ativa == 'documentos' %}true{% else %}false{% endif %}">
+                <i class="bi bi-hdd-stack me-1"></i> Documentos
+                <span class="badge bg-secondary ms-1">{{ page_obj.paginator.count }}</span>
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link {% if tab_ativa == 'log' %}active{% endif %}"
+                      data-bs-toggle="tab" data-bs-target="#tab-log"
+                      type="button" role="tab" aria-controls="tab-log"
+                      aria-selected="{% if tab_ativa == 'log' %}true{% else %}false{% endif %}">
+                <i class="bi bi-journal-text me-1"></i> Log de acesso
+                <span class="badge bg-secondary ms-1">{{ log_page_obj.paginator.count }}</span>
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link {% if tab_ativa == 'vencidos' %}active{% endif %}"
+                      data-bs-toggle="tab" data-bs-target="#tab-vencidos"
+                      type="button" role="tab" aria-controls="tab-vencidos"
+                      aria-selected="{% if tab_ativa == 'vencidos' %}true{% else %}false{% endif %}">
+                <i class="bi bi-hourglass-bottom me-1"></i> Vencidos
+                <span class="badge {% if vencidos_page_obj.paginator.count %}bg-danger{% else %}bg-secondary{% endif %} ms-1">{{ vencidos_page_obj.paginator.count }}</span>
+              </button>
+            </li>
+          </ul>
+
+          <div class="tab-content">
+            <div class="tab-pane fade {% if tab_ativa == 'documentos' %}show active{% endif %}"
+                 id="tab-documentos" role="tabpanel">
+
+              <div class="d-flex justify-content-end mb-2">
+                {% if somente_pii %}
+                  <a href="?" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-x-circle me-1"></i> Limpar filtro de PII
+                  </a>
+                {% else %}
+                  <a href="?pii=1" class="btn btn-sm btn-outline-warning">
+                    <i class="bi bi-shield-exclamation me-1"></i> Mostrar só com dados pessoais
+                  </a>
+                {% endif %}
+              </div>
+
+              <div class="table-responsive">
+                <table class="table table-ds table-hover align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th scope="col">Documento</th>
+                      <th scope="col">Fundo / Período</th>
+                      <th scope="col">Tamanho</th>
+                      <th scope="col">Enviado por</th>
+                      <th scope="col">Enviado em</th>
+                      <th scope="col">PII</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for documento in page_obj %}
+                    <tr>
+                      <td class="fw-medium">{{ documento.nome_original }}</td>
+                      <td class="text-muted">
+                        {% if documento.periodo_df %}
+                          {{ documento.periodo_df.fundo.nome }} — {{ documento.periodo_df.nome_exibicao }}
+                        {% else %}
+                          —
+                        {% endif %}
+                      </td>
+                      <td>{{ documento.tamanho_bytes|filesizeformat }}</td>
+                      <td>{{ documento.enviado_por|default:"—" }}</td>
+                      <td>{{ documento.enviado_em|date:"d/m/Y H:i" }}</td>
+                      <td>
+                        {% if documento.contem_dados_pessoais %}
+                          <i class="bi bi-shield-exclamation text-warning" title="Contém dados pessoais de terceiros"></i>
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                      <td colspan="6">
+                        <div class="empty-state">
+                          <i class="bi bi-file-earmark-x empty-state__icon"></i>
+                          <p class="empty-state__title">
+                            {% if somente_pii %}Nenhum documento com dados pessoais{% else %}Nenhum documento anexado{% endif %}
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+
+              {% if page_obj.paginator.num_pages > 1 %}
+              <nav class="mt-3" aria-label="Paginação de documentos">
+                <ul class="pagination pagination-sm justify-content-center mb-0">
+                  {% if page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?doc_page={{ page_obj.previous_page_number }}{% if somente_pii %}&pii=1{% endif %}">Anterior</a></li>
+                  {% else %}
+                    <li class="page-item disabled"><span class="page-link">Anterior</span></li>
+                  {% endif %}
+                  <li class="page-item disabled">
+                    <span class="page-link">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+                  </li>
+                  {% if page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?doc_page={{ page_obj.next_page_number }}{% if somente_pii %}&pii=1{% endif %}">Próxima</a></li>
+                  {% else %}
+                    <li class="page-item disabled"><span class="page-link">Próxima</span></li>
+                  {% endif %}
+                </ul>
+              </nav>
+              {% endif %}
+            </div>
+
+            <div class="tab-pane fade {% if tab_ativa == 'log' %}show active{% endif %}"
+                 id="tab-log" role="tabpanel">
+
+              <form method="GET" class="d-flex gap-2 mb-3">
+                <select name="log_acao" class="form-select form-select-sm" style="max-width:220px;" onchange="this.form.submit()">
+                  <option value="">Todas as ações</option>
+                  {% for valor, rotulo in log_acoes %}
+                    <option value="{{ valor }}" {% if log_acao_filtro == valor %}selected{% endif %}>{{ rotulo }}</option>
+                  {% endfor %}
+                </select>
+                {% if log_acao_filtro %}
+                  <a href="?" class="btn btn-sm btn-outline-secondary">Limpar filtro</a>
+                {% endif %}
+              </form>
+
+              <div class="table-responsive">
+                <table class="table table-ds table-hover align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th scope="col">Ação</th>
+                      <th scope="col">Documento</th>
+                      <th scope="col">Usuário</th>
+                      <th scope="col">IP</th>
+                      <th scope="col">Data/hora</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for log in log_page_obj %}
+                    <tr>
+                      <td>{% include 'partials/_acao_log_badge.html' with acao=log.acao %}</td>
+                      <td class="text-muted">
+                        {% if log.documento %}
+                          {{ log.documento.nome_original }}
+                        {% else %}
+                          documento removido (#{{ log.documento_id_hist }})
+                        {% endif %}
+                      </td>
+                      <td>{{ log.usuario|default:"—" }}</td>
+                      <td class="text-muted">{{ log.ip_address|default:"—" }}</td>
+                      <td>{{ log.ocorrido_em|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                      <td colspan="5">
+                        <div class="empty-state">
+                          <i class="bi bi-journal-x empty-state__icon"></i>
+                          <p class="empty-state__title">Nenhum evento registrado</p>
+                        </div>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+
+              {% if log_page_obj.paginator.num_pages > 1 %}
+              <nav class="mt-3" aria-label="Paginação do log de acesso">
+                <ul class="pagination pagination-sm justify-content-center mb-0">
+                  {% if log_page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?log_page={{ log_page_obj.previous_page_number }}{% if log_acao_filtro %}&log_acao={{ log_acao_filtro }}{% endif %}">Anterior</a></li>
+                  {% else %}
+                    <li class="page-item disabled"><span class="page-link">Anterior</span></li>
+                  {% endif %}
+                  <li class="page-item disabled">
+                    <span class="page-link">Página {{ log_page_obj.number }} de {{ log_page_obj.paginator.num_pages }}</span>
+                  </li>
+                  {% if log_page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?log_page={{ log_page_obj.next_page_number }}{% if log_acao_filtro %}&log_acao={{ log_acao_filtro }}{% endif %}">Próxima</a></li>
+                  {% else %}
+                    <li class="page-item disabled"><span class="page-link">Próxima</span></li>
+                  {% endif %}
+                </ul>
+              </nav>
+              {% endif %}
+            </div>
+
+            <div class="tab-pane fade {% if tab_ativa == 'vencidos' %}show active{% endif %}"
+                 id="tab-vencidos" role="tabpanel">
+
+              {% if vencidos_page_obj.paginator.count %}
+                <div class="alert alert-warning d-flex align-items-center gap-2 mb-3">
+                  <i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i>
+                  <div>
+                    Passaram do prazo de retenção configurado ({{ empresa.retencao_anos }} ano{{ empresa.retencao_anos|pluralize }}).
+                    O expurgo apaga o arquivo do disco e o registro — permanente, um documento por vez, sempre com confirmação.
+                  </div>
+                </div>
+              {% endif %}
+
+              <div class="table-responsive">
+                <table class="table table-ds table-hover align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th scope="col">Documento</th>
+                      <th scope="col">Fundo / Período</th>
+                      <th scope="col">Vencido em</th>
+                      <th scope="col">Status</th>
+                      <th scope="col"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for documento in vencidos_page_obj %}
+                    <tr>
+                      <td class="fw-medium">{{ documento.nome_original }}</td>
+                      <td class="text-muted">
+                        {% if documento.periodo_df %}
+                          {{ documento.periodo_df.fundo.nome }} — {{ documento.periodo_df.nome_exibicao }}
+                        {% else %}
+                          —
+                        {% endif %}
+                      </td>
+                      <td>{{ documento.retencao_ate|date:"d/m/Y" }}</td>
+                      <td>
+                        {% if documento.excluido_em %}
+                          <span class="badge bg-secondary">Excluído</span>
+                        {% else %}
+                          <span class="badge bg-success">Ativo</span>
+                        {% endif %}
+                      </td>
+                      <td class="text-end">
+                        <form method="POST" action="{% url 'expurgar_documento' documento.id %}"
+                              onsubmit="return confirm('Expurgar \'{{ documento.nome_original|escapejs }}\' definitivamente? Isso apaga o arquivo do disco e o registro — não pode ser desfeito.');">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-fire me-1"></i>Expurgar
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                      <td colspan="5">
+                        <div class="empty-state">
+                          <i class="bi bi-check-circle empty-state__icon"></i>
+                          <p class="empty-state__title">Nenhum documento vencido</p>
+                          <p class="empty-state__text">Nada passou do prazo de retenção configurado.</p>
+                        </div>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+
+              {% if vencidos_page_obj.paginator.num_pages > 1 %}
+              <nav class="mt-3" aria-label="Paginação de vencidos">
+                <ul class="pagination pagination-sm justify-content-center mb-0">
+                  {% if vencidos_page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?vencidos=1&vencidos_page={{ vencidos_page_obj.previous_page_number }}">Anterior</a></li>
+                  {% else %}
+                    <li class="page-item disabled"><span class="page-link">Anterior</span></li>
+                  {% endif %}
+                  <li class="page-item disabled">
+                    <span class="page-link">Página {{ vencidos_page_obj.number }} de {{ vencidos_page_obj.paginator.num_pages }}</span>
+                  </li>
+                  {% if vencidos_page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?vencidos=1&vencidos_page={{ vencidos_page_obj.next_page_number }}">Próxima</a></li>
+                  {% else %}
+                    <li class="page-item disabled"><span class="page-link">Próxima</span></li>
+                  {% endif %}
+                </ul>
+              </nav>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <div class="card-header-ds mb-3">
+            <i class="bi bi-hdd me-2"></i>Uso de armazenamento
+          </div>
+          {% if pct_uso is not None %}
+            <div class="d-flex justify-content-between small mb-1">
+              <span>{{ uso_bytes|filesizeformat }}</span>
+              <span class="text-muted">de {{ empresa.quota_documentos_gb }} GB</span>
+            </div>
+            <div class="progress" style="height:6px;">
+              <div class="progress-bar" role="progressbar"
+                   style="width:{{ pct_uso|floatformat:0 }}%; background-color: {% if pct_uso >= 100 %}#ef4444{% elif pct_uso >= 80 %}#f59e0b{% else %}#22c55e{% endif %};"
+                   aria-valuenow="{{ pct_uso|floatformat:0 }}" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">{{ uso_bytes|filesizeformat }} · sem limite configurado</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-body">
+          <div class="card-header-ds mb-3">
+            <i class="bi bi-gear me-2"></i>Configuração de documentos
+          </div>
+          <form method="POST" action="{% url 'painel_documentos_config' empresa.id %}">
+            {% csrf_token %}
+            <div class="form-check form-switch mb-3">
+              {{ config_form.documentos_habilitados }}
+              <label class="form-check-label" for="{{ config_form.documentos_habilitados.id_for_label }}">
+                {{ config_form.documentos_habilitados.label }}
+              </label>
+              <div class="form-text">{{ config_form.documentos_habilitados.help_text }}</div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="{{ config_form.retencao_anos.id_for_label }}">
+                {{ config_form.retencao_anos.label }}
+              </label>
+              {{ config_form.retencao_anos }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="{{ config_form.quota_documentos_gb.id_for_label }}">
+                {{ config_form.quota_documentos_gb.label }}
+              </label>
+              {{ config_form.quota_documentos_gb }}
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Salvar configuração</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

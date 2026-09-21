@@ -74,6 +74,22 @@ class Empresa(models.Model):
         default=10,
         help_text="Número máximo de fundos que esta empresa pode cadastrar."
     )
+
+    # ===== Documentos da DF (upload) =====
+    documentos_habilitados = models.BooleanField(
+        default=False,
+        help_text="Libera o upload de documentos de DF para esta empresa. "
+                   "Ligar somente após o contrato de operador (DPA) estar assinado."
+    )
+    retencao_anos = models.PositiveSmallIntegerField(
+        default=5,
+        help_text="Anos de guarda dos documentos após o fim do exercício a que pertencem."
+    )
+    quota_documentos_gb = models.PositiveIntegerField(
+        default=50,
+        help_text="Limite de armazenamento de documentos, em GB. 0 = sem limite."
+    )
+
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
 
