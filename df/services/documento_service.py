@@ -4,7 +4,7 @@ de crescimento de armazenamento e a costura do backend de storage
 (resposta_download — o único ponto que serve o conteúdo do arquivo)."""
 import re
 from collections import defaultdict
-from datetime import date
+from datetime import date, timezone
 
 from dateutil.relativedelta import relativedelta
 from django.db.models import Count, Q, Sum
@@ -148,7 +148,10 @@ def serie_crescimento_mensal():
     """
     linhas = (
         DocumentoDF.objects
-        .annotate(mes=TruncMonth("enviado_em"))
+        # tzinfo=UTC: no MySQL, TruncMonth no fuso local vira CONVERT_TZ, que devolve NULL
+        # (e quebra o painel) quando as tabelas de fuso do servidor não estão carregadas.
+        # Em UTC o Django não converte nada; para um gráfico mensal a diferença é irrelevante.
+        .annotate(mes=TruncMonth("enviado_em", tzinfo=timezone.utc))
         .values("empresa_id", "empresa__nome", "mes")
         .annotate(total=Sum("tamanho_bytes"))
     )
