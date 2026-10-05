@@ -160,6 +160,25 @@ STORAGES = {
 # Limite de tamanho por arquivo enviado no upload de documentos da DF
 DOCUMENTOS_MAX_UPLOAD_MB = config('DOCUMENTOS_MAX_UPLOAD_MB', default=25, cast=int)
 
+# ===== AWS S3 (só usado com DOCUMENTOS_STORAGE_BACKEND=df.storages.DocumentosS3Storage) =====
+# `or None`: mesma pegadinha do python-decouple descrita acima — uma chave presente
+# e em branco no .env não ativa o default; para a AWS, "" vira credencial inválida,
+# enquanto None deixa o boto3 usar a cadeia padrão de credenciais.
+AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='') or None
+AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='') or 'sa-east-1'
+AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='') or None
+AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='') or None
+AWS_S3_SIGNATURE_VERSION = 's3v4'
+# 'virtual' gera https://<bucket>.s3.<região>.amazonaws.com. Sem isso o boto3 usa o host
+# global (s3.amazonaws.com) mesmo com a região certa, e um bucket novo fora de us-east-1
+# responde 307 de redirecionamento por horas — o link de download pode falhar.
+AWS_S3_ADDRESSING_STYLE = 'virtual'
+AWS_DEFAULT_ACL = None                  # sem ACL por objeto — o bucket é privado (Block Public Access)
+AWS_S3_FILE_OVERWRITE = False           # nunca sobrescrever um arquivo existente em silêncio
+AWS_QUERYSTRING_AUTH = True             # URLs assinadas
+AWS_QUERYSTRING_EXPIRE = 60             # o link de download vale 60 segundos
+AWS_S3_OBJECT_PARAMETERS = {'ServerSideEncryption': 'AES256'}  # criptografia em repouso (LGPD Art. 46)
+
 # Limites gerais de upload (acima de FILE_UPLOAD_MAX_MEMORY_SIZE, o Django usa arquivo
 # temporário em disco em vez de manter tudo em memória)
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024

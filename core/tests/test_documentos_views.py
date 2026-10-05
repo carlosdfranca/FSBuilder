@@ -55,6 +55,9 @@ class DocumentosViewsTestCase(TestCase):
         # produção (Linux não bloqueia remoção de arquivo aberto).
         import gc
         gc.collect()
+        # Documentos criados pela view de upload não passam por _criar_documento;
+        # recolhe do banco os que o teste deixou (o rollback só desfaz as linhas).
+        self._docs_to_clean.extend(DocumentoDF.objects.exclude(pk__in=[d.pk for d in self._docs_to_clean]))
         for doc in self._docs_to_clean:
             if doc.arquivo:
                 try:
@@ -380,3 +383,46 @@ class ApiChecklistPeriodoDocumentosTests(DocumentosViewsTestCase):
         with self.assertNumQueries(12):
             response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
+
+
+class ExclusaoProtegidaTests(DocumentosViewsTestCase):
+    """Fundo/período com documento anexado não podem ser excluídos: a cascata não
+    removeria o arquivo do storage e deixaria PII órfã (S3 incluso)."""
+
+    def test_excluir_periodo_com_documento_e_bloqueado(self):
+        doc = self._criar_documento()
+        self.client.force_login(self.master)
+
+        response = self.client.post(
+            reverse("excluir_periodo", args=[self.fundo.id, self.periodo.id]), follow=True,
+        )
+
+        self.assertTrue(PeriodoDF.objects.filter(id=self.periodo.id).exists())
+        self.assertTrue(DocumentoDF.objects.filter(id=doc.id).exists())
+        self.assertTrue(doc.arquivo.storage.exists(doc.arquivo.name))
+        self.assertTrue(any("documentos anexados" in str(m) for m in response.context["messages"]))
+
+    def test_excluir_fundo_com_documento_e_bloqueado(self):
+        doc = self._criar_documento()
+        self.client.force_login(self.master)
+
+        response = self.client.post(reverse("excluir_fundo", args=[self.fundo.id]), follow=True)
+
+        self.assertTrue(Fundo.objects.filter(id=self.fundo.id).exists())
+        self.assertTrue(DocumentoDF.objects.filter(id=doc.id).exists())
+        self.assertTrue(any("documentos anexados" in str(m) for m in response.context["messages"]))
+
+    def test_documento_excluido_logicamente_tambem_protege(self):
+        # Exclusão lógica não remove o arquivo; enquanto a linha existe, o arquivo existe.
+        doc = self._criar_documento()
+        DocumentoDF.objects.filter(pk=doc.pk).update(excluido_em=timezone.now())
+        self.client.force_login(self.master)
+
+        self.client.post(reverse("excluir_periodo", args=[self.fundo.id, self.periodo.id]))
+
+        self.assertTrue(PeriodoDF.objects.filter(id=self.periodo.id).exists())
+
+    def test_sem_documentos_continua_excluindo_normalmente(self):
+        self.client.force_login(self.master)
+        self.client.post(reverse("excluir_periodo", args=[self.fundo.id, self.periodo.id]))
+        self.assertFalse(PeriodoDF.objects.filter(id=self.periodo.id).exists())

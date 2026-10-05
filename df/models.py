@@ -417,16 +417,19 @@ class DocumentoDF(models.Model):
 
     # Tenant denormalizado — mesmo padrão de PeriodoDF e HistoricoEmissaoDF, para
     # permitir restrict_by_empresa(qs, user, "empresa") em um hop.
+    # PROTECT (não CASCADE) em empresa e periodo_df: apagar o registro por cascata não
+    # remove o arquivo do storage e deixaria PII de cotistas órfã. Documento só sai pelo
+    # expurgo, que apaga o arquivo junto.
     empresa = models.ForeignKey(
         Empresa,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="documentos_df",
         db_index=True,
         help_text="Empresa (tenant) - para facilitar queries por escopo"
     )
     periodo_df = models.ForeignKey(
         PeriodoDF,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="documentos",
         db_index=True,
     )

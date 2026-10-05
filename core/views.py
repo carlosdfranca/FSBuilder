@@ -4,11 +4,14 @@ from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
+from django.db import transaction
+from django.db.models import ProtectedError
 from django.http import FileResponse, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from collections import defaultdict
 from datetime import date
 import json
+import logging
 
 from df.models import (
     Fundo, BalanceteItem, HistoricoEmissaoDF, PeriodoDF, Gestora,
@@ -40,6 +43,8 @@ from usuarios.permissions import (
 
 from .forms import FundoForm, GestoraForm, EditarPerfilForm, EmpresaDocumentosConfigForm
 from df.forms import PeriodoDFManualForm
+
+logger = logging.getLogger(__name__)
 
 # Camadas novas (core)
 from core.export.df_excel import criar_aba_dpf, criar_aba_dre, criar_aba_dmpl, criar_aba_dfc
@@ -971,7 +976,15 @@ def excluir_fundo(request, fundo_id):
     fundo = get_object_or_404(qs, id=fundo_id)
 
     if request.method == "POST":
-        fundo.delete()
+        try:
+            fundo.delete()
+        except ProtectedError:
+            messages.error(
+                request,
+                "Este fundo possui documentos anexados e não pode ser excluído. "
+                "Peça ao administrador da plataforma para expurgar os documentos primeiro.",
+            )
+            return redirect("listar_fundos")
         messages.success(request, "Fundo excluído com sucesso.")
         return redirect("listar_fundos")
     return render(request, "fundos/confirmar_exclusao.html", {"fundo": fundo})
@@ -1140,7 +1153,15 @@ def excluir_periodo(request, fundo_id, periodo_id):
     nome = periodo.nome_exibicao
     n_balancete = periodo.balancete_items.count() if tem_balancete else 0
     n_mec = periodo.mec_items.count() if tem_mec else 0
-    periodo.delete()
+    try:
+        periodo.delete()
+    except ProtectedError:
+        messages.error(
+            request,
+            f"O período '{nome}' possui documentos anexados e não pode ser excluído. "
+            "Peça ao administrador da plataforma para expurgar os documentos primeiro.",
+        )
+        return redirect("gerenciar_periodos", fundo_id=fundo_id)
 
     if tem_dados:
         messages.warning(request, f"Período '{nome}' excluído junto com {n_balancete} registro(s) de balancete e {n_mec} registro(s) de MEC.")
@@ -1688,13 +1709,30 @@ def expurgar_documento(request, documento_id):
     empresa_id = documento.empresa_id
     nome = documento.nome_original
 
-    registrar_acesso(documento, request, LogAcessoDocumento.Acao.EXPURGO)
-    documento.arquivo.delete(save=False)
-    documento.delete()
+    from django.urls import reverse
+    destino = reverse('painel_documentos_empresa', args=[empresa_id]) + '?vencidos=1'
+
+    # Arquivo primeiro: se o storage (ex.: S3) falhar, nada mais é feito — o registro
+    # e o log ficam como estavam, em vez de o registro sumir com o arquivo ainda no
+    # bucket (PII órfã sem ninguém apontando pra ela). Apagar um arquivo que já não
+    # existe não dá erro, então repetir o expurgo é seguro.
+    try:
+        documento.arquivo.delete(save=False)
+    except Exception:
+        logger.exception("Falha ao apagar do storage o arquivo do documento #%s (empresa %s)", documento_id, empresa_id)
+        messages.error(
+            request,
+            f'Não foi possível apagar o arquivo de "{nome}" do armazenamento. '
+            'Nada foi removido; tente novamente.',
+        )
+        return redirect(destino)
+
+    with transaction.atomic():
+        registrar_acesso(documento, request, LogAcessoDocumento.Acao.EXPURGO)
+        documento.delete()
 
     messages.success(request, f'Documento "{nome}" expurgado definitivamente.')
-    from django.urls import reverse
-    return redirect(reverse('painel_documentos_empresa', args=[empresa_id]) + '?vencidos=1')
+    return redirect(destino)
 
 
 @login_required

@@ -9,7 +9,7 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncMonth
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 
 from df.models import DocumentoDF, LogAcessoDocumento
@@ -187,14 +187,27 @@ def serie_crescimento_mensal():
 
 
 def resposta_download(documento):
-    """Serve o conteúdo do arquivo. Local → FileResponse; ao migrar para S3,
-    esta função vira um redirect para uma URL pré-assinada — nenhuma outra
-    view ou template deve acessar documento.arquivo.url diretamente.
+    """Serve o conteúdo do arquivo — o único ponto que sabe como fazer isso;
+    nenhuma outra view ou template deve acessar documento.arquivo.url.
+
+    - Storage local → FileResponse lendo do disco.
+    - S3 (storage com url_assinada_download) → redirect para uma URL assinada
+      que expira em segundos. A view de download já validou o escopo e gravou o
+      log antes de chegar aqui; a URL só existe depois disso.
 
     content_type fixo em application/octet-stream: nunca confiamos no
-    content_type declarado pelo cliente no upload (só é guardado como
-    metadado informativo), então também não o repassamos na resposta.
+    content_type declarado pelo cliente no upload (só é guardado como metadado
+    informativo), então também não o repassamos na resposta — no S3 isso vai
+    dentro da própria assinatura (ResponseContentType).
     """
+    gerar_url = getattr(documento.arquivo.storage, "url_assinada_download", None)
+    if gerar_url is not None:
+        response = HttpResponseRedirect(gerar_url(documento.arquivo.name, documento.nome_original))
+        # A URL carrega a assinatura: nada de guardar em cache de navegador/proxy.
+        response["Cache-Control"] = "no-store"
+        response["Referrer-Policy"] = "no-referrer"
+        return response
+
     response = FileResponse(
         documento.arquivo.open("rb"),
         as_attachment=True,
