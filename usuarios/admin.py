@@ -42,11 +42,21 @@ class EmpresaAdmin(admin.ModelAdmin):
     search_fields = ("nome", "cnpj", "master__username", "master__first_name", "master__last_name")
     list_filter = ("is_ativo", "documentos_habilitados")
     autocomplete_fields = ("master",)
-    readonly_fields = ("criado_em", "atualizado_em")
+    readonly_fields = (
+        "criado_em", "atualizado_em",
+        "contexto_operacional_atualizado_em", "contexto_operacional_atualizado_por",
+    )
     inlines = [MembershipInline]
 
     fieldsets = (
         (None, {"fields": ("nome", "cnpj", "master", "is_ativo", "max_fundos")}),
+        ("Texto da DF (Word)", {
+            "fields": (
+                "contexto_operacional",
+                "contexto_operacional_atualizado_em",
+                "contexto_operacional_atualizado_por",
+            ),
+        }),
         ("Documentos", {
             "fields": ("documentos_habilitados", "retencao_anos", "quota_documentos_gb"),
             "description": "documentos_habilitados só deve ser ligado após o contrato "

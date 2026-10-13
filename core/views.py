@@ -8,6 +8,8 @@ from django.db import transaction
 from django.db.models import ProtectedError
 from django.http import FileResponse, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
+from django.utils import timezone
+from django.views.decorators.http import require_POST
 from collections import defaultdict
 from datetime import date
 import json
@@ -32,6 +34,7 @@ from usuarios.models import Empresa, Membership
 from usuarios.utils.company_scope import query_por_empresa_ativa
 from usuarios.permissions import (
     company_can_view_data,
+    company_can_manage_data,
     company_can_manage_fundos,
     get_empresa_escopo,
     role_na_empresa,
@@ -84,6 +87,22 @@ def _can_manage_fundos(request):
         return True
     user_role = role_na_empresa(request.user, empresa)
     return user_role in {Membership.Role.MASTER, Membership.Role.ADMIN, Membership.Role.MEMBER}
+
+
+def _can_manage_data(request):
+    """
+    Mesma regra do decorator company_can_manage_data (global admin ou MASTER/ADMIN da empresa),
+    para habilitar/ocultar controles de edição na UI.
+    """
+    empresa = get_empresa_escopo(request)
+    if not empresa:
+        return False
+    if is_global_admin(request.user):
+        return True
+    return role_na_empresa(request.user, empresa) in {Membership.Role.MASTER, Membership.Role.ADMIN}
+
+
+CONTEXTO_OPERACIONAL_MAX_CHARS = 20000
 
 
 def _pode_anexar_documentos(request):
@@ -655,11 +674,56 @@ def df_resultado(request, periodo_df_id):
         "total_pl_passivo_anterior": total_pl_passivo_anterior,
         "variacao_atual": variacao_caixa_atual,
         "variacao_ant": 0 if zerar_anterior else variacao_caixa_ant,
+        "contexto_operacional": fundo.empresa.contexto_operacional,
+        "contexto_operacional_max": CONTEXTO_OPERACIONAL_MAX_CHARS,
+        "contexto_atualizado_em": fundo.empresa.contexto_operacional_atualizado_em,
+        "contexto_atualizado_por": fundo.empresa.contexto_operacional_atualizado_por,
+        "pode_editar_contexto": _can_manage_data(request),
     }
 
     return render(request, "df_resultado.html", context)
 
-    
+
+@login_required
+@company_can_manage_data
+@require_POST
+def salvar_contexto_operacional(request, periodo_df_id):
+    """
+    Salva o texto de 'Contexto operacional' da Empresa dona do período.
+    A empresa é resolvida pelo fundo/período (escopo da empresa ativa), nunca por id vindo do cliente.
+    """
+    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
+    periodo = get_object_or_404(
+        PeriodoDF.objects.select_related("fundo__empresa"),
+        id=periodo_df_id,
+        fundo__in=fundo_qs,
+    )
+    empresa = periodo.fundo.empresa
+
+    texto = (request.POST.get("contexto_operacional") or "").replace("\r\n", "\n").strip()
+    if len(texto) > CONTEXTO_OPERACIONAL_MAX_CHARS:
+        return JsonResponse(
+            {"ok": False, "erro": f"O texto excede o limite de {CONTEXTO_OPERACIONAL_MAX_CHARS} caracteres."},
+            status=400,
+        )
+
+    empresa.contexto_operacional = texto
+    empresa.contexto_operacional_atualizado_em = timezone.now()
+    empresa.contexto_operacional_atualizado_por = request.user
+    empresa.save(update_fields=[
+        "contexto_operacional",
+        "contexto_operacional_atualizado_em",
+        "contexto_operacional_atualizado_por",
+        "atualizado_em",
+    ])
+
+    nome_usuario = request.user.get_full_name() or request.user.get_username()
+    return JsonResponse({
+        "ok": True,
+        "vazio": not texto,
+        "atualizado_em": timezone.localtime(empresa.contexto_operacional_atualizado_em).strftime("%d/%m/%Y %H:%M"),
+        "atualizado_por": nome_usuario,
+    })
 
 
 @login_required

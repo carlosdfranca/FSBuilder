@@ -1,4 +1,5 @@
 import os
+import re
 from io import BytesIO
 
 from django.conf import settings
@@ -52,6 +53,14 @@ def _data_extenso(data, default="—"):
     if not data:
         return default
     return f"{data.day} de {_MESES_PT[data.month - 1]} de {data.year}"
+
+
+def _paragrafos(texto):
+    """Quebra texto livre em parágrafos (blocos separados por linha em branco)."""
+    if not texto or not texto.strip():
+        return []
+    blocos = re.split(r"\n\s*\n", texto.replace("\r\n", "\n").strip())
+    return [" ".join(l.strip() for l in b.split("\n")) for b in blocos if b.strip()]
 
 
 # ================================================================
@@ -207,6 +216,12 @@ def build_docx_context(
         "data_atual_extenso": _data_extenso(data_atual),
         "data_anterior_extenso": _data_extenso(data_anterior),
 
+        # ── Contexto operacional (texto da empresa) ────────────
+        "contexto_operacional_paragrafos": (
+            _paragrafos(fundo.empresa.contexto_operacional)
+            or ["[Contexto operacional não preenchido]"]
+        ),
+
         # ── DPF — loops ────────────────────────────────────────
         "ativo_rows": _build_ativo_rows(dpf_tabela, pl_ajustado_atual, pl_ajustado_anterior),
         "passivo_rows": _build_passivo_rows(dpf_tabela, pl_ajustado_atual, pl_ajustado_anterior),
@@ -314,7 +329,7 @@ def gerar_docx(context):
     """
     template_path = os.path.join(settings.MEDIA_ROOT, "doc", "modelo_df.docx")
     tpl = DocxTemplate(template_path)
-    tpl.render(context)
+    tpl.render(context, autoescape=True)
     buffer = BytesIO()
     tpl.save(buffer)
     buffer.seek(0)

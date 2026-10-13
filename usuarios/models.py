@@ -90,6 +90,19 @@ class Empresa(models.Model):
         help_text="Limite de armazenamento de documentos, em GB. 0 = sem limite."
     )
 
+    # ===== Texto da DF (Word) =====
+    contexto_operacional = models.TextField(
+        blank=True, default="",
+        help_text="Texto da nota 'Contexto operacional' usado no Word da DF de todos os fundos da empresa."
+    )
+    contexto_operacional_atualizado_em = models.DateTimeField(null=True, blank=True)
+    contexto_operacional_atualizado_por = models.ForeignKey(
+        "Usuario",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
 
