@@ -4,6 +4,37 @@
 
 {% block title %}Demonstração Financeira{% endblock %}
 
+{% block extra_head %}
+<style>
+  /* Barra de ações da DF — mobile first: empilha; a partir de md vira uma linha só */
+  .df-toolbar { display: flex; flex-direction: column; gap: 1rem; }
+  .df-toolbar__info { display: flex; flex-direction: column; align-items: stretch; gap: .75rem; }
+  .df-toolbar__info .btn { width: 100%; }
+  .df-toolbar__acoes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .5rem;
+  }
+  .df-toolbar__acoes .btn {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .df-toolbar__full { grid-column: 1 / -1; }
+  .df-toolbar__sep { display: none; }
+
+  @media (min-width: 768px) {
+    .df-toolbar { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+    .df-toolbar__info { flex-direction: row; align-items: center; gap: 1rem; }
+    .df-toolbar__info .btn { width: auto; }
+    .df-toolbar__acoes { display: flex; flex-wrap: wrap; align-items: center; }
+    .df-toolbar__acoes .btn { width: auto; }
+    .df-toolbar__sep { display: block; margin: 0 .25rem; }
+  }
+</style>
+{% endblock %}
+
 {% block conteudo %}
 {% include 'base/navbar.html' %}
 
@@ -11,26 +42,45 @@
   <div class="card shadow rounded p-4">
 
     <!-- Cabeçalho -->
-    <div class="row mb-4">
-      <div class="col-md-9">
-        <div class="fw-bold" style="font-size: 1.05rem;">
-          {{ fundo.nome|upper }}
-        </div>
-        <div class="fw-bold">
-          CNPJ: {{ fundo.cnpj }}
-        </div>
-        <div class="mt-2">
-          {{ fundo.empresa.nome }}
-        </div>
-        <div>
-          CNPJ: {{ fundo.empresa.cnpj }}
-        </div>
+    <div class="mb-3">
+      <div class="fw-bold" style="font-size: 1.05rem;">
+        {{ fundo.nome|upper }}
       </div>
+      <div class="fw-bold">
+        CNPJ: {{ fundo.cnpj }}
+      </div>
+      <div class="mt-2">
+        {{ fundo.empresa.nome }}
+      </div>
+      <div>
+        CNPJ: {{ fundo.empresa.cnpj }}
+      </div>
+    </div>
 
-      <div class="col-md-3 d-flex flex-row gap-2 justify-content-end align-items-start flex-wrap">
+    <!-- Barra de ações: navegação/período à esquerda, ações do documento à direita -->
+    <div class="df-toolbar py-3 mb-3 border-top border-bottom">
+      <div class="df-toolbar__info">
         <a href="{% url 'demonstracao_financeira' %}?fundo={{ fundo.id }}" class="btn btn-outline-secondary">
           <i class="bi bi-arrow-left me-1"></i>Voltar
         </a>
+        <div class="df-toolbar__periodo">
+          <span class="fw-bold">Período analisado:</span>
+          <span style="color: var(--accent);">
+            {{ data_anterior|date:"d/m/Y" }} → {{ data_atual|date:"d/m/Y" }}
+          </span>
+        </div>
+      </div>
+
+      <div class="df-toolbar__acoes">
+        <button type="button" class="btn btn-outline-secondary df-toolbar__full" id="btn-contexto-operacional"
+                data-bs-toggle="modal" data-bs-target="#modalContextoOperacional">
+          <i class="bi bi-card-text me-1"></i>Contexto operacional
+          <span id="contexto-badge-vazio" class="badge rounded-pill text-bg-warning ms-1{% if contexto_operacional %} d-none{% endif %}"
+                title="Texto não preenchido: o Word sairá com um marcador">
+            <i class="bi bi-exclamation-circle"></i>
+          </span>
+        </button>
+        <span class="vr df-toolbar__sep"></span>
         <a href="{% url 'exportar_dfs_excel' periodo.id %}" class="btn btn-success">
           Exportar Excel <i class="bi bi-file-earmark-excel-fill ms-2"></i>
         </a>
@@ -38,14 +88,6 @@
           Exportar Word <i class="bi bi-file-earmark-word-fill ms-2"></i>
         </a>
       </div>
-    </div>
-
-    <!-- Período -->
-    <div class="mb-3">
-      <span class="fw-bold">Período analisado:</span>
-      <span style="color: var(--accent);">
-        {{ data_anterior|date:"d/m/Y" }} → {{ data_atual|date:"d/m/Y" }}
-      </span>
     </div>
 
     <!-- Abas -->
@@ -126,4 +168,117 @@
     </div> <!-- tab-content -->
   </div> <!-- card -->
 </div> <!-- container -->
+
+<!-- Modal: Contexto operacional (texto por empresa, usado no Word) -->
+<div class="modal fade" id="modalContextoOperacional" tabindex="-1" aria-labelledby="modalContextoOperacionalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalContextoOperacionalLabel">
+          <i class="bi bi-card-text me-2"></i>Contexto operacional
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 small">
+          <i class="bi bi-info-circle me-1"></i>
+          Este texto pertence à empresa <strong>{{ fundo.empresa.nome }}</strong> e será usado na seção
+          "Contexto operacional" do Word de <strong>todos os fundos</strong> dela.
+        </div>
+
+        <div id="contexto-feedback" class="alert d-none py-2 small" role="alert"></div>
+
+        <textarea id="contexto-texto" class="form-control" rows="14"
+                  maxlength="{{ contexto_operacional_max }}"
+                  placeholder="Descreva o contexto operacional do fundo..."
+                  {% if not pode_editar_contexto %}readonly{% endif %}>{{ contexto_operacional }}</textarea>
+
+        <div class="d-flex justify-content-between mt-2 small text-muted">
+          <span>Separe parágrafos com uma linha em branco.</span>
+          <span><span id="contexto-contador">0</span> / {{ contexto_operacional_max }}</span>
+        </div>
+
+        <div class="mt-2 small text-muted" id="contexto-ultima-edicao">
+          {% if contexto_atualizado_em %}
+            Última edição por {{ contexto_atualizado_por.get_full_name|default:contexto_atualizado_por.get_username|default:"—" }}
+            em {{ contexto_atualizado_em|date:"d/m/Y H:i" }}
+          {% endif %}
+        </div>
+
+        {% if not pode_editar_contexto %}
+        <div class="mt-2 small text-muted">
+          <i class="bi bi-lock me-1"></i>Somente MASTER/ADMIN da empresa podem editar este texto.
+        </div>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+        {% if pode_editar_contexto %}
+        <button type="button" class="btn btn-primary" id="btn-salvar-contexto">
+          <i class="bi bi-check-lg me-1"></i>Salvar
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const textarea = document.getElementById('contexto-texto');
+  const contador = document.getElementById('contexto-contador');
+  const btnSalvar = document.getElementById('btn-salvar-contexto');
+  const feedback = document.getElementById('contexto-feedback');
+  const badgeVazio = document.getElementById('contexto-badge-vazio');
+  const ultimaEdicao = document.getElementById('contexto-ultima-edicao');
+  const modalEl = document.getElementById('modalContextoOperacional');
+  if (!textarea) return;
+
+  function atualizarContador() { contador.textContent = textarea.value.length; }
+  textarea.addEventListener('input', atualizarContador);
+  atualizarContador();
+
+  function mostrarFeedback(msg, tipo) {
+    feedback.textContent = msg;
+    feedback.className = 'alert alert-' + tipo + ' py-2 small';
+  }
+  modalEl.addEventListener('show.bs.modal', function () {
+    feedback.className = 'alert d-none py-2 small';
+  });
+
+  if (!btnSalvar) return;
+
+  btnSalvar.addEventListener('click', async function () {
+    btnSalvar.disabled = true;
+    const fd = new FormData();
+    fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+    fd.append('contexto_operacional', textarea.value);
+    try {
+      const resp = await fetch("{% url 'salvar_contexto_operacional' periodo.id %}", {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: fd,
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) {
+        mostrarFeedback(data.erro || 'Não foi possível salvar o texto.', 'danger');
+        return;
+      }
+      badgeVazio.classList.toggle('d-none', !data.vazio);
+      ultimaEdicao.textContent = 'Última edição por ' + data.atualizado_por + ' em ' + data.atualizado_em;
+      mostrarFeedback('Texto salvo com sucesso.', 'success');
+      setTimeout(function () {
+        const inst = bootstrap.Modal.getInstance(modalEl);
+        if (inst) inst.hide();
+      }, 700);
+    } catch (e) {
+      mostrarFeedback('Erro de rede ao salvar o texto.', 'danger');
+    } finally {
+      btnSalvar.disabled = false;
+    }
+  });
+})();
+</script>
 {% endblock %}

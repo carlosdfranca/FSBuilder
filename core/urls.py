@@ -22,6 +22,7 @@ urlpatterns = [
     path('dre-resultado/<int:periodo_df_id>/', df_resultado, name='dre_resultado'),
     path("dre-resultado/<int:periodo_df_id>/exportar/", exportar_dfs_excel, name="exportar_dfs_excel"),
     path("dre-resultado/<int:periodo_df_id>/exportar-docx/", exportar_dfs_docx, name="exportar_dfs_docx"),
+    path("dre-resultado/<int:periodo_df_id>/contexto-operacional/", salvar_contexto_operacional, name="salvar_contexto_operacional"),
 
 
     # Fundos

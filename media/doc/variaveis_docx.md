@@ -32,6 +32,27 @@ A geração é feita via **docxtpl** (sintaxe Jinja2).
 
 ---
 
+## 1.1 Contexto operacional (texto da empresa)
+
+Texto cadastrado pela empresa na tela da DF (botão **Contexto operacional**) e compartilhado por todos os fundos dela.
+Entra como lista de parágrafos (blocos separados por linha em branco). Se estiver vazio, sai o marcador
+`[Contexto operacional não preenchido]`.
+
+**Variável da lista:** `contexto_operacional_paragrafos` (lista de strings)
+
+```
+{%p for par in contexto_operacional_paragrafos %}
+{{ par }}
+(parágrafo vazio de espaçamento)
+{%p endfor %}
+```
+
+> **Atenção**: `{%p for %}` / `{%p endfor %}` ficam cada um em seu próprio parágrafo (estilo *Corpo de texto*).
+> Digite a tag inteira de uma vez, sem colar, para o Word não dividi-la em vários trechos.
+> Como o `render` usa `autoescape=True`, caracteres como `&` e `<` do texto do usuário saem corretamente.
+
+---
+
 ## 2. DPF — Demonstração da Posição Financeira
 
 ### 2.1 Loop de linhas do Ativo
@@ -274,6 +295,7 @@ Não há loops. Todas as variáveis são escalares.
 
 ### Listas (loops com `{%tr for %}`)
 ```
+contexto_operacional_paragrafos → lista de strings (loop com {%p for %})
 ativo_rows    → campos: descricao, atual, anterior, perc_atual, perc_anterior, tipo
 passivo_rows  → campos: descricao, atual, anterior, perc_atual, perc_anterior, tipo
 dre_rows      → campos: descricao, atual, anterior, tipo
