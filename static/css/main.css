@@ -869,7 +869,7 @@ html[data-theme="light"] .site-nav__logo--light { display: block; }
     list-style: none;
     margin: 0;
     padding: 0.35rem;
-    min-width: 195px;
+    min-width: 230px;
     background: #100d0e;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 10px;
@@ -923,6 +923,11 @@ html[data-theme="light"] .site-nav__logo--light { display: block; }
     color: var(--text-primary);
 }
 .site-nav__dropdown-item:hover i { opacity: 1; }
+.site-nav__dropdown-item.is-active {
+    background: rgba(107, 26, 42, 0.14);
+    color: var(--text-primary);
+}
+.site-nav__dropdown-item.is-active i { opacity: 1; }
 .site-nav__dropdown-item--danger:hover {
     background: rgba(239, 68, 68, 0.1);
     color: #f87171;
@@ -1037,6 +1042,14 @@ html[data-theme="light"] .site-nav__logo--light { display: block; }
 /* ================================
    Responsive Breakpoints
 ================================ */
+
+/* Desktop: links secundários (Tutorial, Painel de Documentos) vivem no menu do usuário;
+   no drawer mobile (<1200px) continuam visíveis na lista de links */
+@media (min-width: 1200px) {
+    .site-nav__menu-item--drawer-only {
+        display: none;
+    }
+}
 
 /* Compact desktop: labels shrink, only avatar shown for user (1200–1439px) */
 @media (min-width: 1200px) and (max-width: 1439.98px) {

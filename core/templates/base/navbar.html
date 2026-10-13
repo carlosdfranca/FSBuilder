@@ -98,8 +98,9 @@
           </a>
         </li>
         {% endif %}
+        {# Links secundários: no desktop ficam no menu do usuário (evita a barra estourar); no drawer mobile aparecem aqui #}
         {% if user_is_global_admin %}
-        <li>
+        <li class="site-nav__menu-item--drawer-only">
           <a href="{% url 'painel_documentos' %}"
              class="site-nav__link{% if request.resolver_match.url_name == 'painel_documentos' %} is-active{% endif %}"
              {% if request.resolver_match.url_name == 'painel_documentos' %}aria-current="page"{% endif %}>
@@ -107,7 +108,7 @@
           </a>
         </li>
         {% endif %}
-        <li>
+        <li class="site-nav__menu-item--drawer-only">
           <a href="{% static 'docs/Tutorial FSbuilder.pptx' %}" download class="site-nav__link">
             <i class="bi bi-file-earmark-ppt-fill"></i> Tutorial
           </a>
@@ -162,6 +163,21 @@
       </button>
 
       <ul class="site-nav__dropdown" id="userDropdown" role="menu">
+        {% if user_is_global_admin %}
+        <li>
+          <a class="site-nav__dropdown-item{% if request.resolver_match.url_name == 'painel_documentos' %} is-active{% endif %}"
+             href="{% url 'painel_documentos' %}"
+             {% if request.resolver_match.url_name == 'painel_documentos' %}aria-current="page"{% endif %}>
+            <i class="bi bi-hdd-stack"></i> Painel de Documentos
+          </a>
+        </li>
+        {% endif %}
+        <li>
+          <a class="site-nav__dropdown-item" href="{% static 'docs/Tutorial FSbuilder.pptx' %}" download>
+            <i class="bi bi-file-earmark-ppt-fill"></i> Tutorial
+          </a>
+        </li>
+        <li><div class="site-nav__dropdown-divider"></div></li>
         {% if request.user.is_staff %}
         <li>
           <a class="site-nav__dropdown-item" href="{% url 'admin:index' %}">
