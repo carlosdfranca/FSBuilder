@@ -31,6 +31,13 @@ urlpatterns = [
     path('fundos/<int:fundo_id>/editar/', editar_fundo, name='editar_fundo'),
     path('fundos/<int:fundo_id>/excluir/', excluir_fundo, name='excluir_fundo'),
 
+    # Plano de Contas (mapeamento de contas por empresa)
+    path('plano-de-contas/', plano_de_contas, name='plano_de_contas'),
+    path('api/plano-de-contas/', criar_mapeamento, name='criar_mapeamento'),
+    path('api/plano-de-contas/<int:mapeamento_id>/editar/', editar_mapeamento, name='editar_mapeamento'),
+    path('api/plano-de-contas/<int:mapeamento_id>/excluir/', excluir_mapeamento, name='excluir_mapeamento'),
+    path('api/plano-de-contas/pendentes/descartar/', descartar_pendente, name='descartar_pendente'),
+
     # Gestoras
     path('gestoras/adicionar/', adicionar_gestora, name='adicionar_gestora'),
     path('gestoras/<int:gestora_id>/editar/', editar_gestora, name='editar_gestora'),

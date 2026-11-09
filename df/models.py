@@ -698,6 +698,58 @@ class BalanceteItem(models.Model):
 
 
 # =================================================
+# BALANCETE — linhas sem mapeamento (aguardando Plano de Contas)
+# =================================================
+class BalanceteLinhaPendente(models.Model):
+    """
+    Linha do balancete cuja conta ainda não tinha MapeamentoContas na empresa no momento
+    do import. Guardada para ser materializada em BalanceteItem assim que a conta for
+    mapeada, sem exigir reimportação da planilha.
+    """
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="balancete_pendentes",
+        db_index=True,
+    )
+    fundo = models.ForeignKey(
+        Fundo,
+        on_delete=models.CASCADE,
+        related_name="balancete_pendentes",
+    )
+    periodo_df = models.ForeignKey(
+        'PeriodoDF',
+        on_delete=models.CASCADE,
+        related_name="balancete_pendentes",
+        null=True,
+        blank=True,
+    )
+    data_referencia = models.DateField()
+    conta = models.CharField(max_length=30)
+    descricao = models.CharField(max_length=255, null=True, blank=True)
+    saldo_final = models.DecimalField(max_digits=20, decimal_places=2, null=True, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Linha pendente do balancete"
+        verbose_name_plural = "Linhas pendentes do balancete"
+        ordering = ["empresa", "conta", "-data_referencia"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["fundo", "data_referencia", "conta"],
+                name="uq_balpend_fundo_data_conta",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["empresa", "conta"], name="idx_balpend_empresa_conta"),
+        ]
+
+    def __str__(self):
+        return f"[{self.data_referencia}] {self.fundo.nome} | {self.conta} (pendente)"
+
+
+# =================================================
 # MEC (por fundo, e Data da posição)
 # =================================================
 class MecItem(models.Model):

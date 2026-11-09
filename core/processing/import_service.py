@@ -23,6 +23,7 @@ class ImportReport:
     updated: int
     ignored: int
     errors: List[ImportErrorItem]
+    pendentes: int = 0  # linhas com conta sem mapeamento, guardadas p/ o Plano de Contas
 
 
 def _to_decimal(v: Optional[float]) -> Optional[Decimal]:
@@ -94,6 +95,8 @@ def import_balancete(*, fundo_id: int, data_referencia: date, rows: List, period
 
     imported = updated = ignored = 0
     errors: List[ImportErrorItem] = []
+    sem_mapeamento = []
+    contas_gravadas = set()
 
     for idx, r in enumerate(rows):
         conta = r.conta
@@ -104,6 +107,8 @@ def import_balancete(*, fundo_id: int, data_referencia: date, rows: List, period
         conta_map = mapa_by_conta.get(conta)
         if conta_map is None:
             ignored += 1
+            if r.saldo_atual is not None:
+                sem_mapeamento.append(r)
             continue
 
         if r.saldo_atual is None:
@@ -122,6 +127,7 @@ def import_balancete(*, fundo_id: int, data_referencia: date, rows: List, period
                 data_referencia=data_referencia,
                 defaults=defaults,
             )
+            contas_gravadas.add(conta)
             if created:
                 imported += 1
             else:
@@ -130,12 +136,26 @@ def import_balancete(*, fundo_id: int, data_referencia: date, rows: List, period
         except Exception as e:
             errors.append(ImportErrorItem(idx, str(e), raw=r.raw))
 
+    # Contas sem mapeamento viram pendências (visíveis no Plano de Contas);
+    # contas que agora têm mapeamento deixam de ser pendentes.
+    from df.services.mapeamento_service import registrar_pendentes, limpar_pendentes_mapeadas
+    pendentes = registrar_pendentes(
+        fundo=fundo,
+        data_referencia=data_referencia,
+        periodo_df_id=periodo_df_id,
+        rows=sem_mapeamento,
+        decimal_fn=_to_decimal,
+    )
+    limpar_pendentes_mapeadas(fundo=fundo, data_referencia=data_referencia, contas=contas_gravadas)
+
     # Atualizar data_referencia do período se fornecido e não definida
     if periodo_df and not periodo_df.data_referencia:
         periodo_df.data_referencia = data_referencia
         periodo_df.save()
 
-    return ImportReport(imported=imported, updated=updated, ignored=ignored, errors=errors)
+    return ImportReport(
+        imported=imported, updated=updated, ignored=ignored, errors=errors, pendentes=pendentes
+    )
 
 
 @transaction.atomic

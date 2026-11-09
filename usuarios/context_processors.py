@@ -61,7 +61,14 @@ def empresas_contexto(request):
             status=Convite.Status.PENDING
         ).count()
 
+    # Contas do balancete sem mapeamento (badge do Plano de Contas); só quem pode editar precisa do aviso.
+    contas_pendentes_count = 0
+    if empresa_ativa and (is_global_admin or role in {Membership.Role.MASTER, Membership.Role.ADMIN}):
+        from df.services.mapeamento_service import total_contas_pendentes
+        contas_pendentes_count = total_contas_pendentes(empresa_ativa)
+
     return {
+        "contas_pendentes_count": contas_pendentes_count,
         "empresa_ativa": empresa_ativa,
         "empresas_disponiveis": empresas,
         "user_is_global": is_global,

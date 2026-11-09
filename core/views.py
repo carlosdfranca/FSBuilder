@@ -4,8 +4,8 @@ from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.db import transaction
-from django.db.models import ProtectedError
+from django.db import IntegrityError, transaction
+from django.db.models import Count, ProtectedError
 from django.http import FileResponse, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
@@ -18,6 +18,13 @@ import logging
 from df.models import (
     Fundo, BalanceteItem, HistoricoEmissaoDF, PeriodoDF, Gestora,
     ChecklistItemPeriodo, DocumentoDF, LogAcessoDocumento,
+    GrupoGrande, GrupoPequeno, MapeamentoContas,
+)
+from df.services.mapeamento_service import (
+    contas_pendentes_agrupadas,
+    descartar_pendentes,
+    materializar_pendentes,
+    total_contas_pendentes,
 )
 from df.validators import validar_documento_upload
 from df.services.documento_service import (
@@ -44,7 +51,7 @@ from usuarios.permissions import (
     platform_admin_required,
 )
 
-from .forms import FundoForm, GestoraForm, EditarPerfilForm, EmpresaDocumentosConfigForm
+from .forms import FundoForm, GestoraForm, EditarPerfilForm, EmpresaDocumentosConfigForm, MapeamentoContasForm
 from df.forms import PeriodoDFManualForm
 
 logger = logging.getLogger(__name__)
@@ -457,16 +464,30 @@ def importar_balancete_view(request):
     else:
         periodo.save()
 
+    from django.urls import reverse
+    plano_url = reverse("plano_de_contas") + "?filtro=pendentes"
+    aviso_pendentes = ""
+    if report.pendentes:
+        aviso_pendentes = (
+            f" {report.pendentes} linha(s) com conta sem mapeamento ficaram de fora da DF — "
+            f"mapeie-as no Plano de Contas."
+        )
+
     if report.errors:
-        msg = f"Balancete importado com avisos. {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados."
+        msg = f"Balancete importado com avisos. {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados.{aviso_pendentes}"
         if is_ajax:
-            return JsonResponse({"ok": True, "warning": True, "message": msg})
+            return JsonResponse({"ok": True, "warning": True, "message": msg,
+                                 "pendentes": report.pendentes, "plano_url": plano_url})
         messages.warning(request, msg)
     else:
-        msg = f"Balancete importado com sucesso para '{periodo.nome_exibicao}': {report.imported} inseridos, {report.updated} atualizados."
+        msg = f"Balancete importado com sucesso para '{periodo.nome_exibicao}': {report.imported} inseridos, {report.updated} atualizados.{aviso_pendentes}"
         if is_ajax:
-            return JsonResponse({"ok": True, "message": msg})
-        messages.success(request, msg)
+            return JsonResponse({"ok": True, "warning": bool(report.pendentes), "message": msg,
+                                 "pendentes": report.pendentes, "plano_url": plano_url})
+        if report.pendentes:
+            messages.warning(request, msg)
+        else:
+            messages.success(request, msg)
 
     return redirect("demonstracao_financeira")
 
@@ -1112,6 +1133,178 @@ def excluir_gestora(request, gestora_id):
     return render(request, "gestoras/confirmar_exclusao.html", {
         "gestora": gestora,
         "fundos_vinculados": fundos_vinculados,
+    })
+
+
+# ===========================
+# Plano de Contas (MapeamentoContas por empresa)
+# ===========================
+TIPO_LABELS = dict(GrupoGrande.TIPO_CHOICES)
+
+
+def _serializar_mapeamento(m, uso):
+    gp = m.grupo_pequeno
+    gg = gp.grupao if gp else None
+    return {
+        "id": m.id,
+        "conta": m.conta,
+        "descricao": m.descricao or "",
+        "grupo_pequeno_id": gp.id if gp else None,
+        "grupinho": gp.nome if gp else "",
+        "grupao": gg.nome if gg else "",
+        "tipo": gg.tipo if gg else None,
+        "tipo_label": TIPO_LABELS.get(gg.tipo, "") if gg else "",
+        "uso": uso,
+        "pendente": False,
+    }
+
+
+def _erros_do_form(form):
+    return {
+        campo: [e["message"] for e in erros]
+        for campo, erros in form.errors.get_json_data().items()
+    }
+
+
+@login_required
+@company_can_view_data
+def plano_de_contas(request):
+    empresa = get_empresa_escopo(request)
+
+    mapeamentos = (
+        MapeamentoContas.objects.filter(empresa=empresa)
+        .select_related("grupo_pequeno__grupao")
+        .annotate(uso=Count("itens"))
+        .order_by("conta")
+    )
+    linhas = [_serializar_mapeamento(m, m.uso) for m in mapeamentos]
+
+    pendentes = contas_pendentes_agrupadas(empresa)
+    for p in pendentes:
+        p["ultima"] = p["ultima"].strftime("%d/%m/%Y") if p["ultima"] else ""
+        p["descricao"] = p["descricao"] or ""
+
+    # <select> agrupado: "Ativo · Disponibilidades" → grupinhos
+    grupos_select = []
+    atual = None
+    grupinhos = (
+        GrupoPequeno.objects.select_related("grupao")
+        .order_by("grupao__tipo", "grupao__ordem", "grupao__nome", "nome")
+    )
+    for gp in grupinhos:
+        if atual is None or atual["grupao_id"] != gp.grupao_id:
+            tipo = TIPO_LABELS.get(gp.grupao.tipo, "")
+            rotulo = f"{tipo} · {gp.grupao.nome}" if tipo else gp.grupao.nome
+            atual = {"grupao_id": gp.grupao_id, "label": rotulo, "itens": []}
+            grupos_select.append(atual)
+        atual["itens"].append({"id": gp.id, "nome": gp.nome})
+
+    kpis = {
+        "mapeadas": len(linhas),
+        "sem_grupinho": sum(1 for l in linhas if not l["grupo_pequeno_id"]),
+        "pendentes": len(pendentes),
+        "usadas": sum(1 for l in linhas if l["uso"] > 0),
+    }
+
+    return render(request, "plano_contas/index.html", {
+        "empresa": empresa,
+        "can_manage": _can_manage_data(request),
+        "linhas": linhas,
+        "pendentes": pendentes,
+        "grupos_select": grupos_select,
+        "kpis": kpis,
+        "filtro_inicial": request.GET.get("filtro", "todas"),
+        "tipo_choices": GrupoGrande.TIPO_CHOICES,
+    })
+
+
+@login_required
+@company_can_manage_data
+@require_POST
+def criar_mapeamento(request):
+    empresa = get_empresa_escopo(request)
+    form = MapeamentoContasForm(request.POST, empresa=empresa)
+    if not form.is_valid():
+        return JsonResponse({"ok": False, "errors": _erros_do_form(form)}, status=400)
+
+    obj = form.save(commit=False)
+    obj.empresa = empresa  # nunca vem do POST
+    try:
+        obj.save()
+    except IntegrityError:
+        return JsonResponse(
+            {"ok": False, "errors": {"conta": [f"A conta {obj.conta} já está mapeada nesta empresa."]}},
+            status=400,
+        )
+
+    aplicados = materializar_pendentes(obj)
+    obj = MapeamentoContas.objects.select_related("grupo_pequeno__grupao").get(pk=obj.pk)
+    return JsonResponse({
+        "ok": True,
+        "item": _serializar_mapeamento(obj, aplicados["linhas"]),
+        "aplicados": aplicados,
+        "pendentes_total": total_contas_pendentes(empresa),
+    })
+
+
+@login_required
+@company_can_manage_data
+@require_POST
+def editar_mapeamento(request, mapeamento_id):
+    empresa = get_empresa_escopo(request)
+    obj = get_object_or_404(MapeamentoContas, id=mapeamento_id, empresa=empresa)
+    uso = obj.itens.count()
+    grupo_anterior = obj.grupo_pequeno_id
+
+    form = MapeamentoContasForm(request.POST, instance=obj, empresa=empresa, travar_conta=uso > 0)
+    if not form.is_valid():
+        return JsonResponse({"ok": False, "errors": _erros_do_form(form)}, status=400)
+
+    obj = form.save()
+    obj = MapeamentoContas.objects.select_related("grupo_pequeno__grupao").get(pk=obj.pk)
+    aviso = ""
+    if uso and obj.grupo_pequeno_id != grupo_anterior:
+        aviso = f"A mudança de subgrupo já vale para as DFs que usam esta conta ({uso} lançamento(s))."
+    return JsonResponse({
+        "ok": True,
+        "item": _serializar_mapeamento(obj, uso),
+        "aviso": aviso,
+    })
+
+
+@login_required
+@company_can_manage_data
+@require_POST
+def excluir_mapeamento(request, mapeamento_id):
+    empresa = get_empresa_escopo(request)
+    obj = get_object_or_404(MapeamentoContas, id=mapeamento_id, empresa=empresa)
+    uso = obj.itens.count()
+    mensagem_uso = (
+        f"A conta {obj.conta} é usada em {uso} lançamento(s) de balancete. "
+        f"Altere o subgrupo em vez de excluir."
+    )
+    if uso:
+        return JsonResponse({"ok": False, "message": mensagem_uso}, status=409)
+    try:
+        obj.delete()
+    except ProtectedError:
+        return JsonResponse({"ok": False, "message": mensagem_uso}, status=409)
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@company_can_manage_data
+@require_POST
+def descartar_pendente(request):
+    empresa = get_empresa_escopo(request)
+    conta = (request.POST.get("conta") or "").strip()
+    if not conta:
+        return JsonResponse({"ok": False, "message": "Conta não informada."}, status=400)
+    removidas = descartar_pendentes(empresa, conta)
+    return JsonResponse({
+        "ok": True,
+        "removidas": removidas,
+        "pendentes_total": total_contas_pendentes(empresa),
     })
 
 

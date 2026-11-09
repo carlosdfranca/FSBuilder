@@ -2,8 +2,45 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.contrib.auth.password_validation import validate_password
 from datetime import date
-from df.models import Fundo, ConfiguracaoDF, Gestora
+from df.models import Fundo, ConfiguracaoDF, Gestora, GrupoPequeno, MapeamentoContas
 from usuarios.models import Usuario, Empresa
+
+
+class MapeamentoContasForm(forms.ModelForm):
+    """
+    Plano de Contas: conta do balancete → grupinho. A empresa nunca vem do POST;
+    é passada pela view. Com `travar_conta=True` (conta já usada em balancetes) o
+    código não pode mudar, só descrição e grupinho.
+    """
+    class Meta:
+        model = MapeamentoContas
+        fields = ['conta', 'descricao', 'grupo_pequeno']
+
+    def __init__(self, *args, empresa, travar_conta=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.empresa = empresa
+        self.travar_conta = travar_conta
+        self.fields['grupo_pequeno'].queryset = (
+            GrupoPequeno.objects.select_related('grupao')
+            .order_by('grupao__tipo', 'grupao__ordem', 'grupao__nome', 'nome')
+        )
+        self.fields['grupo_pequeno'].required = False
+
+    def clean_conta(self):
+        if self.travar_conta and self.instance.pk:
+            return self.instance.conta
+        conta = (self.cleaned_data.get('conta') or '').strip()
+        if not conta:
+            raise ValidationError("Informe o código da conta.")
+        duplicada = MapeamentoContas.objects.filter(empresa=self.empresa, conta=conta)
+        if self.instance.pk:
+            duplicada = duplicada.exclude(pk=self.instance.pk)
+        if duplicada.exists():
+            raise ValidationError(f"A conta {conta} já está mapeada nesta empresa.")
+        return conta
+
+    def clean_descricao(self):
+        return (self.cleaned_data.get('descricao') or '').strip() or None
 
 
 class GestoraForm(forms.ModelForm):

@@ -1,0 +1,666 @@
+{% extends 'base/base.html' %}
+{% load static %}
+
+{% block title %}Plano de Contas{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── KPI: variantes extras ─────────────────────────────── */
+  .kpi-card--red::before { background: linear-gradient(90deg, #b91c1c, #ef4444); }
+  .kpi-card--red .kpi-card__value { color: #ef4444; }
+  a.kpi-card-link { text-decoration: none; display: block; transition: transform 0.18s ease; }
+  a.kpi-card-link:hover .kpi-card { transform: translateY(-3px); box-shadow: var(--shadow-card-hover); }
+  a.kpi-card-link:focus-visible .kpi-card { outline: 2px solid var(--accent-primary); outline-offset: 3px; }
+
+  /* ── Cabeçalho com ação ───────────────────────────────── */
+  .pc-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; }
+
+  /* ── Banner de pendências ─────────────────────────────── */
+  .pc-banner {
+    display: flex; align-items: center; gap: .85rem; flex-wrap: wrap;
+    padding: .85rem 1.1rem; margin-bottom: 1rem; border-radius: 12px;
+    background: rgba(251,191,36,.10); border: 1px solid rgba(251,191,36,.32);
+    color: var(--text-primary); font-size: .88rem;
+  }
+  .pc-banner i { color: #fbbf24; font-size: 1.25rem; }
+  .pc-banner__text { flex: 1 1 14rem; }
+  .pc-banner[hidden] { display: none; }
+
+  /* ── Barra de filtros ─────────────────────────────────── */
+  .pc-toolbar { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin-bottom: .9rem; }
+  .pc-chips {
+    display: flex; gap: .4rem; overflow-x: auto; flex: 1 1 24rem; padding-bottom: 2px;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .pc-chips::-webkit-scrollbar { display: none; }
+  .pc-chip {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: .4rem;
+    padding: .38rem .8rem; border-radius: 999px; font-size: .78rem; font-weight: 600; cursor: pointer;
+    background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border-color);
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .pc-chip:hover { color: var(--text-primary); border-color: var(--accent-primary); }
+  .pc-chip.is-active { background: var(--accent-primary); color: #fff; border-color: var(--accent-primary); }
+  .pc-chip__n { font-size: .68rem; opacity: .8; font-variant-numeric: tabular-nums; }
+  .pc-search { position: relative; flex: 0 1 18rem; min-width: 12rem; }
+  .pc-search i { position: absolute; left: .75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+  .pc-search input { padding-left: 2.1rem; }
+
+  /* ── Tabela ───────────────────────────────────────────── */
+  .pc-card { background: var(--surface-2); border: 1px solid var(--border-color); border-radius: 14px; padding: .5rem .5rem 0; }
+  .pc-conta { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 600; color: var(--text-primary); }
+  .pc-sub { display: block; font-size: .72rem; color: var(--text-muted); }
+  .pc-path { color: var(--text-secondary); }
+  .pc-path b { color: var(--text-primary); font-weight: 600; }
+  .pc-uso { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .pc-actions { display: inline-flex; gap: .35rem; justify-content: flex-end; }
+  .pc-icon-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .35rem;
+    min-width: 2.2rem; height: 2.2rem; padding: 0 .55rem; border-radius: 8px; cursor: pointer;
+    background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); font-size: .8rem;
+    transition: background .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .pc-icon-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--accent-primary); background: rgba(255,255,255,.04); }
+  .pc-icon-btn--danger:hover:not(:disabled) { color: #ef4444; border-color: #ef4444; }
+  .pc-icon-btn--primary { background: var(--accent-primary); color: #fff; border-color: var(--accent-primary); font-weight: 600; }
+  .pc-icon-btn--primary:hover:not(:disabled) { color: #fff; filter: brightness(1.15); background: var(--accent-primary); }
+  .pc-icon-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .pc-row--pendente td { background: rgba(251,191,36,.045) !important; }
+  .pc-row--pendente td:first-child { border-left-color: #fbbf24 !important; }
+
+  /* badges de tipo */
+  .pc-badge { display: inline-block; padding: .2rem .6rem; border-radius: 999px; font-size: .68rem; font-weight: 700; letter-spacing: .03em; white-space: nowrap; border: 1px solid transparent; }
+  .pc-badge--1 { background: rgba(16,185,129,.15); color: #34d399; border-color: rgba(16,185,129,.3); }
+  .pc-badge--2 { background: rgba(239,68,68,.14);  color: #f87171; border-color: rgba(239,68,68,.3); }
+  .pc-badge--3 { background: rgba(59,130,246,.15); color: #60a5fa; border-color: rgba(59,130,246,.3); }
+  .pc-badge--4 { background: rgba(168,85,247,.15); color: #c084fc; border-color: rgba(168,85,247,.3); }
+  .pc-badge--none { background: rgba(107,117,133,.14); color: var(--text-secondary); border-color: rgba(107,117,133,.3); }
+  .pc-badge--pend { background: rgba(251,191,36,.16); color: #fbbf24; border-color: rgba(251,191,36,.38); }
+  html[data-theme="light"] .pc-badge--1 { color: #047857; }
+  html[data-theme="light"] .pc-badge--2 { color: #b91c1c; }
+  html[data-theme="light"] .pc-badge--3 { color: #1d4ed8; }
+  html[data-theme="light"] .pc-badge--4 { color: #7e22ce; }
+  html[data-theme="light"] .pc-badge--pend { color: #92400e; }
+
+  .pc-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; padding: .6rem .75rem; font-size: .78rem; color: var(--text-muted); }
+
+  /* ── Painel (offcanvas) ───────────────────────────────── */
+  .pc-offcanvas { width: min(440px, 100vw); background: var(--surface-1); color: var(--text-primary); border-left: 1px solid var(--border-color); }
+  .pc-offcanvas .offcanvas-header { border-bottom: 1px solid var(--border-color); }
+  .pc-offcanvas .offcanvas-footer { padding: 1rem; border-top: 1px solid var(--border-color); display: flex; gap: .6rem; justify-content: flex-end; }
+  .pc-aviso-uso { display: none; font-size: .8rem; }
+
+  /* ── FAB (mobile) ─────────────────────────────────────── */
+  .pc-fab {
+    display: none; position: fixed; right: 1.1rem; bottom: 1.1rem; z-index: 1030;
+    width: 3.4rem; height: 3.4rem; border-radius: 50%; border: 0; cursor: pointer;
+    background: var(--accent-primary); color: #fff; font-size: 1.5rem; box-shadow: 0 6px 18px rgba(0,0,0,.45);
+    align-items: center; justify-content: center;
+  }
+
+  /* ── Toasts ───────────────────────────────────────────── */
+  .pc-toasts { position: fixed; right: 1rem; bottom: 1rem; z-index: 1100; display: flex; flex-direction: column; gap: .5rem; max-width: calc(100vw - 2rem); }
+
+  /* ── MOBILE: tabela vira cards, painel vira bottom-sheet ── */
+  @media (max-width: 767.98px) {
+    .pc-head .btn-primary { display: none; }
+    .pc-fab { display: inline-flex; }
+    .pc-toasts { bottom: 5.4rem; left: 1rem; right: 1rem; }
+    .pc-search { flex: 1 1 100%; }
+    .pc-card { background: transparent; border: 0; padding: 0; }
+
+    .pc-table, .pc-table tbody { display: block; width: 100%; }
+    .pc-table thead { display: none; }
+    .pc-table tbody tr {
+      display: grid; grid-template-columns: 1fr auto; gap: .2rem .75rem;
+      grid-template-areas: "conta tipo" "desc desc" "grupo grupo" "uso acoes";
+      padding: .85rem .95rem; margin-bottom: .6rem;
+      background: var(--surface-2); border: 1px solid var(--border-color); border-radius: 12px;
+    }
+    .pc-table tbody td { display: block; padding: 0 !important; border: 0 !important; background: transparent !important; }
+    .pc-table tbody td:first-child { border-left: 0 !important; }
+    .pc-row--pendente { border-color: rgba(251,191,36,.4) !important; }
+    .pc-c-conta { grid-area: conta; font-size: .95rem; }
+    .pc-c-tipo  { grid-area: tipo; text-align: right; }
+    .pc-c-desc  { grid-area: desc; font-size: .9rem; }
+    .pc-c-grupo { grid-area: grupo; font-size: .8rem; }
+    .pc-c-uso   { grid-area: uso; align-self: center; font-size: .75rem; }
+    .pc-c-uso::before { content: attr(data-label) ": "; color: var(--text-muted); }
+    .pc-c-acoes { grid-area: acoes; margin-top: .35rem; }
+    .pc-icon-btn { min-width: 2.6rem; height: 2.6rem; }   /* alvo de toque ≥ 44px */
+
+    .offcanvas.pc-offcanvas {
+      top: auto; bottom: 0; left: 0; right: 0; width: 100%; height: auto; max-height: 90vh;
+      border-left: 0; border-top: 1px solid var(--border-color); border-radius: 18px 18px 0 0;
+      transform: translateY(100%);
+    }
+    .offcanvas.pc-offcanvas.show:not(.hiding), .offcanvas.pc-offcanvas.showing { transform: none; }
+    .pc-offcanvas .offcanvas-footer { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+    .pc-offcanvas .form-control, .pc-offcanvas .form-select { font-size: 1rem; }   /* evita zoom do iOS */
+  }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+{% include 'base/navbar.html' %}
+
+<div class="container py-5">
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }} alert-dismissible fade show mb-3" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Cabeçalho -->
+  <div class="page-header pc-head">
+    <div class="page-header__titles">
+      <h1 class="page-header__title">Plano de Contas</h1>
+      <p class="page-header__subtitle">
+        Como as contas do balancete de <strong>{{ empresa.nome }}</strong> entram nas demonstrações financeiras
+      </p>
+    </div>
+    {% if can_manage %}
+      <button type="button" class="btn btn-primary" id="btnNova">
+        <i class="bi bi-plus-lg me-1"></i>Nova conta
+      </button>
+    {% endif %}
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));">
+    <a href="#" class="kpi-card-link" data-filtro="todas">
+      <div class="kpi-card kpi-card--blue">
+        <div class="kpi-card__label">Contas mapeadas</div>
+        <div class="kpi-card__value" id="kpiMapeadas">{{ kpis.mapeadas }}</div>
+        <div class="kpi-card__sub">no plano da empresa</div>
+        <i class="bi bi-diagram-3 kpi-card__ghost-icon"></i>
+      </div>
+    </a>
+    <a href="#" class="kpi-card-link" data-filtro="pendentes">
+      <div class="kpi-card kpi-card--red">
+        <div class="kpi-card__label">Pendentes</div>
+        <div class="kpi-card__value" id="kpiPendentes">{{ kpis.pendentes }}</div>
+        <div class="kpi-card__sub">vindas do balancete</div>
+        <i class="bi bi-exclamation-triangle kpi-card__ghost-icon"></i>
+      </div>
+    </a>
+    <a href="#" class="kpi-card-link" data-filtro="sem_grupinho">
+      <div class="kpi-card kpi-card--amber">
+        <div class="kpi-card__label">Sem subgrupo</div>
+        <div class="kpi-card__value" id="kpiSemGrupo">{{ kpis.sem_grupinho }}</div>
+        <div class="kpi-card__sub">não entram na DF</div>
+        <i class="bi bi-question-circle kpi-card__ghost-icon"></i>
+      </div>
+    </a>
+    <a href="#" class="kpi-card-link" data-filtro="todas">
+      <div class="kpi-card kpi-card--green">
+        <div class="kpi-card__label">Em uso</div>
+        <div class="kpi-card__value" id="kpiUsadas">{{ kpis.usadas }}</div>
+        <div class="kpi-card__sub">com lançamentos</div>
+        <i class="bi bi-check2-circle kpi-card__ghost-icon"></i>
+      </div>
+    </a>
+  </div>
+
+  <!-- Banner de pendências -->
+  <div class="pc-banner" id="pcBanner" hidden>
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <div class="pc-banner__text" id="pcBannerTexto"></div>
+    <button type="button" class="btn btn-sm btn-outline-warning" data-filtro="pendentes">Revisar</button>
+  </div>
+
+  <!-- Filtros -->
+  <div class="pc-toolbar">
+    <div class="pc-chips" id="pcChips" role="tablist" aria-label="Filtrar por tipo">
+      <button type="button" class="pc-chip" data-filtro="todas">Todas <span class="pc-chip__n" data-n="todas"></span></button>
+      {% for valor, rotulo in tipo_choices %}
+        <button type="button" class="pc-chip" data-filtro="tipo-{{ valor }}">{{ rotulo }} <span class="pc-chip__n" data-n="tipo-{{ valor }}"></span></button>
+      {% endfor %}
+      <button type="button" class="pc-chip" data-filtro="sem_grupinho">Sem subgrupo <span class="pc-chip__n" data-n="sem_grupinho"></span></button>
+      <button type="button" class="pc-chip" data-filtro="pendentes">Pendentes <span class="pc-chip__n" data-n="pendentes"></span></button>
+    </div>
+    <div class="pc-search">
+      <i class="bi bi-search"></i>
+      <input type="search" id="pcBusca" class="form-control form-control-sm" placeholder="Buscar conta, descrição ou grupo" aria-label="Buscar">
+    </div>
+  </div>
+
+  <!-- Tabela / cards -->
+  <div class="pc-card">
+    <table id="pcTable" class="table-ds pc-table w-100">
+      <thead>
+        <tr>
+          <th>Conta</th>
+          <th>Descrição</th>
+          <th>Tipo</th>
+          <th>Grupo › Subgrupo</th>
+          <th class="text-end">Uso</th>
+          {% if can_manage %}<th class="text-end">Ações</th>{% endif %}
+          <th>ord</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+</div>
+
+{% if can_manage %}
+<!-- FAB mobile -->
+<button type="button" class="pc-fab" id="btnNovaFab" aria-label="Nova conta"><i class="bi bi-plus-lg"></i></button>
+
+<!-- Painel criar/editar -->
+<div class="offcanvas offcanvas-end pc-offcanvas" tabindex="-1" id="pcPanel" aria-labelledby="pcPanelTitulo">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="pcPanelTitulo">Nova conta</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Fechar"></button>
+  </div>
+  <form id="pcForm" class="d-flex flex-column flex-grow-1 overflow-hidden" novalidate>
+    <div class="offcanvas-body">
+      <input type="hidden" id="pcId">
+
+      <div class="mb-3">
+        <label for="pcConta" class="form-label fw-semibold">Código da conta</label>
+        <input type="text" class="form-control" id="pcConta" name="conta" maxlength="30" autocomplete="off" required>
+        <div class="invalid-feedback" data-erro="conta"></div>
+        <div class="form-text">Exatamente como aparece na coluna CONTA da planilha do balancete.</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="pcDescricao" class="form-label fw-semibold">Descrição <span class="text-muted fw-normal">(opcional)</span></label>
+        <input type="text" class="form-control" id="pcDescricao" name="descricao" maxlength="255" autocomplete="off">
+        <div class="invalid-feedback" data-erro="descricao"></div>
+      </div>
+
+      <div class="mb-3">
+        <label for="pcGrupo" class="form-label fw-semibold">Subgrupo da demonstração</label>
+        <select class="form-select" id="pcGrupo" name="grupo_pequeno">
+          <option value="">— Sem subgrupo —</option>
+          {% for g in grupos_select %}
+            <optgroup label="{{ g.label }}">
+              {% for i in g.itens %}<option value="{{ i.id }}">{{ i.nome }}</option>{% endfor %}
+            </optgroup>
+          {% endfor %}
+        </select>
+        <div class="invalid-feedback" data-erro="grupo_pequeno"></div>
+        <div class="form-text">Contas sem subgrupo são ignoradas nas demonstrações.</div>
+      </div>
+
+      <div class="alert alert-warning pc-aviso-uso" id="pcAvisoUso" role="note">
+        <i class="bi bi-info-circle me-1"></i>
+        Esta conta já tem lançamentos em balancetes: o código fica travado e uma mudança de subgrupo
+        vale imediatamente para as DFs que a usam.
+      </div>
+      <div class="alert alert-danger d-none" id="pcErroGeral" role="alert"></div>
+    </div>
+    <div class="offcanvas-footer">
+      <button type="button" class="btn btn-secondary" data-bs-dismiss="offcanvas">Cancelar</button>
+      <button type="submit" class="btn btn-primary" id="pcSalvar">
+        <span class="spinner-border spinner-border-sm me-1 d-none" aria-hidden="true"></span>Salvar
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- Confirmação (excluir / descartar) -->
+<div class="modal fade" id="pcModal" tabindex="-1" aria-labelledby="pcModalTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="pcModalTitulo"></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body" id="pcModalTexto"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="pcModalOk">
+          <span class="spinner-border spinner-border-sm me-1 d-none" aria-hidden="true"></span>Confirmar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="pc-toasts" id="pcToasts" aria-live="polite"></div>
+
+{{ linhas|json_script:"pc-linhas" }}
+{{ pendentes|json_script:"pc-pendentes" }}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const CAN_MANAGE = {{ can_manage|yesno:"true,false" }};
+  const CSRF = "{{ csrf_token }}";
+  const URL_CRIAR = "{% url 'criar_mapeamento' %}";
+  const URL_EDITAR = "{% url 'editar_mapeamento' 0 %}";
+  const URL_EXCLUIR = "{% url 'excluir_mapeamento' 0 %}";
+  const URL_DESCARTAR = "{% url 'descartar_pendente' %}";
+  const FILTROS = ["todas", "tipo-1", "tipo-2", "tipo-3", "tipo-4", "sem_grupinho", "pendentes"];
+
+  const mapeadas = JSON.parse(document.getElementById("pc-linhas").textContent);
+  const pendentesIniciais = JSON.parse(document.getElementById("pc-pendentes").textContent);
+
+  // ── Estado: pendentes + mapeadas num único conjunto ────────
+  let rows = pendentesIniciais.map(function (p) {
+    return {
+      pendente: true, id: null, conta: p.conta, descricao: p.descricao || "",
+      tipo: null, tipo_label: "", grupao: "", grupinho: "", grupo_pequeno_id: null,
+      uso: 0, qtd_fundos: p.qtd_fundos, qtd_linhas: p.qtd_linhas, ultima: p.ultima
+    };
+  }).concat(mapeadas);
+
+  let filtroAtivo = FILTROS.indexOf("{{ filtro_inicial|escapejs }}") >= 0 ? "{{ filtro_inicial|escapejs }}" : "todas";
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function chave(r) { return r.pendente ? "p:" + r.conta : "m:" + r.id; }
+
+  // ── Filtro por chip (roda dentro do DataTables) ────────────
+  function passa(r, f) {
+    if (f === "todas") return true;
+    if (f === "pendentes") return r.pendente;
+    if (f === "sem_grupinho") return !r.pendente && !r.grupo_pequeno_id;
+    if (f.indexOf("tipo-") === 0) return !r.pendente && String(r.tipo) === f.slice(5);
+    return true;
+  }
+  $.fn.dataTable.ext.search.push(function (settings, data, idx, rowData) {
+    if (settings.nTable.id !== "pcTable") return true;
+    return passa(rowData, filtroAtivo);
+  });
+
+  // ── DataTables ─────────────────────────────────────────────
+  const rotulos = ["Conta", "Descrição", "Tipo", "Grupo", "Uso"];
+  const colunas = [
+    { data: null, className: "pc-c-conta", render: function (d, t, r) {
+        if (t !== "display") return r.conta;
+        return '<span class="pc-conta">' + esc(r.conta) + "</span>";
+    }},
+    { data: null, className: "pc-c-desc", render: function (d, t, r) {
+        if (t === "filter") return r.conta + " " + r.descricao + " " + r.grupao + " " + r.grupinho;
+        if (t !== "display") return r.descricao;
+        let h = r.descricao ? esc(r.descricao) : '<span class="text-muted">—</span>';
+        if (r.pendente) {
+          h += '<span class="pc-sub">' + r.qtd_fundos + " fundo(s) · última referência " + esc(r.ultima) + "</span>";
+        }
+        return h;
+    }},
+    { data: null, className: "pc-c-tipo", render: function (d, t, r) {
+        if (t !== "display") return r.pendente ? "pendente" : (r.tipo || 0);
+        if (r.pendente) return '<span class="pc-badge pc-badge--pend">Pendente</span>';
+        if (!r.grupo_pequeno_id) return '<span class="pc-badge pc-badge--none">Sem subgrupo</span>';
+        return '<span class="pc-badge pc-badge--' + r.tipo + '">' + esc(r.tipo_label) + "</span>";
+    }},
+    { data: null, className: "pc-c-grupo", render: function (d, t, r) {
+        if (t !== "display") return r.grupao + " " + r.grupinho;
+        if (!r.grupo_pequeno_id) return '<span class="text-muted">—</span>';
+        return '<span class="pc-path">' + esc(r.grupao) + " › <b>" + esc(r.grupinho) + "</b></span>";
+    }},
+    { data: null, className: "pc-c-uso text-end", render: function (d, t, r) {
+        const n = r.pendente ? r.qtd_linhas : r.uso;
+        if (t !== "display") return n;
+        return '<span class="pc-uso" title="' + (r.pendente ? "Linhas aguardando mapeamento" : "Lançamentos em balancetes") + '">' + n + "</span>";
+    }}
+  ];
+  if (CAN_MANAGE) {
+    colunas.push({ data: null, className: "pc-c-acoes text-end", orderable: false, searchable: false, render: function (d, t, r) {
+      if (t !== "display") return "";
+      const k = esc(chave(r));
+      if (r.pendente) {
+        return '<div class="pc-actions">' +
+          '<button type="button" class="pc-icon-btn pc-icon-btn--primary" data-acao="mapear" data-k="' + k + '"><i class="bi bi-plus-lg"></i> Mapear</button>' +
+          '<button type="button" class="pc-icon-btn pc-icon-btn--danger" data-acao="descartar" data-k="' + k + '" title="Descartar pendência" aria-label="Descartar pendência"><i class="bi bi-x-lg"></i></button>' +
+          "</div>";
+      }
+      const emUso = r.uso > 0;
+      return '<div class="pc-actions">' +
+        '<button type="button" class="pc-icon-btn" data-acao="editar" data-k="' + k + '" title="Editar" aria-label="Editar"><i class="bi bi-pencil"></i></button>' +
+        '<button type="button" class="pc-icon-btn pc-icon-btn--danger" data-acao="excluir" data-k="' + k + '"' +
+          (emUso ? ' disabled title="Conta em uso em balancetes — altere o subgrupo em vez de excluir"' : ' title="Excluir"') +
+          ' aria-label="Excluir"><i class="bi bi-trash3"></i></button>' +
+        "</div>";
+    }});
+  }
+  // coluna oculta de ordenação: pendentes primeiro
+  colunas.push({ data: null, visible: false, searchable: false, render: function (d, t, r) { return r.pendente ? 0 : 1; } });
+  const idxOrd = colunas.length - 1;
+
+  const dt = $("#pcTable").DataTable({
+    data: rows,
+    columns: colunas,
+    dom: 'rt<"pc-foot"ip>',
+    pageLength: 25,
+    order: [[idxOrd, "asc"], [0, "asc"]],
+    autoWidth: false,
+    language: {
+      emptyTable: "Nenhuma conta cadastrada ainda.",
+      zeroRecords: "Nenhuma conta encontrada com esses filtros.",
+      info: "_START_–_END_ de _TOTAL_ contas",
+      infoEmpty: "0 contas",
+      infoFiltered: "(de _MAX_)",
+      paginate: { previous: "‹", next: "›" }
+    },
+    createdRow: function (tr, r) {
+      if (r.pendente) tr.classList.add("pc-row--pendente");
+      Array.prototype.forEach.call(tr.children, function (td, i) {
+        if (rotulos[i]) td.setAttribute("data-label", rotulos[i]);
+      });
+    }
+  });
+
+  function redesenhar() {
+    dt.clear().rows.add(rows).draw(false);
+    atualizarResumo();
+  }
+
+  // ── Resumo: KPIs, contagem dos chips, banner ───────────────
+  function contar(f) { return rows.filter(function (r) { return passa(r, f); }).length; }
+  function atualizarResumo() {
+    const pend = contar("pendentes");
+    document.getElementById("kpiMapeadas").textContent = rows.filter(function (r) { return !r.pendente; }).length;
+    document.getElementById("kpiPendentes").textContent = pend;
+    document.getElementById("kpiSemGrupo").textContent = contar("sem_grupinho");
+    document.getElementById("kpiUsadas").textContent = rows.filter(function (r) { return !r.pendente && r.uso > 0; }).length;
+    FILTROS.forEach(function (f) {
+      const el = document.querySelector('[data-n="' + f + '"]');
+      if (el) el.textContent = contar(f);
+    });
+    const banner = document.getElementById("pcBanner");
+    banner.hidden = pend === 0;
+    document.getElementById("pcBannerTexto").innerHTML =
+      "<strong>" + pend + "</strong> conta(s) apareceram nos balancetes importados e <strong>não estão mapeadas</strong> — " +
+      "enquanto isso, esses valores ficam de fora das demonstrações.";
+    if (!CAN_MANAGE) banner.querySelector("button").hidden = true;
+    // badge da navbar
+    document.querySelectorAll('.site-nav__link[href$="plano-de-contas/"] .badge').forEach(function (b) {
+      b.textContent = pend; b.hidden = pend === 0;
+    });
+  }
+
+  // ── Chips / KPIs / busca ───────────────────────────────────
+  function aplicarFiltro(f) {
+    filtroAtivo = f;
+    document.querySelectorAll(".pc-chip").forEach(function (c) {
+      const ativo = c.dataset.filtro === f;
+      c.classList.toggle("is-active", ativo);
+      c.setAttribute("aria-pressed", ativo);
+    });
+    dt.draw();
+  }
+  document.querySelectorAll("[data-filtro]").forEach(function (el) {
+    el.addEventListener("click", function (e) {
+      e.preventDefault();
+      aplicarFiltro(el.dataset.filtro);
+      document.getElementById("pcTable").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+  document.getElementById("pcBusca").addEventListener("input", function () { dt.search(this.value).draw(); });
+
+  // ── Toasts ─────────────────────────────────────────────────
+  function toast(msg, tipo) {
+    const cor = { success: "text-bg-success", danger: "text-bg-danger", warning: "text-bg-warning" }[tipo || "success"];
+    const el = document.createElement("div");
+    el.className = "toast align-items-center border-0 " + cor;
+    el.setAttribute("role", "status");
+    el.innerHTML = '<div class="d-flex"><div class="toast-body">' + esc(msg) +
+      '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Fechar"></button></div>';
+    document.getElementById("pcToasts").appendChild(el);
+    const t = new bootstrap.Toast(el, { delay: tipo === "danger" ? 7000 : 4500 });
+    el.addEventListener("hidden.bs.toast", function () { el.remove(); });
+    t.show();
+  }
+
+  async function enviar(url, dados) {
+    const fd = new FormData();
+    Object.keys(dados || {}).forEach(function (k) { fd.append(k, dados[k]); });
+    const resp = await fetch(url, {
+      method: "POST", body: fd,
+      headers: { "X-CSRFToken": CSRF, "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin"
+    });
+    let json = {};
+    try { json = await resp.json(); } catch (e) { json = { ok: false, message: "Resposta inesperada do servidor (" + resp.status + ")." }; }
+    return { status: resp.status, data: json };
+  }
+
+  if (CAN_MANAGE) {
+    const painelEl = document.getElementById("pcPanel");
+    const painel = new bootstrap.Offcanvas(painelEl);
+    const modalEl = document.getElementById("pcModal");
+    const modal = new bootstrap.Modal(modalEl);
+    const form = document.getElementById("pcForm");
+    const campos = { conta: document.getElementById("pcConta"), descricao: document.getElementById("pcDescricao"), grupo_pequeno: document.getElementById("pcGrupo") };
+    let editando = null;      // linha mapeada em edição
+    let confirmacao = null;   // { tipo, row }
+
+    function limparErros() {
+      Object.keys(campos).forEach(function (k) {
+        campos[k].classList.remove("is-invalid");
+        const fb = form.querySelector('[data-erro="' + k + '"]');
+        if (fb) fb.textContent = "";
+      });
+      document.getElementById("pcErroGeral").classList.add("d-none");
+    }
+    function mostrarErros(errs) {
+      limparErros();
+      Object.keys(errs || {}).forEach(function (k) {
+        const fb = form.querySelector('[data-erro="' + k + '"]');
+        if (campos[k] && fb) { campos[k].classList.add("is-invalid"); fb.textContent = errs[k].join(" "); }
+        else { const g = document.getElementById("pcErroGeral"); g.textContent = errs[k].join(" "); g.classList.remove("d-none"); }
+      });
+    }
+    function setCarregando(btn, on) {
+      btn.disabled = on;
+      btn.querySelector(".spinner-border").classList.toggle("d-none", !on);
+    }
+
+    // abrir painel: criar | editar | mapear pendente
+    function abrir(modo, r) {
+      limparErros();
+      editando = modo === "editar" ? r : null;
+      document.getElementById("pcPanelTitulo").textContent =
+        modo === "editar" ? "Editar conta" : (modo === "mapear" ? "Mapear conta pendente" : "Nova conta");
+      campos.conta.value = r ? r.conta : "";
+      campos.descricao.value = r ? (r.descricao || "") : "";
+      campos.grupo_pequeno.value = r && r.grupo_pequeno_id ? r.grupo_pequeno_id : "";
+      const emUso = modo === "editar" && r.uso > 0;
+      campos.conta.readOnly = emUso;
+      document.getElementById("pcAvisoUso").style.display = emUso ? "block" : "none";
+      painel.show();
+    }
+    painelEl.addEventListener("shown.bs.offcanvas", function () {
+      (campos.conta.readOnly ? campos.grupo_pequeno : (campos.conta.value ? campos.grupo_pequeno : campos.conta)).focus();
+    });
+    document.getElementById("btnNova").addEventListener("click", function () { abrir("criar"); });
+    document.getElementById("btnNovaFab").addEventListener("click", function () { abrir("criar"); });
+
+    // ações da tabela (delegação)
+    document.getElementById("pcTable").addEventListener("click", function (e) {
+      const btn = e.target.closest("button[data-acao]");
+      if (!btn || btn.disabled) return;
+      const r = rows.find(function (x) { return chave(x) === btn.dataset.k; });
+      if (!r) return;
+      const acao = btn.dataset.acao;
+      if (acao === "editar") abrir("editar", r);
+      else if (acao === "mapear") abrir("mapear", r);
+      else if (acao === "excluir" || acao === "descartar") {
+        confirmacao = { tipo: acao, row: r };
+        document.getElementById("pcModalTitulo").textContent = acao === "excluir" ? "Excluir conta" : "Descartar pendência";
+        document.getElementById("pcModalTexto").innerHTML = acao === "excluir"
+          ? "Excluir a conta <strong>" + esc(r.conta) + "</strong> do plano de contas? Esta ação não pode ser desfeita."
+          : "Descartar as " + r.qtd_linhas + " linha(s) pendentes da conta <strong>" + esc(r.conta) +
+            "</strong>? Elas voltam a aparecer se o balancete for importado de novo.";
+        document.getElementById("pcModalOk").textContent = acao === "excluir" ? "Excluir" : "Descartar";
+        modal.show();
+      }
+    });
+
+    // salvar (criar/editar)
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const btn = document.getElementById("pcSalvar");
+      setCarregando(btn, true);
+      limparErros();
+      try {
+        const dados = { conta: campos.conta.value.trim(), descricao: campos.descricao.value, grupo_pequeno: campos.grupo_pequeno.value };
+        const url = editando ? URL_EDITAR.replace("/0/", "/" + editando.id + "/") : URL_CRIAR;
+        const { status, data } = await enviar(url, dados);
+        if (!data.ok) {
+          if (data.errors) mostrarErros(data.errors);
+          else toast(data.message || "Não foi possível salvar.", "danger");
+          return;
+        }
+        // remove a pendente correspondente (se veio do "Mapear") e a versão antiga (se edição)
+        rows = rows.filter(function (x) {
+          return !(x.pendente && x.conta === data.item.conta) && !(editando && x.id === editando.id);
+        });
+        rows.push(data.item);
+        redesenhar();
+        painel.hide();
+        if (editando) toast(data.aviso || "Conta atualizada.", data.aviso ? "warning" : "success");
+        else if (data.aplicados && data.aplicados.linhas)
+          toast("Conta mapeada — " + data.aplicados.linhas + " lançamento(s) aplicado(s) em " + data.aplicados.fundos + " fundo(s).");
+        else toast("Conta criada.");
+      } catch (err) {
+        toast("Falha de rede. Tente novamente.", "danger");
+      } finally {
+        setCarregando(btn, false);
+      }
+    });
+
+    // confirmar exclusão / descarte
+    document.getElementById("pcModalOk").addEventListener("click", async function () {
+      if (!confirmacao) return;
+      const btn = this, r = confirmacao.row;
+      setCarregando(btn, true);
+      try {
+        const res = confirmacao.tipo === "excluir"
+          ? await enviar(URL_EXCLUIR.replace("/0/", "/" + r.id + "/"), {})
+          : await enviar(URL_DESCARTAR, { conta: r.conta });
+        if (!res.data.ok) { toast(res.data.message || "Operação não permitida.", "danger"); modal.hide(); return; }
+        rows = rows.filter(function (x) { return chave(x) !== chave(r); });
+        redesenhar();
+        modal.hide();
+        toast(confirmacao.tipo === "excluir" ? "Conta excluída." : "Pendência descartada.");
+      } catch (err) {
+        toast("Falha de rede. Tente novamente.", "danger");
+      } finally {
+        setCarregando(btn, false);
+        confirmacao = null;
+      }
+    });
+  }
+
+  atualizarResumo();
+  aplicarFiltro(filtroAtivo);
+});
+</script>
+{% endblock %}

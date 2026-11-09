@@ -5,6 +5,7 @@ from .models import (
     GrupoPequeno,
     MapeamentoContas,
     BalanceteItem,
+    BalanceteLinhaPendente,
     MecItem,
     ChecklistItemPadrao,
     DocumentoDF,
@@ -112,6 +113,16 @@ class BalanceteItemAdmin(admin.ModelAdmin):
     @admin.display(ordering="conta_corrente__conta", description="Conta")
     def get_conta(self, obj):
         return obj.conta_corrente.conta if obj.conta_corrente else "—"
+
+
+@admin.register(BalanceteLinhaPendente)
+class BalanceteLinhaPendenteAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+    list_display = ("conta", "descricao", "empresa", "fundo", "data_referencia", "saldo_final")
+    list_filter = ("empresa", "data_referencia")
+    search_fields = ("conta", "descricao", "fundo__nome", "empresa__nome")
+    ordering = ("empresa", "conta", "-data_referencia")
+    autocomplete_fields = ("fundo",)
+    readonly_fields = ("criado_em", "atualizado_em")
 
 
 @admin.register(MecItem)

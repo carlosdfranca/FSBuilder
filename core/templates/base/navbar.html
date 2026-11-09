@@ -83,6 +83,18 @@
             <i class="bi bi-briefcase"></i> Fundos
           </a>
         </li>
+        <li>
+          <a href="{% url 'plano_de_contas' %}"
+             class="site-nav__link{% if request.resolver_match.url_name == 'plano_de_contas' %} is-active{% endif %}"
+             {% if request.resolver_match.url_name == 'plano_de_contas' %}aria-current="page"{% endif %}>
+            <i class="bi bi-diagram-3"></i> Plano de Contas
+            {% if contas_pendentes_count > 0 %}
+            <span class="badge bg-warning text-dark ms-1" style="font-size: 0.7rem; vertical-align: super;" title="Contas do balancete sem mapeamento">
+              {{ contas_pendentes_count }}
+            </span>
+            {% endif %}
+          </a>
+        </li>
 {% if user_can_view_company_users %}
         <li>
           <a href="{% url 'gerenciar_usuarios' %}"
