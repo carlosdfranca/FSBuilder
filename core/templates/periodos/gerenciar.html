@@ -143,6 +143,11 @@
                     {% endif %}
                   </td>
                   <td class="text-center" style="white-space:nowrap;">
+                    <a href="{% url 'saldos_periodo' info.periodo.id %}"
+                       class="btn btn-sm btn-outline-secondary"
+                       title="Saldos do balancete">
+                      <i class="bi bi-table"></i>
+                    </a>
                     {% if info.tem_dados %}
                       <a href="{% url 'demonstracao_financeira' %}"
                          class="btn btn-sm btn-outline-primary"

@@ -1,0 +1,254 @@
+{# Modal de importação de balancete, compartilhado por demonstracao_financeira e periodos/saldos.
+   API JS: abrirModalImportarBase(periodoId, periodoNome, fundoId, periodosClone, opts)
+     periodosClone: [{id, nome, data_referencia}] ; opts: {next, manuais}
+   Depois do POST chama window.aoImportarBalancete(ok, data) (se definida) ou recarrega a página. #}
+<style>
+  /* Saldo anterior — list-group dark/light mode */
+  #modal-importar .list-group-item {
+    background-color: var(--surface-3);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+  }
+  #modal-importar .list-group-item-action:hover,
+  #modal-importar .list-group-item-action:focus {
+    background-color: rgba(255, 255, 255, 0.045);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+  }
+  html[data-theme="light"] #modal-importar .list-group-item-action:hover,
+  html[data-theme="light"] #modal-importar .list-group-item-action:focus {
+    background-color: rgba(0, 0, 0, 0.04);
+  }
+  #modal-importar .list-group-item small {
+    color: var(--text-secondary);
+  }
+  /* Radio buttons dentro do modal */
+  #modal-importar .form-check-input {
+    background-color: var(--surface-2);
+    border-color: rgba(255, 255, 255, 0.22);
+  }
+  html[data-theme="light"] #modal-importar .form-check-input {
+    background-color: #fff;
+    border-color: rgba(0, 0, 0, 0.28);
+  }
+  #modal-importar .form-check-input:checked {
+    background-color: var(--accent-primary);
+    border-color: var(--accent-primary);
+  }
+  #modal-importar .substituir-aviso {
+    border: 1px solid var(--bs-warning, #f59e0b);
+    border-radius: var(--border-radius-sm);
+    padding: 0.75rem 1rem;
+    color: var(--text-primary);
+  }
+</style>
+
+<div class="modal fade" id="modal-importar" tabindex="-1" aria-labelledby="modal-importar-label" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
+    <div class="modal-content">
+      <form method="POST" action="{% url 'importar_balancete' %}" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="hidden" name="fundo_id" id="modal-fundo-id">
+        <input type="hidden" name="periodo_df_id" id="modal-periodo-id">
+        <input type="hidden" name="next" id="modal-next">
+
+        <div class="modal-header">
+          <h5 class="modal-title" id="modal-importar-label">
+            <i class="bi bi-upload me-2"></i>Importar Balancete
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body">
+
+          <!-- Período selecionado (read-only) -->
+          <div class="mb-4">
+            <div class="small fw-semibold text-muted mb-1">Período</div>
+            <div class="modal-periodo-display fw-semibold" id="modal-periodo-nome"></div>
+          </div>
+
+          <!-- Saldo Final -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold">
+              Saldo Final <span class="text-danger">*</span>
+            </label>
+            <p class="text-muted small mb-2">Planilha com os dados do balancete na data de fechamento do período.</p>
+            <input type="file" class="form-control" name="arquivo_balancete" accept=".xlsx,.xls,.csv" required>
+          </div>
+
+          <!-- Modo de importação -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Se já existirem saldos nesta data</label>
+            <div class="list-group">
+              <label class="list-group-item list-group-item-action d-flex align-items-start gap-3 cursor-pointer">
+                <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="modo_importacao"
+                       value="mesclar" id="modo-mesclar" checked onchange="toggleModoImportacao()">
+                <div>
+                  <div class="fw-semibold">Mesclar <span class="text-muted fw-normal">(padrão)</span></div>
+                  <small class="text-muted">Atualiza as contas que estão no arquivo e mantém as demais, inclusive lançamentos manuais.</small>
+                </div>
+              </label>
+              <label class="list-group-item list-group-item-action d-flex align-items-start gap-3 cursor-pointer">
+                <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="modo_importacao"
+                       value="substituir" id="modo-substituir" onchange="toggleModoImportacao()">
+                <div class="w-100">
+                  <div class="fw-semibold">Substituir tudo</div>
+                  <small class="text-muted">Apaga os saldos desta data e grava somente o que está no arquivo.</small>
+                  <div id="substituir-aviso" class="substituir-aviso mt-2" style="display:none;">
+                    <div class="small mb-2">
+                      <i class="bi bi-exclamation-triangle me-1"></i>
+                      <span id="substituir-aviso-texto"></span>
+                    </div>
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="substituir-confirma">
+                      <label class="form-check-label small" for="substituir-confirma">
+                        Entendo que os saldos existentes serão apagados
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Saldo Anterior -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Saldo Anterior</label>
+            <p class="text-muted small mb-3">Como deseja definir os dados de comparação?</p>
+
+            <div class="list-group">
+              <label class="list-group-item list-group-item-action d-flex align-items-start gap-3 cursor-pointer">
+                <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="saldo_anterior_mode"
+                       value="zerado" id="mode-zerado" checked onchange="toggleModeOptions()">
+                <div>
+                  <div class="fw-semibold">Zerado <span class="text-muted fw-normal">(início do fundo)</span></div>
+                  <small class="text-muted">Todos os valores do período anterior serão zero. Use para o primeiro período do fundo.</small>
+                </div>
+              </label>
+
+              <label class="list-group-item list-group-item-action d-flex align-items-start gap-3 cursor-pointer">
+                <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="saldo_anterior_mode"
+                       value="clone" id="mode-clone" onchange="toggleModeOptions()">
+                <div class="w-100">
+                  <div class="fw-semibold">Clonar outro período</div>
+                  <small class="text-muted">Usa os dados de um período já importado como saldo anterior.</small>
+                  <div id="clone-options" style="display:none;" class="mt-2">
+                    <select name="periodo_anterior_id" class="form-select form-select-sm" id="select-periodo-anterior">
+                      <option value="" disabled selected>Selecione o período de origem...</option>
+                    </select>
+                  </div>
+                </div>
+              </label>
+
+              <label class="list-group-item list-group-item-action d-flex align-items-start gap-3 cursor-pointer">
+                <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="saldo_anterior_mode"
+                       value="spreadsheet" id="mode-spreadsheet" onchange="toggleModeOptions()">
+                <div class="w-100">
+                  <div class="fw-semibold">Importar de planilha</div>
+                  <small class="text-muted">Upload de uma planilha separada com os dados do período anterior.</small>
+                  <div id="spreadsheet-options" style="display:none;" class="mt-2">
+                    <input type="file" class="form-control form-control-sm" name="arquivo_saldo_anterior" accept=".xlsx,.xls,.csv">
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-upload me-1"></i>Importar
+          </button>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var modalEl = document.getElementById("modal-importar");
+    var form = modalEl.querySelector("form");
+    var manuaisAtuais = 0;
+
+    window.toggleModeOptions = function () {
+      document.getElementById("clone-options").style.display =
+        document.getElementById("mode-clone").checked ? "block" : "none";
+      document.getElementById("spreadsheet-options").style.display =
+        document.getElementById("mode-spreadsheet").checked ? "block" : "none";
+
+      var fileInput = form.querySelector("input[name='arquivo_saldo_anterior']");
+      if (fileInput) fileInput.required = document.getElementById("mode-spreadsheet").checked;
+    };
+
+    window.toggleModoImportacao = function () {
+      var substituir = document.getElementById("modo-substituir").checked;
+      document.getElementById("substituir-aviso").style.display = substituir ? "block" : "none";
+      var confirma = document.getElementById("substituir-confirma");
+      confirma.required = substituir;
+      if (!substituir) confirma.checked = false;
+      document.getElementById("substituir-aviso-texto").textContent = manuaisAtuais > 0
+        ? "Esta data tem " + manuaisAtuais + " lançamento(s) manual(is) que também serão apagados."
+        : "Todos os saldos já gravados nesta data (e na data anterior, se importar o saldo anterior por planilha) serão apagados antes da importação.";
+    };
+
+    window.abrirModalImportarBase = function (periodoId, periodoNome, fundoId, periodosClone, opts) {
+      opts = opts || {};
+      manuaisAtuais = opts.manuais || 0;
+      document.getElementById("modal-periodo-id").value = periodoId;
+      document.getElementById("modal-fundo-id").value = fundoId;
+      document.getElementById("modal-next").value = opts.next || "";
+      document.getElementById("modal-periodo-nome").textContent = periodoNome;
+
+      document.getElementById("mode-zerado").checked = true;
+      document.getElementById("modo-mesclar").checked = true;
+      toggleModeOptions();
+      toggleModoImportacao();
+      form.querySelector("input[name='arquivo_balancete']").value = "";
+
+      var select = document.getElementById("select-periodo-anterior");
+      select.innerHTML = '<option value="" disabled selected>Selecione o período de origem...</option>';
+      (periodosClone || []).forEach(function (p) {
+        var opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.nome + (p.data_referencia
+          ? " (" + new Date(p.data_referencia + "T00:00:00").toLocaleDateString("pt-BR") + ")"
+          : "");
+        select.appendChild(opt);
+      });
+
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    };
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var btn = form.querySelector('button[type="submit"]');
+      var originalText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Importando…';
+
+      fetch(form.action, {
+        method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        body: new FormData(form),
+      })
+        .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+        .then(function (res) {
+          bootstrap.Modal.getInstance(modalEl).hide();
+          if (typeof window.aoImportarBalancete === "function") {
+            window.aoImportarBalancete(res.ok, res.data);
+          } else {
+            window.location.reload();
+          }
+        })
+        .catch(function () {
+          if (typeof window.aoImportarBalancete === "function") {
+            window.aoImportarBalancete(false, { message: "Erro inesperado ao importar. Tente novamente." });
+          }
+        })
+        .finally(function () { btn.disabled = false; btn.innerHTML = originalText; });
+    });
+  })();
+</script>

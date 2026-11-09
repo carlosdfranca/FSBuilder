@@ -8,6 +8,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, ProtectedError
 from django.http import FileResponse, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from collections import defaultdict
@@ -18,7 +19,7 @@ import logging
 from df.models import (
     Fundo, BalanceteItem, HistoricoEmissaoDF, PeriodoDF, Gestora,
     ChecklistItemPeriodo, DocumentoDF, LogAcessoDocumento,
-    GrupoGrande, GrupoPequeno, MapeamentoContas,
+    GrupoGrande, GrupoPequeno, MapeamentoContas, BalanceteLinhaPendente,
 )
 from df.services.mapeamento_service import (
     contas_pendentes_agrupadas,
@@ -51,7 +52,10 @@ from usuarios.permissions import (
     platform_admin_required,
 )
 
-from .forms import FundoForm, GestoraForm, EditarPerfilForm, EmpresaDocumentosConfigForm, MapeamentoContasForm
+from .forms import (
+    FundoForm, GestoraForm, EditarPerfilForm, EmpresaDocumentosConfigForm,
+    MapeamentoContasForm, SaldoBalanceteForm,
+)
 from df.forms import PeriodoDFManualForm
 
 logger = logging.getLogger(__name__)
@@ -382,6 +386,14 @@ def controle_emissoes(request):
 # ===============================
 # IMPORTAR BALANCETE (orientado a período)
 # ===============================
+def _destino_seguro(request, padrao="demonstracao_financeira"):
+    from django.utils.http import url_has_allowed_host_and_scheme
+    nxt = request.POST.get("next")
+    if nxt and url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}):
+        return nxt
+    return reverse(padrao)
+
+
 @login_required
 @company_can_manage_fundos
 def importar_balancete_view(request):
@@ -389,17 +401,19 @@ def importar_balancete_view(request):
         return redirect("demonstracao_financeira")
 
     is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
+    destino = _destino_seguro(request)
 
     def _err(msg):
         if is_ajax:
             return JsonResponse({"ok": False, "message": msg}, status=400)
         messages.error(request, msg)
-        return redirect("demonstracao_financeira")
+        return redirect(destino)
 
     fundo_id = request.POST.get("fundo_id")
     periodo_df_id = request.POST.get("periodo_df_id")
     saldo_anterior_mode = request.POST.get("saldo_anterior_mode", "zerado")
     periodo_anterior_id = request.POST.get("periodo_anterior_id")
+    substituir = request.POST.get("modo_importacao") == "substituir"
     arquivo_balancete = request.FILES.get("arquivo_balancete")
     arquivo_saldo_anterior = request.FILES.get("arquivo_saldo_anterior")
 
@@ -415,37 +429,29 @@ def importar_balancete_view(request):
         calcular_data_referencia_periodo,
         calcular_data_referencia_periodo_anterior,
     )
+    from df.services.periodo_service import atualizar_status_automatico
     data_referencia = calcular_data_referencia_periodo(periodo)
 
     if not arquivo_balancete:
         return _err("Selecione o arquivo do balancete (Saldo Final).")
 
+    # Tudo é validado e lido antes de gravar, para não deixar a importação pela metade.
+    data_anterior = None
+    periodo_origem = None
+    rows_ant = None
     try:
         rows = parse_excel(arquivo_balancete)
-        report = import_balancete(
-            fundo_id=fundo.id,
-            data_referencia=data_referencia,
-            rows=rows,
-            periodo_df_id=periodo.id,
-        )
     except BalanceteSchemaError as e:
         return _err(f"Planilha inválida: faltam colunas {', '.join(e.missing_columns)}")
     except Exception as e:
         return _err(f"Erro ao importar balancete: {e}")
 
-    periodo.data_referencia = data_referencia
-
-    if saldo_anterior_mode == "zerado":
-        periodo.data_anterior = None
-        periodo.save()
-    elif saldo_anterior_mode == "clone":
+    if saldo_anterior_mode == "clone":
         if not periodo_anterior_id:
             return _err("Selecione o período de origem para o clone.")
         periodo_origem = get_object_or_404(PeriodoDF, id=periodo_anterior_id, fundo=fundo)
         if not periodo_origem.data_referencia:
             return _err(f"O período '{periodo_origem.nome_exibicao}' ainda não possui balancete importado.")
-        periodo.data_anterior = periodo_origem.data_referencia
-        periodo.save()
     elif saldo_anterior_mode == "spreadsheet":
         if not arquivo_saldo_anterior:
             return _err("Selecione o arquivo do saldo anterior.")
@@ -454,17 +460,41 @@ def importar_balancete_view(request):
             return _err("Não foi possível determinar a data do saldo anterior para este tipo de período.")
         try:
             rows_ant = parse_excel(arquivo_saldo_anterior)
-            import_balancete(fundo_id=fundo.id, data_referencia=data_anterior, rows=rows_ant)
         except BalanceteSchemaError as e:
             return _err(f"Planilha do saldo anterior inválida: faltam colunas {', '.join(e.missing_columns)}")
         except Exception as e:
             return _err(f"Erro ao importar saldo anterior: {e}")
-        periodo.data_anterior = data_anterior
-        periodo.save()
-    else:
-        periodo.save()
 
-    from django.urls import reverse
+    try:
+        with transaction.atomic():
+            report = import_balancete(
+                fundo_id=fundo.id,
+                data_referencia=data_referencia,
+                rows=rows,
+                periodo_df_id=periodo.id,
+                usuario=request.user,
+                substituir=substituir,
+            )
+            periodo.data_referencia = data_referencia
+
+            if saldo_anterior_mode == "zerado":
+                periodo.data_anterior = None
+            elif saldo_anterior_mode == "clone":
+                periodo.data_anterior = periodo_origem.data_referencia
+            elif saldo_anterior_mode == "spreadsheet":
+                import_balancete(
+                    fundo_id=fundo.id,
+                    data_referencia=data_anterior,
+                    rows=rows_ant,
+                    usuario=request.user,
+                    substituir=substituir,
+                )
+                periodo.data_anterior = data_anterior
+            periodo.save()
+            atualizar_status_automatico(periodo)
+    except Exception as e:
+        return _err(f"Erro ao importar balancete: {e}")
+
     plano_url = reverse("plano_de_contas") + "?filtro=pendentes"
     aviso_pendentes = ""
     if report.pendentes:
@@ -489,12 +519,9 @@ def importar_balancete_view(request):
         else:
             messages.success(request, msg)
 
-    return redirect("demonstracao_financeira")
+    return redirect(destino)
 
 
-# ===============================
-# IMPORTAR MEC (sem alterações)
-# ===============================
 @login_required
 @company_can_manage_fundos
 def importar_mec_view(request):
@@ -2006,3 +2033,140 @@ def painel_documentos_config(request, empresa_id):
     else:
         messages.error(request, 'Erro ao atualizar configuração. Verifique os campos informados.')
     return redirect('painel_documentos_empresa', empresa_id=empresa.id)
+
+
+# ===========================
+# Saldos da DF (balancete por período: importação + lançamento manual)
+# ===========================
+def _periodo_escopado(request, periodo_id):
+    fundos = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
+    return get_object_or_404(
+        PeriodoDF.objects.select_related("fundo", "fundo__empresa"),
+        id=periodo_id, fundo__in=fundos,
+    )
+
+
+def _serializar_celula_saldo(item):
+    if item is None:
+        return None
+    return {
+        "id": item.id,
+        "valor": str(item.saldo_final) if item.saldo_final is not None else None,
+        "origem": item.origem,
+        "por": item.atualizado_por.get_username() if item.atualizado_por else "",
+        "em": timezone.localtime(item.atualizado_em).strftime("%d/%m/%Y %H:%M") if item.atualizado_em else "",
+    }
+
+
+def _serializar_saldo(linha):
+    m = linha["mapeamento"]
+    gp = m.grupo_pequeno
+    return {
+        "mapeamento_id": m.id,
+        "conta": linha["conta"],
+        "descricao": linha["descricao"],
+        "grupo": linha["grupo"],
+        "tipo": gp.grupao.tipo if gp else None,
+        "atual": _serializar_celula_saldo(linha["atual"]),
+        "anterior": _serializar_celula_saldo(linha["anterior"]),
+    }
+
+
+def _kpis_saldos(totais):
+    return {k: str(v) for k, v in totais.items()}
+
+
+@login_required
+@company_can_view_data
+def saldos_periodo(request, periodo_id):
+    from df.services.saldos_service import datas_do_periodo, listar_saldos
+
+    periodo = _periodo_escopado(request, periodo_id)
+    fundo = periodo.fundo
+    linhas, totais = listar_saldos(periodo)
+    data_atual, data_anterior = datas_do_periodo(periodo)
+
+    contas = (
+        MapeamentoContas.objects.filter(empresa=fundo.empresa, grupo_pequeno__isnull=False)
+        .select_related("grupo_pequeno__grupao")
+        .order_by("conta")
+    )
+    pendentes = BalanceteLinhaPendente.objects.filter(
+        fundo=fundo, data_referencia__in=[d for d in (data_atual, data_anterior) if d]
+    ).count()
+
+    periodos_clone = (
+        PeriodoDF.objects.filter(fundo=fundo, data_referencia__isnull=False)
+        .exclude(id=periodo.id).order_by("-ano", "tipo_periodo")
+    )
+
+    return render(request, "periodos/saldos.html", {
+        "periodo": periodo,
+        "fundo": fundo,
+        "data_atual": data_atual,
+        "data_anterior": data_anterior,
+        "linhas_json": [_serializar_saldo(l) for l in linhas],
+        "kpis_json": _kpis_saldos(totais),
+        "contas_json": [
+            {"id": c.id, "conta": c.conta, "descricao": c.descricao or "", "grupo": c.grupo_pequeno.nome}
+            for c in contas
+        ],
+        "pendentes": pendentes,
+        "periodos_clone": periodos_clone,
+        "can_manage": _can_manage_fundos(request),
+    })
+
+
+def _resposta_saldos(periodo, mapeamento_id):
+    from df.services.saldos_service import listar_saldos
+
+    linhas, totais = listar_saldos(periodo)
+    linha = next((l for l in linhas if l["mapeamento"].id == mapeamento_id), None)
+    return JsonResponse({
+        "ok": True,
+        "mapeamento_id": mapeamento_id,
+        "linha": _serializar_saldo(linha) if linha else None,
+        "kpis": _kpis_saldos(totais),
+    })
+
+
+@login_required
+@company_can_manage_fundos
+@require_POST
+def salvar_saldo_view(request, periodo_id):
+    from df.services.saldos_service import salvar_saldo
+
+    periodo = _periodo_escopado(request, periodo_id)
+    form = SaldoBalanceteForm(request.POST, empresa=periodo.fundo.empresa)
+    if not form.is_valid():
+        return JsonResponse({"ok": False, "errors": _erros_do_form(form)}, status=400)
+    mapeamento = form.cleaned_data["mapeamento"]
+    try:
+        salvar_saldo(
+            periodo=periodo,
+            mapeamento=mapeamento,
+            coluna=form.cleaned_data["coluna"],
+            valor=form.cleaned_data["saldo_final"],
+            usuario=request.user,
+        )
+    except ValidationError as e:
+        return JsonResponse({"ok": False, "errors": {"__all__": e.messages}}, status=400)
+    return _resposta_saldos(periodo, mapeamento.id)
+
+
+@login_required
+@company_can_manage_fundos
+@require_POST
+def excluir_saldo_view(request, periodo_id, item_id):
+    from df.services.saldos_service import excluir_saldo
+
+    periodo = _periodo_escopado(request, periodo_id)
+    item = BalanceteItem.objects.filter(id=item_id, fundo=periodo.fundo).first()
+    if item is None:
+        return JsonResponse({"ok": False, "errors": {"__all__": ["Lançamento não encontrado."]}}, status=404)
+    mapeamento_id = item.conta_corrente_id
+    try:
+        excluir_saldo(periodo=periodo, item_id=item.id)
+    except BalanceteItem.DoesNotExist:
+        return JsonResponse({"ok": False, "errors": {"__all__": ["Lançamento não pertence a esta DF."]}}, status=404)
+    return _resposta_saldos(periodo, mapeamento_id)

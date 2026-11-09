@@ -61,7 +61,15 @@ def calcular_data_referencia_periodo_anterior(periodo_df):
 # BALANCETE (com data_referencia + só saldo_atual)
 # ============================================================
 @transaction.atomic
-def import_balancete(*, fundo_id: int, data_referencia: date, rows: List, periodo_df_id: int = None) -> ImportReport:
+def import_balancete(
+    *,
+    fundo_id: int,
+    data_referencia: date,
+    rows: List,
+    periodo_df_id: int = None,
+    usuario=None,
+    substituir: bool = False,
+) -> ImportReport:
     """
     Importa linhas canônicas (BalanceteRowDTO) para BalanceteItem:
     - grava apenas o saldo atual
@@ -69,6 +77,8 @@ def import_balancete(*, fundo_id: int, data_referencia: date, rows: List, period
     - ignora completamente saldo_anterior
     - idempotente (update_or_create)
     - Opcionalmente vincula ao PeriodoDF (periodo_df_id)
+    - substituir=True apaga antes os saldos e pendentes da data (fonte única = arquivo)
+    - sem periodo_df_id (saldo anterior), a FK é a do período dono da data, ou a que a linha já tinha
     """
     if not rows:
         return ImportReport(imported=0, updated=0, ignored=0, errors=[])
@@ -83,6 +93,16 @@ def import_balancete(*, fundo_id: int, data_referencia: date, rows: List, period
         periodo_df = PeriodoDF.objects.filter(id=periodo_df_id, fundo=fundo).first()
         if not periodo_df:
             raise ValueError(f"PeriodoDF {periodo_df_id} não encontrado ou não pertence ao fundo {fundo_id}")
+
+    from df.services.saldos_service import periodo_dono_da_data, substituir_saldos
+    if substituir:
+        substituir_saldos(fundo, data_referencia)
+
+    # FK efetiva das linhas: o período informado ou, sem ele, o dono da data (se houver)
+    fk_periodo = periodo_df_id
+    if fk_periodo is None:
+        dono = periodo_dono_da_data(fundo, data_referencia)
+        fk_periodo = dono.id if dono else None
 
     # Cache de contas conhecidas para esta empresa
     contas = {r.conta for r in rows if getattr(r, "conta", None)}
@@ -119,8 +139,12 @@ def import_balancete(*, fundo_id: int, data_referencia: date, rows: List, period
             defaults = {
                 "saldo_final": _to_decimal(r.saldo_atual),
                 "data_referencia": data_referencia,
-                "periodo_df_id": periodo_df_id,
+                "origem": BalanceteItem.ORIGEM_IMPORTADO,
+                "atualizado_por": usuario,
             }
+            # Sem dono conhecido, não toca na FK (evita zerar o vínculo de outra DF)
+            if fk_periodo is not None:
+                defaults["periodo_df_id"] = fk_periodo
             _, created = BalanceteItem.objects.update_or_create(
                 fundo_id=fundo_id,
                 conta_corrente_id=conta_map.id,

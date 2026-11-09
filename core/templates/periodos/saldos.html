@@ -1,0 +1,669 @@
+{% extends 'base/base.html' %}
+{% load static %}
+
+{% block title %}Saldos — {{ periodo.nome_exibicao }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .modal-periodo-display {
+    background: var(--surface-3);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    padding: 0.75rem 1rem;
+  }
+
+  /* ── KPI: variantes extras ─────────────────────────────── */
+  .kpi-card--red::before { background: linear-gradient(90deg, #b91c1c, #ef4444); }
+  .kpi-card--red .kpi-card__value { color: #ef4444; }
+
+  /* ── Cabeçalho com ações ──────────────────────────────── */
+  .sx-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; }
+  .sx-head__lead { display: flex; align-items: flex-start; gap: .85rem; }
+  .sx-head__actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+  /* ── Banners ──────────────────────────────────────────── */
+  .sx-banner {
+    display: flex; align-items: center; gap: .85rem; flex-wrap: wrap;
+    padding: .85rem 1.1rem; margin-bottom: 1rem; border-radius: 12px;
+    background: rgba(251,191,36,.10); border: 1px solid rgba(251,191,36,.32);
+    color: var(--text-primary); font-size: .88rem;
+  }
+  .sx-banner i { color: #fbbf24; font-size: 1.25rem; }
+  .sx-banner__text { flex: 1 1 14rem; }
+  .sx-banner--info { background: rgba(59,130,246,.08); border-color: rgba(59,130,246,.28); }
+  .sx-banner--info i { color: #60a5fa; }
+
+  /* ── Filtros ──────────────────────────────────────────── */
+  .sx-toolbar { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin-bottom: .9rem; }
+  .sx-chips { display: flex; gap: .4rem; overflow-x: auto; flex: 1 1 20rem; padding-bottom: 2px; scrollbar-width: none; }
+  .sx-chips::-webkit-scrollbar { display: none; }
+  .sx-chip {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: .4rem;
+    padding: .38rem .8rem; border-radius: 999px; font-size: .78rem; font-weight: 600; cursor: pointer;
+    background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border-color);
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .sx-chip:hover { color: var(--text-primary); border-color: var(--accent-primary); }
+  .sx-chip.is-active { background: var(--accent-primary); color: #fff; border-color: var(--accent-primary); }
+  .sx-chip__n { font-size: .68rem; opacity: .8; font-variant-numeric: tabular-nums; }
+  .sx-search { position: relative; flex: 0 1 18rem; min-width: 12rem; }
+  .sx-search i { position: absolute; left: .75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+  .sx-search input { padding-left: 2.1rem; }
+
+  /* ── Tabela ───────────────────────────────────────────── */
+  .sx-card { background: var(--surface-2); border: 1px solid var(--border-color); border-radius: 14px; padding: .5rem .5rem 0; }
+  .sx-conta { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 600; color: var(--text-primary); }
+  .sx-sub { display: block; font-size: .72rem; color: var(--text-muted); }
+  .sx-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .sx-num--neg { color: #ef4444; }
+  .sx-vazio { color: var(--text-muted); }
+  .sx-cell { display: inline-flex; align-items: center; gap: .5rem; justify-content: flex-end; }
+  .sx-icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.9rem; height: 1.9rem; border-radius: 8px; cursor: pointer; padding: 0;
+    background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); font-size: .8rem;
+    transition: background .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .sx-icon-btn:hover { color: var(--text-primary); border-color: var(--accent-primary); background: rgba(255,255,255,.04); }
+  .sx-icon-btn--danger:hover { color: #ef4444; border-color: #ef4444; }
+  .sx-badge { display: inline-block; padding: .2rem .6rem; border-radius: 999px; font-size: .68rem; font-weight: 700; letter-spacing: .03em; white-space: nowrap; border: 1px solid transparent; }
+  .sx-badge--manual { background: rgba(168,85,247,.15); color: #c084fc; border-color: rgba(168,85,247,.3); }
+  .sx-badge--importado { background: rgba(107,117,133,.14); color: var(--text-secondary); border-color: rgba(107,117,133,.3); }
+  html[data-theme="light"] .sx-badge--manual { color: #7e22ce; }
+  .sx-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; padding: .6rem .75rem; font-size: .78rem; color: var(--text-muted); }
+  .sx-th-warn { cursor: help; border-bottom: 1px dotted var(--text-muted); }
+
+  /* ── Painel (offcanvas) ───────────────────────────────── */
+  .sx-offcanvas { width: min(440px, 100vw); background: var(--surface-1); color: var(--text-primary); border-left: 1px solid var(--border-color); }
+  .sx-offcanvas .offcanvas-header { border-bottom: 1px solid var(--border-color); }
+  .sx-offcanvas .offcanvas-footer { padding: 1rem; border-top: 1px solid var(--border-color); display: flex; gap: .6rem; justify-content: flex-end; }
+  .sx-conta-lista { max-height: 14rem; }
+  .sx-conta-fixa { background: var(--surface-3); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: .6rem .85rem; }
+
+  /* ── Toasts ───────────────────────────────────────────── */
+  .sx-toasts { position: fixed; right: 1rem; bottom: 1rem; z-index: 1100; display: flex; flex-direction: column; gap: .5rem; max-width: calc(100vw - 2rem); }
+
+  @media (max-width: 767.98px) {
+    .sx-toasts { left: 1rem; right: 1rem; }
+    .sx-search { flex: 1 1 100%; }
+    .sx-card { padding: 0; }
+    .sx-icon-btn { width: 2.4rem; height: 2.4rem; }   /* alvo de toque ≥ 44px */
+    .offcanvas.sx-offcanvas {
+      top: auto; bottom: 0; left: 0; right: 0; width: 100%; height: auto; max-height: 90vh;
+      border-left: 0; border-top: 1px solid var(--border-color); border-radius: 18px 18px 0 0;
+      transform: translateY(100%);
+    }
+    .offcanvas.sx-offcanvas.show:not(.hiding), .offcanvas.sx-offcanvas.showing { transform: none; }
+    .sx-offcanvas .offcanvas-footer { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+    .sx-offcanvas .form-control, .sx-offcanvas .form-select { font-size: 1rem; }   /* evita zoom do iOS */
+  }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+{% include 'base/navbar.html' %}
+
+<div class="container py-5">
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }} alert-dismissible fade show mb-3" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Cabeçalho -->
+  <div class="page-header sx-head">
+    <div class="sx-head__lead">
+      <a href="{% url 'demonstracao_financeira' %}?fundo={{ fundo.id }}" class="btn btn-outline-secondary btn-sm" title="Voltar" aria-label="Voltar">
+        <i class="bi bi-arrow-left"></i>
+      </a>
+      <div class="page-header__titles">
+        <h1 class="page-header__title">Saldos — {{ fundo.nome }}</h1>
+        <p class="page-header__subtitle">
+          {{ periodo.nome_exibicao }} · saldo atual em <strong>{{ data_atual|date:"d/m/Y" }}</strong>
+          {% if data_anterior %}· anterior em <strong>{{ data_anterior|date:"d/m/Y" }}</strong>
+          {% else %}· <span title="Sem saldo anterior definido">sem saldo anterior</span>{% endif %}
+        </p>
+      </div>
+    </div>
+    <div class="sx-head__actions">
+      {% if can_manage %}
+        <button type="button" class="btn btn-outline-secondary" id="btnImportar">
+          <i class="bi bi-upload me-1"></i>Importar balancete
+        </button>
+        <button type="button" class="btn btn-primary" id="btnNovo">
+          <i class="bi bi-plus-lg me-1"></i>Novo lançamento
+        </button>
+      {% endif %}
+      <a href="{% url 'dre_resultado' periodo.id %}" class="btn btn-outline-primary" id="btnVerDf">
+        <i class="bi bi-graph-up me-1"></i>Ver DF
+      </a>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));">
+    <div class="kpi-card kpi-card--blue">
+      <div class="kpi-card__label">Ativo</div>
+      <div class="kpi-card__value" id="kpiAtivo">—</div>
+      <div class="kpi-card__sub">saldo atual</div>
+      <i class="bi bi-bank kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card kpi-card--green">
+      <div class="kpi-card__label">Passivo + PL</div>
+      <div class="kpi-card__value" id="kpiPassivoPl">—</div>
+      <div class="kpi-card__sub">saldo atual</div>
+      <i class="bi bi-wallet2 kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card kpi-card--gray">
+      <div class="kpi-card__label">Resultado</div>
+      <div class="kpi-card__value" id="kpiResultado">—</div>
+      <div class="kpi-card__sub">contas de resultado</div>
+      <i class="bi bi-graph-up-arrow kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card kpi-card--amber" id="kpiDifCard">
+      <div class="kpi-card__label">Ativo − (Passivo + PL)</div>
+      <div class="kpi-card__value" id="kpiDif">—</div>
+      <div class="kpi-card__sub">conferência, antes do resultado</div>
+      <i class="bi bi-calculator kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card kpi-card--blue">
+      <div class="kpi-card__label">Contas com saldo</div>
+      <div class="kpi-card__value" id="kpiContas">—</div>
+      <div class="kpi-card__sub">atual ou anterior</div>
+      <i class="bi bi-list-ol kpi-card__ghost-icon"></i>
+    </div>
+  </div>
+
+  {% if pendentes %}
+  <div class="sx-banner">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <div class="sx-banner__text">
+      <strong>{{ pendentes }}</strong> linha(s) do balancete ficaram de fora desta DF porque a conta ainda não está no Plano de Contas.
+    </div>
+    <a class="btn btn-sm btn-outline-warning" href="{% url 'plano_de_contas' %}?filtro=pendentes">Revisar no Plano de Contas</a>
+  </div>
+  {% endif %}
+
+  {% if data_anterior %}
+  <div class="sx-banner sx-banner--info">
+    <i class="bi bi-info-circle-fill"></i>
+    <div class="sx-banner__text">
+      O saldo anterior ({{ data_anterior|date:"d/m/Y" }}) é compartilhado: alterá-lo também altera a DF do período que fecha nessa data.
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Filtros -->
+  <div class="sx-toolbar">
+    <div class="sx-chips" id="sxChips" role="tablist" aria-label="Filtrar lançamentos">
+      <button type="button" class="sx-chip" data-filtro="todas">Todas <span class="sx-chip__n" data-n="todas"></span></button>
+      <button type="button" class="sx-chip" data-filtro="manuais">Manuais <span class="sx-chip__n" data-n="manuais"></span></button>
+      <button type="button" class="sx-chip" data-filtro="sem_anterior">Sem saldo anterior <span class="sx-chip__n" data-n="sem_anterior"></span></button>
+    </div>
+    <div class="sx-search">
+      <i class="bi bi-search"></i>
+      <input type="search" id="sxBusca" class="form-control form-control-sm" placeholder="Buscar conta, descrição ou grupo" aria-label="Buscar">
+    </div>
+  </div>
+
+  <!-- Tabela -->
+  <div class="sx-card">
+    <div class="table-responsive">
+      <table id="sxTable" class="table-ds w-100">
+        <thead>
+          <tr>
+            <th>Conta</th>
+            <th>Descrição</th>
+            <th>Grupo</th>
+            <th class="text-end">Saldo atual</th>
+            <th class="text-end">Saldo anterior</th>
+            <th>Origem</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+{% if can_manage %}
+<!-- Painel criar/editar lançamento -->
+<div class="offcanvas offcanvas-end sx-offcanvas" tabindex="-1" id="sxPanel" aria-labelledby="sxPanelTitulo">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="sxPanelTitulo">Novo lançamento</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Fechar"></button>
+  </div>
+  <form id="sxForm" class="d-flex flex-column flex-grow-1 overflow-hidden" novalidate>
+    <div class="offcanvas-body">
+
+      <div class="mb-3" id="sxContaEscolha">
+        <label for="sxContaBusca" class="form-label fw-semibold">Conta</label>
+        <input type="search" class="form-control mb-2" id="sxContaBusca" placeholder="Buscar por código, descrição ou grupo" autocomplete="off">
+        <select class="form-select sx-conta-lista" id="sxConta" size="6" aria-label="Contas do Plano de Contas"></select>
+        <div class="invalid-feedback" data-erro="mapeamento"></div>
+        <div class="form-text">
+          Só aparecem contas já classificadas no Plano de Contas.
+          <a href="{% url 'plano_de_contas' %}" target="_blank" rel="noopener">Criar conta nova</a>
+        </div>
+      </div>
+
+      <div class="mb-3 d-none" id="sxContaFixa">
+        <label class="form-label fw-semibold">Conta</label>
+        <div class="sx-conta-fixa">
+          <span class="sx-conta" id="sxContaFixaCodigo"></span>
+          <span class="sx-sub" id="sxContaFixaDesc"></span>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label for="sxColuna" class="form-label fw-semibold">Saldo de</label>
+        <select class="form-select" id="sxColuna" name="coluna">
+          <option value="atual">Saldo atual ({{ data_atual|date:"d/m/Y" }})</option>
+          <option value="anterior" {% if not data_anterior %}disabled{% endif %}>
+            Saldo anterior{% if data_anterior %} ({{ data_anterior|date:"d/m/Y" }}){% else %} — indisponível neste período{% endif %}
+          </option>
+        </select>
+        <div class="invalid-feedback" data-erro="coluna"></div>
+      </div>
+
+      <div class="mb-3">
+        <label for="sxValor" class="form-label fw-semibold">Valor (R$)</label>
+        <input type="text" class="form-control" id="sxValor" name="saldo_final" inputmode="decimal" autocomplete="off" placeholder="0,00" required>
+        <div class="invalid-feedback" data-erro="saldo_final"></div>
+        <div class="form-text">Use vírgula para os centavos. Valores negativos são aceitos.</div>
+      </div>
+
+      <div class="alert alert-info small" id="sxAvisoAnterior" style="display:none;" role="note">
+        <i class="bi bi-info-circle me-1"></i>
+        Este valor também vale para a DF do período que fecha em {{ data_anterior|date:"d/m/Y" }}.
+      </div>
+      <div class="alert alert-danger d-none" id="sxErroGeral" role="alert"></div>
+    </div>
+    <div class="offcanvas-footer">
+      <button type="button" class="btn btn-secondary" data-bs-dismiss="offcanvas">Cancelar</button>
+      <button type="submit" class="btn btn-primary" id="sxSalvar">
+        <span class="spinner-border spinner-border-sm me-1 d-none" aria-hidden="true"></span>Salvar
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- Confirmação de exclusão -->
+<div class="modal fade" id="sxModal" tabindex="-1" aria-labelledby="sxModalTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="sxModalTitulo">Excluir lançamento</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body" id="sxModalTexto"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="sxModalOk">
+          <span class="spinner-border spinner-border-sm me-1 d-none" aria-hidden="true"></span>Excluir
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% include "partials/_modal_importar_balancete.html" %}
+{% endif %}
+
+<div class="sx-toasts" id="sxToasts" aria-live="polite"></div>
+
+{{ linhas_json|json_script:"sx-linhas" }}
+{{ kpis_json|json_script:"sx-kpis" }}
+{{ contas_json|json_script:"sx-contas" }}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const CAN_MANAGE = {{ can_manage|yesno:"true,false" }};
+  const CSRF = "{{ csrf_token }}";
+  const URL_SALVAR = "{% url 'salvar_saldo' periodo.id %}";
+  const URL_EXCLUIR = "{% url 'excluir_saldo' periodo.id 0 %}";
+  const TEM_ANTERIOR = {{ data_anterior|yesno:"true,false" }};
+  const FILTROS = ["todas", "manuais", "sem_anterior"];
+
+  let rows = JSON.parse(document.getElementById("sx-linhas").textContent);
+  let kpis = JSON.parse(document.getElementById("sx-kpis").textContent);
+  const contas = JSON.parse(document.getElementById("sx-contas").textContent);
+  let filtroAtivo = "todas";
+
+  const nf = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fmt(v) { return v == null ? "—" : nf.format(Number(v)); }
+  function brl(v) { return "R$ " + nf.format(Number(v)); }
+  function valorOrdem(cel) { return cel && cel.valor != null ? Number(cel.valor) : -1e18; }
+  function ehManual(r) {
+    return (r.atual && r.atual.origem === "manual") || (r.anterior && r.anterior.origem === "manual");
+  }
+
+  // ── KPIs ───────────────────────────────────────────────────
+  function atualizarKpis() {
+    const passivoPl = Number(kpis.passivo) + Number(kpis.pl);
+    document.getElementById("kpiAtivo").textContent = brl(kpis.ativo);
+    document.getElementById("kpiPassivoPl").textContent = brl(passivoPl);
+    document.getElementById("kpiResultado").textContent = brl(kpis.resultado);
+    document.getElementById("kpiDif").textContent = brl(kpis.diferenca);
+    document.getElementById("kpiContas").textContent = kpis.contas;
+    document.getElementById("kpiDifCard").classList.toggle("kpi-card--red", Math.abs(Number(kpis.diferenca)) >= 0.005);
+    document.getElementById("kpiDifCard").classList.toggle("kpi-card--amber", Math.abs(Number(kpis.diferenca)) < 0.005);
+  }
+
+  // ── Tabela ─────────────────────────────────────────────────
+  function celulaSaldo(cel, r, coluna) {
+    let html = '<span class="sx-cell">';
+    if (cel && cel.valor != null) {
+      html += '<span class="sx-num' + (Number(cel.valor) < 0 ? " sx-num--neg" : "") + '">' + fmt(cel.valor) + '</span>';
+      if (CAN_MANAGE) {
+        html += '<button type="button" class="sx-icon-btn" title="Editar" aria-label="Editar saldo" data-acao="editar" data-col="' + coluna + '" data-m="' + r.mapeamento_id + '"><i class="bi bi-pencil"></i></button>' +
+                '<button type="button" class="sx-icon-btn sx-icon-btn--danger" title="Excluir" aria-label="Excluir saldo" data-acao="excluir" data-col="' + coluna + '" data-m="' + r.mapeamento_id + '"><i class="bi bi-trash3"></i></button>';
+      }
+    } else {
+      html += '<span class="sx-vazio">—</span>';
+      if (CAN_MANAGE && (coluna === "atual" || TEM_ANTERIOR)) {
+        html += '<button type="button" class="sx-icon-btn" title="Lançar" aria-label="Lançar saldo" data-acao="editar" data-col="' + coluna + '" data-m="' + r.mapeamento_id + '"><i class="bi bi-plus-lg"></i></button>';
+      }
+    }
+    return html + "</span>";
+  }
+
+  function celulaOrigem(r) {
+    const cel = r.atual || r.anterior;
+    if (!cel) return "";
+    const tip = (cel.por ? "por " + cel.por : "") + (cel.em ? " em " + cel.em : "");
+    return '<span class="sx-badge sx-badge--' + esc(cel.origem) + '" title="' + esc(tip.trim()) + '">' +
+      (cel.origem === "manual" ? "Manual" : "Importado") + '</span>' +
+      (cel.em ? '<span class="sx-sub">' + esc(cel.em) + (cel.por ? " · " + esc(cel.por) : "") + '</span>' : "");
+  }
+
+  function passa(r, f) {
+    if (f === "manuais") return ehManual(r);
+    if (f === "sem_anterior") return !r.anterior;
+    return true;
+  }
+  $.fn.dataTable.ext.search.push(function (settings, data, idx) {
+    if (settings.nTable.id !== "sxTable") return true;
+    return passa(settings.aoData[idx]._aData, filtroAtivo);
+  });
+
+  const dt = $("#sxTable").DataTable({
+    data: rows,
+    columns: [
+      { data: null, render: function (d, t, r) {
+          return t === "display" ? '<span class="sx-conta">' + esc(r.conta) + '</span>' : r.conta;
+        } },
+      { data: null, render: function (d, t, r) {
+          return t === "display" ? (r.descricao ? esc(r.descricao) : '<span class="sx-vazio">—</span>') : r.descricao;
+        } },
+      { data: null, render: function (d, t, r) { return esc(r.grupo); } },
+      { data: null, className: "text-end", render: function (d, t, r) {
+          return t === "display" ? celulaSaldo(r.atual, r, "atual") : valorOrdem(r.atual);
+        } },
+      { data: null, className: "text-end", render: function (d, t, r) {
+          return t === "display" ? celulaSaldo(r.anterior, r, "anterior") : valorOrdem(r.anterior);
+        } },
+      { data: null, render: function (d, t, r) {
+          if (t === "display") return celulaOrigem(r);
+          return ehManual(r) ? "manual" : "importado";
+        } }
+    ],
+    dom: 'rt<"sx-foot"ip>',
+    pageLength: 50,
+    order: [[0, "asc"]],
+    autoWidth: false,
+    language: {
+      emptyTable: "Nenhum saldo lançado ainda. Importe um balancete ou crie um lançamento.",
+      zeroRecords: "Nenhum lançamento encontrado com esses filtros.",
+      info: "_START_–_END_ de _TOTAL_ contas",
+      infoEmpty: "0 contas",
+      infoFiltered: "(de _MAX_)",
+      paginate: { previous: "‹", next: "›" }
+    }
+  });
+
+  function contar(f) { return rows.filter(function (r) { return passa(r, f); }).length; }
+  function atualizarResumo() {
+    atualizarKpis();
+    FILTROS.forEach(function (f) {
+      const el = document.querySelector('[data-n="' + f + '"]');
+      if (el) el.textContent = contar(f);
+    });
+    document.querySelectorAll(".sx-chip").forEach(function (c) {
+      c.classList.toggle("is-active", c.dataset.filtro === filtroAtivo);
+    });
+    const ver = document.getElementById("btnVerDf");
+    if (ver) ver.classList.toggle("disabled", rows.length === 0);
+  }
+  function redesenhar() {
+    dt.clear().rows.add(rows).draw(false);
+    atualizarResumo();
+  }
+  document.querySelectorAll(".sx-chip").forEach(function (c) {
+    c.addEventListener("click", function () {
+      filtroAtivo = c.dataset.filtro;
+      atualizarResumo();
+      dt.draw();
+    });
+  });
+  document.getElementById("sxBusca").addEventListener("input", function () { dt.search(this.value).draw(); });
+  redesenhar();
+
+  // ── Toasts ─────────────────────────────────────────────────
+  function toast(msg, tipo) {
+    const cor = { success: "text-bg-success", danger: "text-bg-danger", warning: "text-bg-warning" }[tipo || "success"];
+    const el = document.createElement("div");
+    el.className = "toast align-items-center border-0 " + cor;
+    el.setAttribute("role", "status");
+    el.innerHTML = '<div class="d-flex"><div class="toast-body">' + esc(msg) +
+      '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Fechar"></button></div>';
+    document.getElementById("sxToasts").appendChild(el);
+    const t = new bootstrap.Toast(el, { delay: tipo === "danger" ? 7000 : 4500 });
+    el.addEventListener("hidden.bs.toast", function () { el.remove(); });
+    t.show();
+  }
+
+  async function enviar(url, dados) {
+    const fd = new FormData();
+    Object.keys(dados || {}).forEach(function (k) { fd.append(k, dados[k]); });
+    const resp = await fetch(url, {
+      method: "POST", body: fd,
+      headers: { "X-CSRFToken": CSRF, "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin"
+    });
+    let json = {};
+    try { json = await resp.json(); } catch (e) { json = { ok: false, errors: { __all__: ["Resposta inesperada do servidor (" + resp.status + ")."] } }; }
+    return { status: resp.status, data: json };
+  }
+
+  // aplica a resposta {mapeamento_id, linha, kpis} ao estado local
+  function aplicarResposta(data) {
+    rows = rows.filter(function (x) { return x.mapeamento_id !== data.mapeamento_id; });
+    if (data.linha) rows.push(data.linha);
+    kpis = data.kpis;
+    redesenhar();
+  }
+
+  if (!CAN_MANAGE) return;
+
+  // ── Importar balancete (modal compartilhado) ───────────────
+  const CLONES = [
+    {% for p in periodos_clone %}{ id: {{ p.id }}, nome: "{{ p.nome_exibicao|escapejs }}", data_referencia: "{{ p.data_referencia|date:'Y-m-d' }}" },{% endfor %}
+  ];
+  document.getElementById("btnImportar").addEventListener("click", function () {
+    const manuais = rows.filter(function (r) { return r.atual && r.atual.origem === "manual"; }).length;
+    abrirModalImportarBase({{ periodo.id }}, "{{ periodo.nome_exibicao|escapejs }}", {{ fundo.id }}, CLONES,
+      { next: window.location.pathname, manuais: manuais });
+  });
+  window.aoImportarBalancete = function (ok, data) {
+    toast(data.message || (ok ? "Balancete importado." : "Não foi possível importar."),
+      ok && !data.warning ? "success" : ok ? "warning" : "danger");
+    if (ok) setTimeout(function () { window.location.reload(); }, 1600);
+  };
+
+  // ── Painel de lançamento ───────────────────────────────────
+  const painelEl = document.getElementById("sxPanel");
+  const painel = new bootstrap.Offcanvas(painelEl);
+  const modalEl = document.getElementById("sxModal");
+  const modal = new bootstrap.Modal(modalEl);
+  const form = document.getElementById("sxForm");
+  const selConta = document.getElementById("sxConta");
+  const buscaConta = document.getElementById("sxContaBusca");
+  const selColuna = document.getElementById("sxColuna");
+  const inpValor = document.getElementById("sxValor");
+  const campos = { mapeamento: selConta, coluna: selColuna, saldo_final: inpValor };
+  let contaFixa = null;     // mapeamento_id quando editando
+  let exclusao = null;      // { item_id }
+
+  function limparErros() {
+    Object.keys(campos).forEach(function (k) {
+      campos[k].classList.remove("is-invalid");
+      const fb = form.querySelector('[data-erro="' + k + '"]');
+      if (fb) fb.textContent = "";
+    });
+    document.getElementById("sxErroGeral").classList.add("d-none");
+  }
+  function mostrarErros(errs) {
+    limparErros();
+    Object.keys(errs || {}).forEach(function (k) {
+      const fb = form.querySelector('[data-erro="' + k + '"]');
+      if (campos[k] && fb) { campos[k].classList.add("is-invalid"); fb.textContent = errs[k].join(" "); }
+      else { const g = document.getElementById("sxErroGeral"); g.textContent = errs[k].join(" "); g.classList.remove("d-none"); }
+    });
+  }
+  function setCarregando(btn, on) {
+    btn.disabled = on;
+    btn.querySelector(".spinner-border").classList.toggle("d-none", !on);
+  }
+  function desenharContas(filtro) {
+    const q = (filtro || "").trim().toLowerCase();
+    const atual = selConta.value;
+    selConta.innerHTML = "";
+    contas.forEach(function (c) {
+      const texto = c.conta + " — " + (c.descricao || "sem descrição") + " · " + c.grupo;
+      if (q && texto.toLowerCase().indexOf(q) < 0) return;
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = texto;
+      if (String(c.id) === atual) opt.selected = true;
+      selConta.appendChild(opt);
+    });
+  }
+  function atualizarAvisoAnterior() {
+    document.getElementById("sxAvisoAnterior").style.display =
+      selColuna.value === "anterior" ? "block" : "none";
+  }
+  selColuna.addEventListener("change", atualizarAvisoAnterior);
+  buscaConta.addEventListener("input", function () { desenharContas(buscaConta.value); });
+
+  // modo: "novo" | "editar" (r = linha, col = "atual"|"anterior")
+  function abrir(modo, r, col) {
+    limparErros();
+    contaFixa = modo === "editar" ? r.mapeamento_id : null;
+    document.getElementById("sxPanelTitulo").textContent = modo === "editar" ? "Editar saldo" : "Novo lançamento";
+    document.getElementById("sxContaEscolha").classList.toggle("d-none", modo === "editar");
+    document.getElementById("sxContaFixa").classList.toggle("d-none", modo !== "editar");
+    selColuna.disabled = false;
+    if (modo === "editar") {
+      document.getElementById("sxContaFixaCodigo").textContent = r.conta;
+      document.getElementById("sxContaFixaDesc").textContent = (r.descricao || "sem descrição") + " · " + r.grupo;
+      selColuna.value = col;
+      selColuna.disabled = true;
+      const cel = r[col];
+      inpValor.value = cel && cel.valor != null ? nf.format(Number(cel.valor)) : "";
+    } else {
+      buscaConta.value = "";
+      desenharContas("");
+      selConta.selectedIndex = -1;
+      selColuna.value = "atual";
+      inpValor.value = "";
+    }
+    atualizarAvisoAnterior();
+    painel.show();
+  }
+  painelEl.addEventListener("shown.bs.offcanvas", function () {
+    (contaFixa ? inpValor : buscaConta).focus();
+  });
+  document.getElementById("btnNovo").addEventListener("click", function () { abrir("novo"); });
+
+  // ações da tabela (delegação)
+  document.getElementById("sxTable").addEventListener("click", function (e) {
+    const btn = e.target.closest("button[data-acao]");
+    if (!btn) return;
+    const r = rows.find(function (x) { return String(x.mapeamento_id) === btn.dataset.m; });
+    if (!r) return;
+    const col = btn.dataset.col;
+    if (btn.dataset.acao === "editar") {
+      abrir("editar", r, col);   // coluna sem lançamento abre com o valor em branco
+    } else if (btn.dataset.acao === "excluir") {
+      const cel = r[col];
+      if (!cel) return;
+      exclusao = { item_id: cel.id };
+      document.getElementById("sxModalTexto").innerHTML =
+        "Excluir o saldo " + (col === "atual" ? "atual" : "anterior") + " de <strong>" + esc(r.conta) +
+        "</strong> (R$ " + fmt(cel.valor) + ")?" +
+        (col === "anterior" ? " Isso também afeta a DF do período que fecha nessa data." : "");
+      modal.show();
+    }
+  });
+
+  // salvar
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    const btn = document.getElementById("sxSalvar");
+    setCarregando(btn, true);
+    limparErros();
+    try {
+      const dados = {
+        mapeamento: contaFixa != null ? contaFixa : selConta.value,
+        coluna: selColuna.value,
+        saldo_final: inpValor.value.trim()
+      };
+      const { data } = await enviar(URL_SALVAR, dados);
+      if (!data.ok) { mostrarErros(data.errors || { __all__: [data.message || "Não foi possível salvar."] }); return; }
+      aplicarResposta(data);
+      painel.hide();
+      toast("Saldo salvo.");
+    } catch (err) {
+      toast("Falha de rede. Tente novamente.", "danger");
+    } finally {
+      setCarregando(btn, false);
+    }
+  });
+
+  // confirmar exclusão
+  document.getElementById("sxModalOk").addEventListener("click", async function () {
+    if (!exclusao) return;
+    const btn = this;
+    setCarregando(btn, true);
+    try {
+      const { data } = await enviar(URL_EXCLUIR.replace("/0/", "/" + exclusao.item_id + "/"), {});
+      if (!data.ok) {
+        toast((data.errors && data.errors.__all__ && data.errors.__all__.join(" ")) || "Não foi possível excluir.", "danger");
+        return;
+      }
+      aplicarResposta(data);
+      modal.hide();
+      toast("Saldo excluído.");
+    } catch (err) {
+      toast("Falha de rede. Tente novamente.", "danger");
+    } finally {
+      setCarregando(btn, false);
+      exclusao = null;
+    }
+  });
+});
+</script>
+{% endblock %}

@@ -676,6 +676,21 @@ class BalanceteItem(models.Model):
     saldo_final = models.DecimalField(max_digits=20, decimal_places=2, null=True, blank=True)
     data_importacao = models.DateTimeField(auto_now_add=True)
 
+    ORIGEM_IMPORTADO = "importado"
+    ORIGEM_MANUAL = "manual"
+    ORIGEM_CHOICES = [
+        (ORIGEM_IMPORTADO, "Importado"),
+        (ORIGEM_MANUAL, "Manual"),
+    ]
+    origem = models.CharField(max_length=10, choices=ORIGEM_CHOICES, default=ORIGEM_IMPORTADO)
+    atualizado_em = models.DateTimeField(auto_now=True, null=True)
+    atualizado_por = models.ForeignKey(
+        Usuario,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="+",
+    )
+
     class Meta:
         verbose_name = "Item do Balancete"
         verbose_name_plural = "Itens do Balancete"
