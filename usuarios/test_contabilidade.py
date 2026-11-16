@@ -204,7 +204,12 @@ class PapelEPermissoesTests(ContabilidadeMixin, TestCase):
         self.client.force_login(self.contador)
         r = self.client.post(reverse("criar_periodo_manual", args=[self.fundo_a.id]), {})
         self.assertEqual(r.status_code, 403)  # company_can_manage_fundos
-        self.assertEqual(self.client.post(reverse("criar_mapeamento"), {}).status_code, 403)  # company_can_manage_data
+        periodo = PeriodoDF.objects.create(
+            fundo=self.fundo_a, empresa=self.a, tipo_periodo="anual", ano=2025,
+            data_vencimento=date(2099, 3, 31), status="nao_iniciada",
+        )
+        r = self.client.post(reverse("salvar_contexto_operacional", args=[periodo.id]), {"contexto_operacional": "x"})
+        self.assertEqual(r.status_code, 403)  # company_can_manage_data
         r = self.client.get(reverse("gerenciar_usuarios"))
         self.assertNotEqual(r.status_code, 200)
 

@@ -75,15 +75,8 @@ def periodo_tem_movimentacao(periodo_df) -> bool:
 
 
 def periodo_tem_dados(periodo_df) -> bool:
-    """
-    Há algum dado para a DF do período. Os balancetes importados (legado) e o MEC continuam
-    contando até a remoção do balancete.
-    """
-    return (
-        periodo_tem_movimentacao(periodo_df)
-        or periodo_df.balancete_items.exists()
-        or periodo_df.mec_items.exists()
-    )
+    """Há algum dado para a DF do período: movimentações, saldos iniciais ou posição do MEC."""
+    return periodo_tem_movimentacao(periodo_df) or periodo_df.mec_items.exists()
 
 
 def atualizar_periodos_da_data(fundo, data) -> None:
