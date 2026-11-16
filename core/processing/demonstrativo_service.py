@@ -8,7 +8,7 @@ Cada linha tem um formato único, usado pela tela e (nas próximas etapas) pelos
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from df.models import Conta
 from df.services.saldo_calculo_service import saldos_por_codigo
@@ -26,7 +26,10 @@ def _no_ramo(codigo: str, raiz: str) -> bool:
 
 
 def _mil(valor: Decimal, dividir_por_mil: bool) -> Decimal:
-    return valor / Decimal(1000) if dividir_por_mil else valor
+    """Em milhares de reais, inteiros (como o sistema sempre apresentou)."""
+    if not dividir_por_mil:
+        return valor
+    return (valor / Decimal(1000)).quantize(Decimal(1), rounding=ROUND_HALF_UP)
 
 
 def _perc(valor: Decimal, base: Decimal | None) -> Decimal | None:
@@ -125,6 +128,7 @@ def gerar_dpf_arvore(
     """
     DPF = Ativo | Passivo (2.01 + 2.02) | PL (2.03 + resultado do exercício).
     No plano referencial o PL é filho de Passivo (`2`); aqui ele aparece separado.
+    Os percentuais são sobre o PL (com o resultado do exercício).
     """
     atual = _saldos(fundo_id, data_atual, False)
     anterior = _saldos(fundo_id, data_anterior, zerar_anterior)
@@ -154,8 +158,9 @@ def gerar_dpf_arvore(
     tot_passivo = (soma(atual, *RAIZES_PASSIVO), soma(anterior, *RAIZES_PASSIVO))
     tot_pl = (soma(atual, CODIGO_PL) + res_atual, soma(anterior, CODIGO_PL) + res_ant)
 
-    for lista, base in ((ativo, tot_ativo), (passivo, tot_ativo), (pl, tot_ativo)):
-        _com_percentuais(lista, _mil(base[0], dividir_por_mil), _mil(base[1], dividir_por_mil))
+    # Percentuais sobre o patrimônio líquido, como na DPF que o sistema já emitia.
+    for lista in (ativo, passivo, pl):
+        _com_percentuais(lista, _mil(tot_pl[0], dividir_por_mil), _mil(tot_pl[1], dividir_por_mil))
 
     totais = {
         "ativo": _total("1", "Total do Ativo", *(_mil(v, dividir_por_mil) for v in tot_ativo)),
@@ -169,16 +174,17 @@ def gerar_dpf_arvore(
         totais["passivo"]["anterior"] + totais["pl"]["anterior"],
     )
     for t in totais.values():
-        t["perc_atual"] = _perc(t["atual"], totais["ativo"]["atual"])
-        t["perc_anterior"] = _perc(t["anterior"], totais["ativo"]["anterior"])
+        t["perc_atual"] = _perc(t["atual"], totais["pl"]["atual"])
+        t["perc_anterior"] = _perc(t["anterior"], totais["pl"]["anterior"])
 
     return {
         "ativo": ativo,
         "passivo": passivo,
         "pl": pl,
         "totais": totais,
-        "diferenca_atual": totais["ativo"]["atual"] - totais["passivo_pl"]["atual"],
-        "diferenca_anterior": totais["ativo"]["anterior"] - totais["passivo_pl"]["anterior"],
+        # Conferência com os valores exatos: arredondar cada total antes de subtrair criaria ±1 falso.
+        "diferenca_atual": _mil(tot_ativo[0] - tot_passivo[0] - tot_pl[0], dividir_por_mil),
+        "diferenca_anterior": _mil(tot_ativo[1] - tot_passivo[1] - tot_pl[1], dividir_por_mil),
     }
 
 

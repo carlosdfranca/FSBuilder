@@ -750,6 +750,63 @@ class Conta(models.Model):
 
 
 # =========================
+# LINHAS DA DFC (método indireto, por variação de contas do plano)
+# =========================
+class LinhaDFC(models.Model):
+    """
+    Linha da DFC: o efeito no caixa é `sinal` × (saldo das contas em `prefixos` no fim do período
+    − saldo no início). Ativo: sinal −1 (aumento consome caixa). Passivo, PL e resultado: +1.
+    Cada conta do plano deve cair em no máximo uma linha, senão a DFC deixa de fechar com o caixa.
+    """
+
+    class Secao(models.TextChoices):
+        OPERACIONAL = "operacional", "Atividades operacionais"
+        INVESTIMENTO = "investimento", "Atividades de investimento"
+        FINANCIAMENTO = "financiamento", "Atividades de financiamento"
+
+    secao = models.CharField(max_length=15, choices=Secao.choices)
+    ordem = models.PositiveSmallIntegerField(default=0)
+    descricao = models.CharField(max_length=200)
+    prefixos = models.CharField(
+        max_length=500,
+        help_text="Códigos de conta do plano, separados por vírgula (ex.: 1.01.02,1.01.03). "
+                  "Inclui toda a subárvore de cada código.",
+    )
+    sinal = models.SmallIntegerField(choices=[(1, "+1 (passivo, PL, resultado)"), (-1, "−1 (ativo)")], default=1)
+    is_ativa = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Linha da DFC"
+        verbose_name_plural = "Linhas da DFC"
+        ordering = ["secao", "ordem", "id"]
+
+    def __str__(self):
+        return f"{self.get_secao_display()} · {self.descricao}"
+
+    @property
+    def lista_prefixos(self) -> list[str]:
+        return [p.strip() for p in self.prefixos.split(",") if p.strip()]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        codigos = self.lista_prefixos
+        if not codigos:
+            raise ValidationError("Informe ao menos um código de conta.")
+        existentes = set(Conta.objects.filter(codigo__in=codigos).values_list("codigo", flat=True))
+        faltando = [c for c in codigos if c not in existentes]
+        if faltando:
+            raise ValidationError(f"Código(s) inexistente(s) no plano: {', '.join(faltando)}.")
+
+        # MySQL não impõe regra cruzada: evita a mesma conta contada em duas linhas.
+        for outra in LinhaDFC.objects.filter(is_ativa=True).exclude(pk=self.pk):
+            for a in codigos:
+                for b in outra.lista_prefixos:
+                    if a == b or a.startswith(b + ".") or b.startswith(a + "."):
+                        raise ValidationError(f"O código {a} se sobrepõe a {b}, já usado em '{outra.descricao}'.")
+
+
+# =========================
 # SALDO INICIAL (por fundo + conta patrimonial)
 # =========================
 class SaldoInicial(models.Model):

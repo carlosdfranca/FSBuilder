@@ -68,10 +68,16 @@ class DpfArvoreTests(CenarioMixin, TestCase):
         self.assertEqual(ativo["1"]["tipo_linha"], "grupo")
         self.assertEqual(ativo["1.01.01"]["tipo_linha"], "conta")
 
-    def test_dividir_por_mil(self):
-        self.assertEqual(self.dpf(dividir_por_mil=True)["totais"]["ativo"]["atual"], D("1.3"))
+    def test_dividir_por_mil_arredonda_para_inteiro(self):
+        self.assertEqual(self.dpf(dividir_por_mil=True)["totais"]["ativo"]["atual"], D("1"))  # 1,3 mil
 
-    def test_percentuais_sobre_o_ativo(self):
+    def test_conferencia_usa_valor_exato_e_nao_o_arredondado(self):
+        # ativo e passivo+PL ficam 400 (0,4 mil) fora de equilíbrio: o exato arredonda para 0
+        self.mov(self.fundo, self.caixa, date(2025, 7, 1), "400")
+        self.assertEqual(self.dpf(dividir_por_mil=True)["diferenca_atual"], D("0"))
+        self.assertEqual(self.dpf(dividir_por_mil=False)["diferenca_atual"], D("400"))
+
+    def test_percentuais_sobre_o_pl(self):
         ativo = self.por_codigo(self.dpf()["ativo"])
         self.assertEqual(ativo["1.01.01"]["perc_atual"], D("100"))
         self.assertIsNone(ativo["1.01.01"]["perc_anterior"])  # base anterior é zero
@@ -141,7 +147,7 @@ class DfArvoreViewTests(CenarioMixin, TestCase):
         r = self.client.get(self.url)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.context["nivel"], 4)
-        self.assertEqual(r.context["dpf"]["totais"]["ativo"]["atual"], D("1.3"))  # em R$ mil
+        self.assertEqual(r.context["dpf"]["totais"]["ativo"]["atual"], D("1"))  # R$ mil arredondado
         self.assertContains(r, "Resultado do exercício")
 
     def test_nivel_e_limitado(self):
