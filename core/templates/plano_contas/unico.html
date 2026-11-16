@@ -1,0 +1,293 @@
+{% extends 'base/base.html' %}
+{% load static %}
+
+{% block title %}Plano de Contas Único{% endblock %}
+
+{% block extra_head %}
+<style>
+  .pu-toolbar { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin-bottom: .9rem; }
+  .pu-search { position: relative; flex: 1 1 18rem; max-width: 26rem; }
+  .pu-search i { position: absolute; left: .75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+  .pu-search input { padding-left: 2.1rem; }
+  .pu-card { background: var(--surface-2); border: 1px solid var(--border-color); border-radius: 14px; padding: .5rem; overflow-x: auto; }
+  .pu-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .pu-table th { text-align: left; color: var(--text-muted); font-weight: 600; font-size: .72rem; text-transform: uppercase; padding: .5rem .6rem; border-bottom: 1px solid var(--border-color); }
+  .pu-table td { padding: .4rem .6rem; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+  .pu-row[hidden] { display: none; }
+  .pu-row--s td { font-weight: 600; color: var(--text-primary); }
+  .pu-row--a td { color: var(--text-secondary); }
+  .pu-row--inativa { opacity: .5; }
+  .pu-codigo { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; }
+  .pu-toggle { background: none; border: 0; color: var(--text-secondary); width: 1.4rem; padding: 0; cursor: pointer; }
+  .pu-toggle i { transition: transform .12s ease; }
+  .pu-toggle[aria-expanded="true"] i { transform: rotate(90deg); }
+  .pu-badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .68rem; font-weight: 600; background: var(--surface-3); color: var(--text-secondary); border: 1px solid var(--border-color); }
+  .pu-badge--papel { background: rgba(251,191,36,.12); color: #fbbf24; border-color: rgba(251,191,36,.32); }
+  .pu-actions { display: inline-flex; gap: .35rem; justify-content: flex-end; }
+  .pu-btn { min-width: 2rem; height: 2rem; padding: 0 .5rem; border-radius: 8px; cursor: pointer; background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); font-size: .8rem; }
+  .pu-btn:hover { color: var(--text-primary); border-color: var(--accent-primary); }
+  .pu-vazio { padding: 2rem 1rem; text-align: center; color: var(--text-muted); }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+<div class="container-fluid py-3">
+
+  <div class="page-header">
+    <div class="page-header__titles">
+      <h1 class="page-header__title">Plano de Contas Único</h1>
+      <p class="page-header__subtitle">Plano referencial usado por todas as empresas · contas patrimoniais e de resultado</p>
+    </div>
+  </div>
+
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));">
+    <div class="kpi-card kpi-card--blue">
+      <div class="kpi-card__label">Contas</div>
+      <div class="kpi-card__value">{{ kpis.total }}</div>
+      <div class="kpi-card__sub">no plano</div>
+      <i class="bi bi-diagram-3 kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card kpi-card--green">
+      <div class="kpi-card__label">Analíticas</div>
+      <div class="kpi-card__value">{{ kpis.analiticas }}</div>
+      <div class="kpi-card__sub">recebem lançamento</div>
+      <i class="bi bi-pencil-square kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card kpi-card--gray">
+      <div class="kpi-card__label">Sintéticas</div>
+      <div class="kpi-card__value">{{ kpis.sinteticas }}</div>
+      <div class="kpi-card__sub">agrupam contas</div>
+      <i class="bi bi-collection kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card kpi-card--amber">
+      <div class="kpi-card__label">Inativas</div>
+      <div class="kpi-card__value">{{ kpis.inativas }}</div>
+      <div class="kpi-card__sub">não aceitam lançamento</div>
+      <i class="bi bi-slash-circle kpi-card__ghost-icon"></i>
+    </div>
+  </div>
+
+  {% if not contas %}
+    <div class="empty-state">
+      <i class="bi bi-diagram-3"></i>
+      <p>O plano de contas ainda não foi carregado.</p>
+      {% if can_edit %}<code>python manage.py importar_plano_contas plano_contas.xlsx --aba L100A --aba L300A</code>{% endif %}
+    </div>
+  {% else %}
+  <div class="pu-toolbar">
+    <div class="pu-search">
+      <i class="bi bi-search"></i>
+      <input type="search" id="puBusca" class="form-control" placeholder="Buscar por código ou descrição" autocomplete="off">
+    </div>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="puExpandir">Expandir tudo</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="puRecolher">Recolher</button>
+  </div>
+
+  <div class="pu-card">
+    <table class="pu-table" id="puTabela">
+      <thead>
+        <tr>
+          <th>Código</th><th>Descrição</th><th>Tipo</th><th>Natureza</th><th>Observação</th>
+          {% if can_edit %}<th></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in contas %}
+        <tr class="pu-row pu-row--{{ c.tipo|lower }}{% if not c.is_ativa %} pu-row--inativa{% endif %}"
+            data-id="{{ c.id }}" data-codigo="{{ c.codigo }}" data-nivel="{{ c.nivel }}" data-tipo="{{ c.tipo }}"
+            data-descricao="{{ c.descricao }}" data-ativa="{{ c.is_ativa|yesno:'1,0' }}" data-papel="{{ c.papel|default:'' }}"
+            {% if c.nivel > 2 %}hidden{% endif %}>
+          <td class="pu-codigo" style="padding-left: {{ c.nivel|add:'-1' }}rem;">
+            {% if c.tipo == 'S' %}
+              <button type="button" class="pu-toggle" aria-expanded="{% if c.nivel < 2 %}true{% else %}false{% endif %}" aria-label="Expandir {{ c.codigo }}"><i class="bi bi-chevron-right"></i></button>
+            {% else %}<span class="pu-toggle d-inline-block"></span>{% endif %}
+            {{ c.codigo }}
+          </td>
+          <td class="pu-desc" {% if c.orientacoes %}title="{{ c.orientacoes }}"{% endif %}>{{ c.descricao }}</td>
+          <td>{% if c.tipo == 'S' %}Sintética{% else %}Analítica{% endif %}</td>
+          <td><span class="pu-badge">{{ c.get_natureza_display }}</span></td>
+          <td class="pu-obs">
+            {% if c.papel %}<span class="pu-badge pu-badge--papel">{{ c.get_papel_display }}</span>{% endif %}
+            {% if not c.is_ativa %}<span class="pu-badge">Inativa</span>{% endif %}
+          </td>
+          {% if can_edit %}
+          <td>
+            <span class="pu-actions">
+              {% if c.tipo == 'S' %}<button type="button" class="pu-btn pu-nova" title="Nova conta filha"><i class="bi bi-plus-lg"></i></button>{% endif %}
+              <button type="button" class="pu-btn pu-editar" title="Editar"><i class="bi bi-pencil"></i></button>
+            </span>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="pu-vazio" id="puSemResultado" hidden>Nenhuma conta encontrada.</div>
+  </div>
+  {% endif %}
+</div>
+
+{% if can_edit %}
+<div class="modal fade" id="puEditarModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <form id="puEditarForm">
+      <div class="modal-header"><h5 class="modal-title" id="puEditarTitulo">Editar conta</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+      <div class="modal-body">
+        <div class="alert alert-danger" id="puEditarErro" hidden></div>
+        <div class="mb-3"><label class="form-label" for="puEdDescricao">Descrição</label>
+          <input type="text" class="form-control" id="puEdDescricao" name="descricao" maxlength="255" required></div>
+        <div class="form-check form-switch mb-3">
+          <input class="form-check-input" type="checkbox" id="puEdAtiva" name="is_ativa" value="1">
+          <label class="form-check-label" for="puEdAtiva">Conta ativa (aceita lançamento)</label></div>
+        <div class="mb-1" id="puEdPapelBox"><label class="form-label" for="puEdPapel">Papel no resultado acumulado</label>
+          <select class="form-select" id="puEdPapel" name="papel">
+            <option value="">Nenhum</option>
+            {% for valor, rotulo in papeis %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+          </select>
+          <div class="form-text">Conta de Patrimônio Líquido que recebe o resultado dos exercícios anteriores.</div></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button></div>
+    </form>
+  </div></div>
+</div>
+
+<div class="modal fade" id="puNovaModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <form id="puNovaForm">
+      <div class="modal-header"><h5 class="modal-title">Nova conta analítica</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+      <div class="modal-body">
+        <div class="alert alert-danger" id="puNovaErro" hidden></div>
+        <input type="hidden" name="conta_superior" id="puNvSuperior">
+        <div class="mb-3"><label class="form-label" for="puNvSufixo">Código</label>
+          <div class="input-group"><span class="input-group-text pu-codigo" id="puNvPrefixo"></span>
+            <input type="text" class="form-control" id="puNvSufixo" name="sufixo" inputmode="numeric" maxlength="3" placeholder="99" required></div></div>
+        <div class="mb-1"><label class="form-label" for="puNvDescricao">Descrição</label>
+          <input type="text" class="form-control" id="puNvDescricao" name="descricao" maxlength="255" required></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Criar</button></div>
+    </form>
+  </div></div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const tabela = document.getElementById("puTabela");
+  if (!tabela) return;
+  const linhas = Array.from(tabela.querySelectorAll("tbody tr"));
+  const busca = document.getElementById("puBusca");
+  const semResultado = document.getElementById("puSemResultado");
+  const expandidos = new Set(linhas.filter(function (r) { return r.dataset.nivel === "1"; }).map(function (r) { return r.dataset.codigo; }));
+
+  function ancestrais(codigo) {
+    const partes = codigo.split("."), out = [];
+    for (let i = 1; i < partes.length; i++) out.push(partes.slice(0, i).join("."));
+    return out;
+  }
+  function norm(s) { return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+
+  function render() {
+    const termo = norm(busca.value.trim());
+    let visiveis = 0;
+    linhas.forEach(function (r) {
+      let mostra;
+      if (termo) {
+        mostra = norm(r.dataset.codigo + " " + r.dataset.descricao).indexOf(termo) >= 0;
+      } else {
+        mostra = ancestrais(r.dataset.codigo).every(function (a) { return expandidos.has(a); });
+      }
+      r.hidden = !mostra;
+      if (mostra) visiveis++;
+      const t = r.querySelector(".pu-toggle[aria-expanded]");
+      if (t) t.setAttribute("aria-expanded", expandidos.has(r.dataset.codigo) ? "true" : "false");
+    });
+    semResultado.hidden = visiveis > 0;
+  }
+
+  tabela.addEventListener("click", function (ev) {
+    const t = ev.target.closest(".pu-toggle[aria-expanded]");
+    if (!t) return;
+    const cod = t.closest("tr").dataset.codigo;
+    if (expandidos.has(cod)) expandidos.delete(cod); else expandidos.add(cod);
+    render();
+  });
+  document.getElementById("puExpandir").addEventListener("click", function () {
+    linhas.forEach(function (r) { if (r.dataset.tipo === "S") expandidos.add(r.dataset.codigo); });
+    render();
+  });
+  document.getElementById("puRecolher").addEventListener("click", function () {
+    expandidos.clear();
+    linhas.forEach(function (r) { if (r.dataset.nivel === "1") expandidos.add(r.dataset.codigo); });
+    busca.value = "";
+    render();
+  });
+  busca.addEventListener("input", render);
+  render();
+
+  {% if can_edit %}
+  const CSRF = "{{ csrf_token }}";
+  const URL_EDITAR = "{% url 'editar_conta' 0 %}";
+  const URL_CRIAR = "{% url 'criar_conta' %}";
+  const edModal = new bootstrap.Modal(document.getElementById("puEditarModal"));
+  const nvModal = new bootstrap.Modal(document.getElementById("puNovaModal"));
+  let contaEditando = null;
+
+  function post(url, form) {
+    return fetch(url, {
+      method: "POST",
+      headers: { "X-CSRFToken": CSRF, "X-Requested-With": "XMLHttpRequest" },
+      body: new FormData(form)
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); });
+  }
+  function mostrarErro(el, json) {
+    const e = json.errors || {};
+    const msgs = [].concat.apply([], Object.keys(e).map(function (k) { return e[k]; }));
+    el.textContent = msgs.join(" ") || json.message || "Não foi possível salvar.";
+    el.hidden = false;
+  }
+
+  tabela.addEventListener("click", function (ev) {
+    const linha = ev.target.closest("tr");
+    if (ev.target.closest(".pu-editar")) {
+      contaEditando = linha;
+      document.getElementById("puEditarTitulo").textContent = "Editar " + linha.dataset.codigo;
+      document.getElementById("puEdDescricao").value = linha.dataset.descricao;
+      document.getElementById("puEdAtiva").checked = linha.dataset.ativa === "1";
+      document.getElementById("puEdPapel").value = linha.dataset.papel;
+      document.getElementById("puEdPapelBox").hidden = linha.dataset.tipo !== "A";
+      document.getElementById("puEditarErro").hidden = true;
+      edModal.show();
+    } else if (ev.target.closest(".pu-nova")) {
+      document.getElementById("puNvSuperior").value = linha.dataset.id;
+      document.getElementById("puNvPrefixo").textContent = linha.dataset.codigo + ".";
+      document.getElementById("puNovaForm").reset();
+      document.getElementById("puNvSuperior").value = linha.dataset.id;
+      document.getElementById("puNovaErro").hidden = true;
+      nvModal.show();
+    }
+  });
+
+  document.getElementById("puEditarForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    post(URL_EDITAR.replace("/0/", "/" + contaEditando.dataset.id + "/"), ev.target).then(function (res) {
+      if (!res.ok) return mostrarErro(document.getElementById("puEditarErro"), res.json);
+      window.location.reload();
+    });
+  });
+  document.getElementById("puNovaForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    post(URL_CRIAR, ev.target).then(function (res) {
+      if (!res.ok) return mostrarErro(document.getElementById("puNovaErro"), res.json);
+      window.location.reload();
+    });
+  });
+  {% endif %}
+});
+</script>
+{% endblock %}

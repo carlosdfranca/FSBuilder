@@ -163,11 +163,16 @@
         Como as contas do balancete de <strong>{{ empresa.nome }}</strong> entram nas demonstrações financeiras
       </p>
     </div>
-    {% if can_manage %}
-      <button type="button" class="btn btn-primary" id="btnNova">
-        <i class="bi bi-plus-lg me-1"></i>Nova conta
-      </button>
-    {% endif %}
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{% url 'plano_contas_unico' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-diagram-3 me-1"></i>Plano único
+      </a>
+      {% if can_manage %}
+        <button type="button" class="btn btn-primary" id="btnNova">
+          <i class="bi bi-plus-lg me-1"></i>Nova conta
+        </button>
+      {% endif %}
+    </div>
   </div>
 
   <!-- KPIs -->

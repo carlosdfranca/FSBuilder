@@ -2,6 +2,7 @@ from django.urls import path, include
 from django.contrib.auth import views as auth_views
 from .views import *
 from usuarios.views import trocar_empresa_ativa
+from . import views_plano_unico
 
 urlpatterns = [
     # User Views
@@ -40,6 +41,11 @@ urlpatterns = [
     path('api/plano-de-contas/<int:mapeamento_id>/editar/', editar_mapeamento, name='editar_mapeamento'),
     path('api/plano-de-contas/<int:mapeamento_id>/excluir/', excluir_mapeamento, name='excluir_mapeamento'),
     path('api/plano-de-contas/pendentes/descartar/', descartar_pendente, name='descartar_pendente'),
+
+    # Plano de Contas Único (global)
+    path('plano-de-contas-unico/', views_plano_unico.plano_contas_unico, name='plano_contas_unico'),
+    path('api/plano-de-contas-unico/', views_plano_unico.criar_conta, name='criar_conta'),
+    path('api/plano-de-contas-unico/<int:conta_id>/editar/', views_plano_unico.editar_conta, name='editar_conta'),
 
     # Gestoras
     path('gestoras/adicionar/', adicionar_gestora, name='adicionar_gestora'),
