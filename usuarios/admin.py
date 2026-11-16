@@ -4,7 +4,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from .models import (
     Usuario, Empresa, Membership, Convite,
-    EscritorioContabil, MembroEscritorio, VinculoContabil,
+    EscritorioContabil, MembroEscritorio, VinculoContabil, ConviteEscritorio,
 )
 
 # ----- Inlines -----
@@ -232,3 +232,18 @@ class ConviteAdmin(admin.ModelAdmin):
         """Desabilita criação via admin (usar sistema de convites)."""
         return False
 
+
+
+# ----- Convite de escritório de contabilidade (consulta: o fluxo é feito pela tela de escritórios) -----
+@admin.register(ConviteEscritorio)
+class ConviteEscritorioAdmin(admin.ModelAdmin):
+    list_display = ("email", "escritorio", "role", "status", "convidado_por", "criado_em", "expira_em", "tentativas_envio")
+    list_filter = ("status", "role", "escritorio")
+    search_fields = ("email", "escritorio__nome")
+    ordering = ("-criado_em",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False  # o token é a credencial do convite: só a tela/serviço o altera

@@ -558,6 +558,77 @@ class Convite(models.Model):
         )
 
 
+# ===== Convite para escritório de contabilidade =====
+class ConviteEscritorio(models.Model):
+    """
+    Convite por e-mail para entrar na equipe de um escritório de contabilidade.
+    Modelo próprio (e não o Convite de empresa) porque aquele é preso à Empresa em muitos pontos.
+    A regra "um convite pendente por (escritório, e-mail)" fica no serviço: o MySQL ignora
+    UniqueConstraint(condition=...).
+    """
+    Status = Convite.Status
+
+    escritorio = models.ForeignKey(EscritorioContabil, on_delete=models.CASCADE, related_name="convites")
+    email = models.EmailField(db_index=True, help_text="Sempre em minúsculas.")
+    role = models.CharField(max_length=10, choices=MembroEscritorio.Role.choices, default=MembroEscritorio.Role.MEMBRO)
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    status = models.CharField(max_length=10, choices=Convite.Status.choices, default=Convite.Status.PENDING, db_index=True)
+
+    convidado_por = models.ForeignKey("Usuario", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    usuario_aceito = models.ForeignKey("Usuario", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+
+    criado_em = models.DateTimeField(auto_now_add=True)
+    expira_em = models.DateTimeField()
+    aceito_em = models.DateTimeField(null=True, blank=True)
+    cancelado_em = models.DateTimeField(null=True, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True, default="")
+    tentativas_envio = models.PositiveSmallIntegerField(default=1)
+    ultimo_envio_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Convite de escritório"
+        verbose_name_plural = "Convites de escritório"
+        ordering = ["-criado_em"]
+        indexes = [
+            models.Index(fields=["escritorio", "status"], name="idx_convesc_esc_status"),
+            models.Index(fields=["email", "escritorio"], name="idx_convesc_email_esc"),
+            models.Index(fields=["status", "expira_em"], name="idx_convesc_status_exp"),
+        ]
+
+    def __str__(self):
+        return f"Convite para {self.email} @ {self.escritorio.nome} ({self.get_status_display()})"
+
+    def save(self, *args, **kwargs):
+        if not self.pk and not self.expira_em:
+            from django.conf import settings
+            self.expira_em = timezone.now() + timedelta(days=getattr(settings, "CONVITE_EXPIRACAO_DIAS", 7))
+        super().save(*args, **kwargs)
+
+    def is_valido(self) -> bool:
+        return (
+            self.status == self.Status.PENDING
+            and timezone.now() <= self.expira_em
+            and self.escritorio.is_ativo
+        )
+
+    def marcar_expirado(self):
+        if self.status == self.Status.PENDING and timezone.now() > self.expira_em:
+            self.status = self.Status.EXPIRED
+            self.save(update_fields=["status"])
+
+    def get_link_aceite(self, base_url: str = None) -> str:
+        path = f"/escritorios/convite/{self.token}/"
+        return f"{base_url.rstrip('/')}{path}" if base_url else path
+
+    def pode_reenviar(self) -> bool:
+        from django.conf import settings
+        return (
+            self.status in {self.Status.PENDING, self.Status.EXPIRED}
+            and self.tentativas_envio < getattr(settings, "CONVITE_MAX_REENVIOS", 3)
+        )
+
+
 # ===== Redefinição de Senha =====
 class PasswordResetToken(models.Model):
     """
