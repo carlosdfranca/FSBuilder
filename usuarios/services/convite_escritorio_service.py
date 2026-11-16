@@ -104,7 +104,10 @@ def _agendar_envio(convite_id: int) -> None:
 
 # ----------------------------------------------------------------------- criar / reenviar / cancelar
 @transaction.atomic
-def criar_convite(*, escritorio: EscritorioContabil, email: str, role: str, convidado_por: Usuario) -> ConviteEscritorio:
+def criar_convite(
+    *, escritorio: EscritorioContabil, email: str, role: str, convidado_por: Usuario, enviar_email: bool = True
+) -> ConviteEscritorio:
+    """`enviar_email=False` só cria o convite (o link é entregue por outro meio, ex.: comando de terminal)."""
     email = (email or "").strip().lower()
     try:
         validate_email(email)
@@ -129,7 +132,8 @@ def criar_convite(*, escritorio: EscritorioContabil, email: str, role: str, conv
     convite = ConviteEscritorio.objects.create(
         escritorio=escritorio, email=email, role=role, convidado_por=convidado_por,
     )
-    _agendar_envio(convite.id)
+    if enviar_email:
+        _agendar_envio(convite.id)
     return convite
 
 
