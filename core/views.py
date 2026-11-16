@@ -28,6 +28,7 @@ from df.services.mapeamento_service import (
     total_contas_pendentes,
 )
 from df.validators import validar_documento_upload
+from df.services.periodo_service import movimentacoes_na_janela, periodo_tem_dados
 from df.services.documento_service import (
     sugerir_contem_dados_pessoais,
     registrar_acesso,
@@ -161,7 +162,7 @@ def demonstracao_financeira(request):
                 'tipo': p.tipo_periodo,
                 'ano': p.ano,
                 'status': p.status,
-                'tem_balancete': p.balancete_items.exists(),
+                'tem_dados': periodo_tem_dados(p),
                 'data_referencia': p.data_referencia.isoformat() if p.data_referencia else None,
                 'data_referencia_calculada': data_ref_calculada.isoformat() if data_ref_calculada else None,
                 'data_vencimento': p.data_vencimento.isoformat() if p.data_vencimento else None,
@@ -589,7 +590,7 @@ def api_periodos_fundo(request, fundo_id):
             "tipo": p.tipo_periodo,
             "ano": p.ano,
             "status": p.status,
-            "tem_balancete": p.balancete_items.exists(),
+            "tem_dados": periodo_tem_dados(p),
             "data_referencia": p.data_referencia.isoformat() if p.data_referencia else None,
             "data_referencia_calculada": data_ref_calc.isoformat() if data_ref_calc else None,
             "data_vencimento": p.data_vencimento.isoformat() if p.data_vencimento else None,
@@ -1361,6 +1362,9 @@ def gerenciar_periodos(request, fundo_id):
         status_info["dias_vencida"] = abs(dias) if dias < 0 else 0
         status_info["n_balancete"] = periodo.balancete_items.count()
         status_info["n_mec"] = periodo.mec_items.count()
+        movs, saldos = movimentacoes_na_janela(periodo) if periodo.data_referencia else (None, None)
+        status_info["n_movimentacoes"] = movs.count() if movs is not None else 0
+        status_info["n_saldos_iniciais"] = saldos.count() if saldos is not None else 0
         status_info["status"] = periodo.status  # usa o status salvo, não o calculado
         periodos_info.append({"periodo": periodo, **status_info})
 
@@ -1437,6 +1441,8 @@ def excluir_periodo(request, fundo_id, periodo_id):
     nome = periodo.nome_exibicao
     n_balancete = periodo.balancete_items.count() if tem_balancete else 0
     n_mec = periodo.mec_items.count() if tem_mec else 0
+    # Movimentações pertencem ao fundo, não ao período: sobrevivem à exclusão.
+    n_mov = movimentacoes_na_janela(periodo)[0].count() if periodo.data_referencia else 0
     try:
         periodo.delete()
     except ProtectedError:
@@ -1451,6 +1457,8 @@ def excluir_periodo(request, fundo_id, periodo_id):
         messages.warning(request, f"Período '{nome}' excluído junto com {n_balancete} registro(s) de balancete e {n_mec} registro(s) de MEC.")
     else:
         messages.success(request, f"Período '{nome}' excluído com sucesso.")
+    if n_mov:
+        messages.info(request, f"As {n_mov} movimentação(ões) do fundo nesse período foram mantidas.")
 
     return redirect("gerenciar_periodos", fundo_id=fundo_id)
 

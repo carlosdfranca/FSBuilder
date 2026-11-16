@@ -92,7 +92,7 @@ def calcular_status_periodo(periodo_df):
     
     Retorna um dicionário com:
     - status: 'nao_iniciada' | 'em_andamento' | 'finalizada' | 'vencida'
-    - tem_dados: bool (tem balancete ou MEC vinculado ao período)
+    - tem_dados: bool (tem movimentação, balancete ou MEC no período)
     - tem_emissao: bool (tem registro no histórico de emissão)
     - ultima_emissao: HistoricoEmissaoDF ou None
     - dias_ate_vencimento: int (negativo se vencida)
@@ -100,9 +100,8 @@ def calcular_status_periodo(periodo_df):
     hoje = date.today()
     
     # Verificar se tem dados importados vinculados a este período
-    tem_balancete = BalanceteItem.objects.filter(periodo_df=periodo_df).exists()
-    tem_mec = MecItem.objects.filter(periodo_df=periodo_df).exists()
-    tem_dados = tem_balancete or tem_mec
+    from df.services.periodo_service import periodo_tem_dados
+    tem_dados = periodo_tem_dados(periodo_df)
     
     # Verificar se tem emissão registrada para este período
     ultima_emissao = HistoricoEmissaoDF.objects.filter(

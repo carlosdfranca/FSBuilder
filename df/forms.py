@@ -94,6 +94,10 @@ class PeriodoDFManualForm(forms.ModelForm):
             instance.empresa = self.fundo.empresa
         
         instance.ano = instance.data_vencimento.year
+        from df.services.periodo_service import datas_padrao_periodo
+        instance.data_referencia, instance.data_anterior = datas_padrao_periodo(
+            instance.tipo_periodo, instance.ano, instance.data_vencimento
+        )
         instance.criado_manualmente = True
         instance.status = 'nao_iniciada'
         

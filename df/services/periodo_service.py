@@ -5,7 +5,7 @@ e auxiliar na criação manual (Transitória/Encerramento).
 """
 from datetime import date
 from django.db import transaction
-from df.models import PeriodoDF, Fundo
+from df.models import Movimentacao, PeriodoDF, Fundo, SaldoInicial
 
 
 def _vencimento_apos_fim(ano: int, mes_config: int, dia_config: int, fim_periodo: date) -> date:
@@ -25,6 +25,55 @@ def _vencimento_apos_fim(ano: int, mes_config: int, dia_config: int, fim_periodo
         return candidato
 
     return date(ano + 1, mes_config, dia_config)
+
+
+def datas_padrao_periodo(tipo_periodo: str, ano: int, data_vencimento: date) -> tuple[date, date]:
+    """
+    (data_referencia, data_anterior) de um período.
+    Anual: 31/12 do ano. Manuais (transitória/encerramento): a data de vencimento informada,
+    como o sistema já fazia. O anterior é sempre 31/12 do ano anterior à referência.
+    """
+    referencia = date(ano, 12, 31) if tipo_periodo == 'anual' else data_vencimento
+    return referencia, date(referencia.year - 1, 12, 31)
+
+
+def movimentacoes_na_janela(periodo_df):
+    """Movimentações e saldos iniciais do fundo dentro de (data_anterior, data_referencia]."""
+    ref = periodo_df.data_referencia
+    movs = Movimentacao.objects.filter(fundo_id=periodo_df.fundo_id, data__lte=ref)
+    saldos = SaldoInicial.objects.filter(fundo_id=periodo_df.fundo_id, data_base__lte=ref)
+    if periodo_df.data_anterior:
+        movs = movs.filter(data__gt=periodo_df.data_anterior)
+        saldos = saldos.filter(data_base__gt=periodo_df.data_anterior)
+    return movs, saldos
+
+
+def periodo_tem_movimentacao(periodo_df) -> bool:
+    """O fundo tem movimentação (ou saldo inicial) dentro da janela do período."""
+    if periodo_df.data_referencia is None:
+        return False
+    movs, saldos = movimentacoes_na_janela(periodo_df)
+    return movs.exists() or saldos.exists()
+
+
+def periodo_tem_dados(periodo_df) -> bool:
+    """
+    Há algum dado para a DF do período. Os balancetes importados (legado) e o MEC continuam
+    contando até a remoção do balancete.
+    """
+    return (
+        periodo_tem_movimentacao(periodo_df)
+        or periodo_df.balancete_items.exists()
+        or periodo_df.mec_items.exists()
+    )
+
+
+def atualizar_periodos_da_data(fundo, data) -> None:
+    """Reavalia o status dos períodos do fundo cuja janela contém `data`."""
+    candidatos = PeriodoDF.objects.filter(fundo=fundo, data_referencia__gte=data)
+    for periodo in candidatos:
+        if periodo.data_anterior is None or periodo.data_anterior < data:
+            atualizar_status_automatico(periodo)
 
 
 def gerar_periodos_anuais(fundo, ano_inicial, ano_final=None):
@@ -67,6 +116,8 @@ def gerar_periodos_anuais(fundo, ano_inicial, ano_final=None):
             ano=ano,
             defaults={
                 'data_vencimento': data_vencimento,
+                'data_referencia': datas_padrao_periodo('anual', ano, data_vencimento)[0],
+                'data_anterior': datas_padrao_periodo('anual', ano, data_vencimento)[1],
                 'status': 'nao_iniciada',
                 'criado_manualmente': False,
             }
@@ -124,12 +175,15 @@ def obter_ou_criar_periodo(fundo, tipo_periodo, ano, data_vencimento=None, descr
         if data_vencimento is None:
             raise ValueError(f"data_vencimento é obrigatório para tipo {tipo_periodo}")
 
+        referencia, anterior = datas_padrao_periodo(tipo_periodo, ano, data_vencimento)
         periodo = PeriodoDF.objects.create(
             fundo=fundo,
             empresa=fundo.empresa,
             tipo_periodo=tipo_periodo,
             ano=ano,
             data_vencimento=data_vencimento,
+            data_referencia=referencia,
+            data_anterior=anterior,
             status='nao_iniciada',
             criado_manualmente=True,
             descricao=descricao,
@@ -153,6 +207,8 @@ def obter_ou_criar_periodo(fundo, tipo_periodo, ano, data_vencimento=None, descr
             ano=ano,
             defaults={
                 'data_vencimento': data_vencimento,
+                'data_referencia': datas_padrao_periodo('anual', ano, data_vencimento)[0],
+                'data_anterior': datas_padrao_periodo('anual', ano, data_vencimento)[1],
                 'status': 'nao_iniciada',
                 'criado_manualmente': False,
             }
@@ -254,10 +310,7 @@ def atualizar_status_automatico(periodo_df):
         return periodo_df
     
     hoje = date.today()
-    tem_dados = (
-        periodo_df.balancete_items.exists() or 
-        periodo_df.mec_items.exists()
-    )
+    tem_dados = periodo_tem_dados(periodo_df)
     tem_emissao = periodo_df.historico_emissoes.exists()
     
     if tem_emissao:

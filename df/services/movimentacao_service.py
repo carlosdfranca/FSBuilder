@@ -9,6 +9,7 @@ from django.db import transaction
 from django.db.models import Max
 
 from df.models import Conta, Fundo, Movimentacao, PeriodoDF, SaldoInicial
+from df.services.periodo_service import atualizar_periodos_da_data
 
 
 def data_fechamento(fundo: Fundo) -> date | None:
@@ -66,7 +67,7 @@ def criar_movimentacao(
     lote=None,
 ) -> Movimentacao:
     _validar_movimentacao(fundo, conta, data, valor)
-    return Movimentacao.objects.create(
+    mov = Movimentacao.objects.create(
         fundo=fundo,
         empresa_id=fundo.empresa_id,
         conta=conta,
@@ -79,6 +80,8 @@ def criar_movimentacao(
         criado_por=usuario,
         atualizado_por=usuario,
     )
+    atualizar_periodos_da_data(fundo, data)
+    return mov
 
 
 @transaction.atomic
@@ -92,6 +95,7 @@ def editar_movimentacao(
     validar_data_aberta(mov.fundo, mov.data)  # o lançamento original também precisa estar em período aberto
     _validar_movimentacao(mov.fundo, nova_conta, nova_data, novo_valor)
 
+    data_antiga = mov.data
     mov.conta, mov.data, mov.valor = nova_conta, nova_data, novo_valor
     if historico is not None:
         mov.historico = historico[:255]
@@ -99,13 +103,17 @@ def editar_movimentacao(
         mov.documento = documento[:60]
     mov.atualizado_por = usuario
     mov.save()
+    for d in {data_antiga, nova_data}:
+        atualizar_periodos_da_data(mov.fundo, d)
     return mov
 
 
 @transaction.atomic
 def excluir_movimentacao(mov: Movimentacao) -> None:
     validar_data_aberta(mov.fundo, mov.data)
+    fundo, data = mov.fundo, mov.data
     mov.delete()
+    atualizar_periodos_da_data(fundo, data)
 
 
 @transaction.atomic
@@ -120,15 +128,22 @@ def definir_saldo_inicial(
     existente = SaldoInicial.objects.filter(fundo=fundo, conta=conta).first()
     if existente:
         validar_data_aberta(fundo, existente.data_base)
+        data_antiga = existente.data_base
         existente.data_base, existente.valor, existente.atualizado_por = data_base, valor, usuario
         existente.save()
+        for d in {data_antiga, data_base}:
+            atualizar_periodos_da_data(fundo, d)
         return existente
-    return SaldoInicial.objects.create(
+    saldo = SaldoInicial.objects.create(
         fundo=fundo, conta=conta, data_base=data_base, valor=valor, criado_por=usuario, atualizado_por=usuario
     )
+    atualizar_periodos_da_data(fundo, data_base)
+    return saldo
 
 
 @transaction.atomic
 def excluir_saldo_inicial(saldo: SaldoInicial) -> None:
     validar_data_aberta(saldo.fundo, saldo.data_base)
+    fundo, data = saldo.fundo, saldo.data_base
     saldo.delete()
+    atualizar_periodos_da_data(fundo, data)

@@ -982,7 +982,7 @@
     function buildPeriodoRow(p) {
       const v = computePeriodoView(p);
 
-      const verBtn = p.tem_balancete
+      const verBtn = p.tem_dados
         ? `<a href="/dre-resultado/${p.id}/" class="btn btn-sm btn-outline-primary" title="Ver DF">
              <i class="bi bi-graph-up"></i>
            </a>`
@@ -1019,7 +1019,7 @@
                     : v.rowClass === "table-warning"  ? "record-card--warning"
                     : "";
 
-      const verBtn = p.tem_balancete
+      const verBtn = p.tem_dados
         ? `<a href="/dre-resultado/${p.id}/" class="btn btn-sm btn-outline-primary">
              <i class="bi bi-graph-up me-1"></i>Ver DF
            </a>`
