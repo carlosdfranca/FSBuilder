@@ -38,6 +38,8 @@
 
       <form method="POST" action="{% url 'login' %}">
         {% csrf_token %}
+        {# Destino após o login (ex.: vindo de @login_required ou de um convite). O LoginView valida o host. #}
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
         <div class="mb-3">
           <label for="username" class="form-label">Usuário</label>
           <input type="text" class="form-control" id="username" name="username" placeholder="Digite seu usuário" required autofocus>
