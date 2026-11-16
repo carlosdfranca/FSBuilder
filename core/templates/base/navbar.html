@@ -9,8 +9,8 @@
       <img src="{% static 'img/logo-white.png' %}" alt="Cinnamon" class="site-nav__logo site-nav__logo--light">
     </a>
 
-    <!-- Seletor de Empresa (somente global) - versão desktop -->
-    {% if user_is_global and empresas_disponiveis %}
+    <!-- Seletor de Empresa (globais e quem alcança mais de uma empresa) - versão desktop -->
+    {% if pode_trocar_empresa and empresas_disponiveis %}
     <div class="site-nav__empresa site-nav__empresa--desktop">
       <form method="POST" action="{% url 'trocar_empresa_ativa' %}" class="site-nav__empresa-form">
         {% csrf_token %}
@@ -38,8 +38,8 @@
         <span class="site-nav__drawer-title">Menu</span>
       </div>
 
-      <!-- Seletor de Empresa (somente global) - versão mobile dentro do drawer -->
-      {% if user_is_global and empresas_disponiveis %}
+      <!-- Seletor de Empresa (globais e quem alcança mais de uma empresa) - versão mobile dentro do drawer -->
+      {% if pode_trocar_empresa and empresas_disponiveis %}
       <div class="site-nav__empresa site-nav__empresa--mobile">
         <form method="POST" action="{% url 'trocar_empresa_ativa' %}" class="site-nav__empresa-form">
           {% csrf_token %}
@@ -95,6 +95,15 @@
             {% endif %}
           </a>
         </li>
+{% if user_is_contabilidade %}
+        <li>
+          <a href="{% url 'painel_contabilidade' %}"
+             class="site-nav__link{% if request.resolver_match.url_name == 'painel_contabilidade' %} is-active{% endif %}"
+             {% if request.resolver_match.url_name == 'painel_contabilidade' %}aria-current="page"{% endif %}>
+            <i class="bi bi-calculator"></i> Contabilidade
+          </a>
+        </li>
+        {% endif %}
 {% if user_can_view_company_users %}
         <li>
           <a href="{% url 'gerenciar_usuarios' %}"

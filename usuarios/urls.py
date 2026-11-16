@@ -7,6 +7,7 @@ from usuarios.views_gerenciar import (
     empresa_usuario_excluir,
 )
 from usuarios.views_selecao import selecionar_empresa
+from usuarios.views_contabilidade import painel_contabilidade
 from usuarios.views_convite import (
     convidar_usuario,
     listar_convites,
@@ -20,6 +21,9 @@ from usuarios.views_password_reset import (
 )
 
 urlpatterns = [
+    # Painel da contabilidade (empresas vinculadas ao escritório do usuário)
+    path("contabilidade/", painel_contabilidade, name="painel_contabilidade"),
+
     # Gestão de usuários
     path("empresa/usuarios/", gerenciar_usuarios, name="gerenciar_usuarios"),
     # DEPRECATED: Método antigo removido - Use o sistema de convites

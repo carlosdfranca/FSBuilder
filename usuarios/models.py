@@ -241,6 +241,96 @@ class Membership(models.Model):
         return self.is_active
 
 
+# ===== Contabilidade =====
+class EscritorioContabil(models.Model):
+    """
+    Escritório de contabilidade: vários usuários que cuidam das movimentações de várias empresas.
+    O acesso de um usuário vem de MembroEscritorio → EscritorioContabil → VinculoContabil → Empresa.
+    """
+    nome = models.CharField(max_length=255, unique=True)
+    cnpj = models.CharField(
+        max_length=18, null=True, blank=True, unique=True,
+        validators=[_cnpj_regex_validator],
+        help_text="Opcional. Use 00.000.000/0000-00 ou 14 dígitos.",
+    )
+    is_ativo = models.BooleanField(
+        default=True,
+        help_text="Desativar suspende o acesso de toda a equipe às empresas vinculadas.",
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Escritório de contabilidade"
+        verbose_name_plural = "Escritórios de contabilidade"
+        ordering = ["nome"]
+
+    def __str__(self):
+        return self.nome
+
+
+class MembroEscritorio(models.Model):
+    class Role(models.TextChoices):
+        ADMIN = "ADMIN", "Administrador do escritório"
+        MEMBRO = "MEMBRO", "Membro"
+
+    escritorio = models.ForeignKey(EscritorioContabil, on_delete=models.CASCADE, related_name="membros")
+    usuario = models.ForeignKey("Usuario", on_delete=models.CASCADE, related_name="escritorios_contabeis")
+    role = models.CharField(max_length=10, choices=Role.choices, default=Role.MEMBRO)
+    is_active = models.BooleanField(default=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Membro do escritório"
+        verbose_name_plural = "Membros do escritório"
+        unique_together = (("escritorio", "usuario"),)
+        indexes = [models.Index(fields=["usuario", "is_active"], name="idx_membroesc_usuario_ativo")]
+
+    def __str__(self):
+        return f"{self.usuario} @ {self.escritorio}"
+
+
+class VinculoContabil(models.Model):
+    """Escritório responsável pelas movimentações de uma empresa (no máximo um ativo por empresa)."""
+    escritorio = models.ForeignKey(EscritorioContabil, on_delete=models.CASCADE, related_name="vinculos")
+    empresa = models.ForeignKey("Empresa", on_delete=models.CASCADE, related_name="vinculos_contabeis")
+    is_active = models.BooleanField(default=True)
+    criado_por = models.ForeignKey(
+        "Usuario", null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Vínculo contábil"
+        verbose_name_plural = "Vínculos contábeis"
+        unique_together = (("escritorio", "empresa"),)
+        indexes = [models.Index(fields=["empresa", "is_active"], name="idx_vinccont_empresa_ativo")]
+
+    def __str__(self):
+        return f"{self.escritorio} → {self.empresa}"
+
+    def clean(self):
+        # MySQL ignora UniqueConstraint(condition=...): a regra "um escritório ativo por empresa" fica aqui.
+        if self.is_active and self.empresa_id:
+            outro = (
+                VinculoContabil.objects
+                .filter(empresa_id=self.empresa_id, is_active=True)
+                .exclude(pk=self.pk)
+                .select_related("escritorio")
+                .first()
+            )
+            if outro:
+                raise ValidationError(
+                    _("A empresa já está vinculada ao escritório %(nome)s. Desative aquele vínculo antes."),
+                    params={"nome": outro.escritorio.nome},
+                )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+
 # ===== Convite =====
 class Convite(models.Model):
     """

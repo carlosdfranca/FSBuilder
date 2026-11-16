@@ -40,6 +40,7 @@ from df.services.documento_service import (
     serie_crescimento_mensal,
 )
 from usuarios.models import Empresa, Membership
+from usuarios.utils.acesso import empresas_acessiveis
 from usuarios.utils.company_scope import query_por_empresa_ativa
 from usuarios.permissions import (
     company_can_view_data,
@@ -83,8 +84,7 @@ def _empresas_do_usuario(user):
     has_global = getattr(user, "has_global_scope", None)
     if has_global and user.has_global_scope():
         return Empresa.objects.all()
-    empresa_ids = Membership.objects.filter(usuario=user, is_active=True).values_list("empresa_id", flat=True)
-    return Empresa.objects.filter(id__in=list(empresa_ids))
+    return empresas_acessiveis(user)
 
 def _can_manage_fundos(request):
     """

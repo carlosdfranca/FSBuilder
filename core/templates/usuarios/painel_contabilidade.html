@@ -1,0 +1,87 @@
+{% extends 'base/base.html' %}
+
+{% block title %}Painel da Contabilidade{% endblock %}
+
+{% block extra_head %}
+<style>
+  .kpi-card--red::before { background: linear-gradient(90deg, #b91c1c, #ef4444); }
+  .kpi-card--red .kpi-card__value { color: #ef4444; }
+  .pc-card { background: var(--surface-2); border: 1px solid var(--border-color); border-radius: 14px; padding: .75rem; overflow-x: auto; }
+  .pc-nome { font-weight: 600; color: var(--text-primary); }
+  .pc-sub { display: block; font-size: .74rem; color: var(--text-muted); font-weight: 400; }
+  .pc-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pc-atrasado { color: #ef4444; font-weight: 600; }
+  .pc-acoes { display: inline-flex; gap: .4rem; justify-content: flex-end; }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+<div class="container-fluid py-3">
+  <div class="page-header">
+    <div class="page-header__titles">
+      <h1 class="page-header__title">Painel da Contabilidade</h1>
+      <p class="page-header__subtitle">
+        {% for e in escritorios %}{{ e.nome }}{% if not forloop.last %} · {% endif %}{% endfor %}
+        — empresas vinculadas ao escritório e andamento das demonstrações financeiras
+      </p>
+    </div>
+  </div>
+
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));">
+    <div class="kpi-card kpi-card--blue">
+      <div class="kpi-card__label">Empresas</div>
+      <div class="kpi-card__value">{{ linhas|length }}</div>
+      <div class="kpi-card__sub">vinculadas</div>
+      <i class="bi bi-buildings kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card kpi-card--amber">
+      <div class="kpi-card__label">Períodos abertos</div>
+      <div class="kpi-card__value">{{ total_abertos }}</div>
+      <div class="kpi-card__sub">ainda sem DF finalizada</div>
+      <i class="bi bi-hourglass-split kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card kpi-card--red">
+      <div class="kpi-card__label">Vencidos</div>
+      <div class="kpi-card__value">{{ total_vencidos }}</div>
+      <div class="kpi-card__sub">prazo já passou</div>
+      <i class="bi bi-exclamation-triangle kpi-card__ghost-icon"></i>
+    </div>
+  </div>
+
+  {% if linhas %}
+  <div class="pc-card">
+    <table class="table-ds" style="width:100%">
+      <thead><tr>
+        <th>Empresa</th>{% if mais_de_um_escritorio %}<th>Escritório</th>{% endif %}
+        <th class="pc-num">Fundos</th><th class="pc-num">Períodos abertos</th><th class="pc-num">Vencidos</th><th>Próximo vencimento</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for l in linhas %}
+        <tr>
+          <td><span class="pc-nome">{{ l.empresa.nome }}</span>{% if l.empresa.cnpj %}<span class="pc-sub">{{ l.empresa.cnpj }}</span>{% endif %}</td>
+          {% if mais_de_um_escritorio %}<td>{{ l.escritorio }}</td>{% endif %}
+          <td class="pc-num">{{ l.empresa.qtd_fundos }}</td>
+          <td class="pc-num">{{ l.empresa.periodos_abertos }}</td>
+          <td class="pc-num{% if l.empresa.periodos_vencidos %} pc-atrasado{% endif %}">{{ l.empresa.periodos_vencidos }}</td>
+          <td class="{% if l.atrasado %}pc-atrasado{% endif %}">{% if l.empresa.proximo_vencimento %}{{ l.empresa.proximo_vencimento|date:"d/m/Y" }}{% else %}—{% endif %}</td>
+          <td>
+            <form method="post" action="{% url 'trocar_empresa_ativa' %}" class="pc-acoes">
+              {% csrf_token %}
+              <input type="hidden" name="empresa_id" value="{{ l.empresa.id }}">
+              <button type="submit" name="next" value="{% url 'demonstracao_financeira' %}" class="btn btn-sm btn-primary"><i class="bi bi-box-arrow-in-right me-1"></i>Abrir</button>
+              <button type="submit" name="next" value="{% url 'controle_emissoes' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-clipboard-check me-1"></i>Calendário</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="bi bi-buildings"></i>
+    <p>Nenhuma empresa vinculada ao seu escritório ainda. Peça ao administrador da plataforma para vincular as empresas.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

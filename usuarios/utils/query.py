@@ -1,5 +1,5 @@
 # usuarios/utils/query.py
-from usuarios.models import Membership
+from usuarios.utils.acesso import ids_empresas_acessiveis
 
 def restrict_by_empresa(queryset, user, empresa_field: str):
     """
@@ -11,8 +11,5 @@ def restrict_by_empresa(queryset, user, empresa_field: str):
     # global scope (viewer/admin/superuser) vê tudo
     if getattr(user, "has_global_scope", None) and user.has_global_scope():
         return queryset
-    # pega empresas do user
-    empresa_ids = Membership.objects.filter(
-        usuario=user, is_active=True
-    ).values_list("empresa_id", flat=True)
-    return queryset.filter(**{f"{empresa_field}__in": list(empresa_ids)})
+    # empresas que o usuário alcança (vínculos diretos + escritório de contabilidade)
+    return queryset.filter(**{f"{empresa_field}__in": ids_empresas_acessiveis(user)})
