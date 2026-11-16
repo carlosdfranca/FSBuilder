@@ -398,3 +398,111 @@ class SaldosIniciaisViewTests(ViewsMixin, TestCase):
         self.como(self.viewer)
         arq = SimpleUploadedFile("s.csv", b"conta;valor\n1.01.01;10,00\n")
         self.assertEqual(self.client.post(self.url("saldos_iniciais_importar"), {"arquivo": arq, "data_base": "2024-12-31"}).status_code, 403)
+
+
+class BalanceteCalculadoViewTests(ViewsMixin, TestCase):
+    """Anterior + movimentações + ajustes = atual, para todas as contas, com a árvore consolidada."""
+
+    def setUp(self):
+        self.montar()
+        self.periodo_2025 = self.periodo()
+        ms.definir_saldo_inicial(self.fundo, self.caixa, date(2024, 12, 31), D("1000"))
+        ms.definir_saldo_inicial(self.fundo, self.capital, date(2024, 12, 31), D("1000"))
+        self.mov(self.fundo, self.caixa, date(2025, 3, 10), "500")
+        self.mov(self.fundo, self.receita, date(2025, 3, 10), "500")
+        self.mov(self.fundo, self.caixa, date(2025, 6, 10), "-200")
+        self.mov(self.fundo, self.despesa, date(2025, 6, 10), "-200")
+
+    def pagina(self, periodo=None):
+        return self.client.get(reverse("balancete_periodo", args=[(periodo or self.periodo_2025).id]))
+
+    @staticmethod
+    def linhas(r):
+        return {l["codigo"]: l for l in r.context["linhas"]}
+
+    def test_valores_por_conta_e_consolidados(self):
+        self.como(self.viewer)
+        r = self.pagina()
+        self.assertEqual(r.status_code, 200)
+        L = self.linhas(r)
+        caixa = L["1.01.01"]
+        self.assertEqual((caixa["anterior"], caixa["movimentos"], caixa["atual"]), (D("1000"), D("300"), D("1300")))
+        self.assertEqual((L["1"]["anterior"], L["1"]["atual"]), (D("1000"), D("1300")))  # sintética somada
+        self.assertEqual((L["3"]["movimentos"], L["3"]["atual"]), (D("300"), D("300")))
+        self.assertEqual(L["3.01.01"]["anterior"], D("0"))  # resultado parte de zero no ano
+
+    def test_formula_fecha_em_todas_as_linhas(self):
+        self.como(self.viewer)
+        for l in self.pagina().context["linhas"]:
+            self.assertEqual(l["anterior"] + l["movimentos"] + l["ajustes"], l["atual"], l["codigo"])
+
+    def test_conferencia_zerada_e_sem_ajustes_no_primeiro_ano(self):
+        self.como(self.viewer)
+        c = self.pagina().context
+        self.assertEqual((c["conferencia_atual"], c["conferencia_anterior"]), (0, 0))
+        self.assertFalse(c["tem_ajustes"])
+        # caixa, receita e despesa; o capital só tem saldo inicial, sem movimento no período
+        self.assertEqual(c["contas_com_movimento"], 3)
+
+    def test_segundo_ano_mostra_o_ajuste_do_lucro_acumulado(self):
+        periodo_2026 = PeriodoDF.objects.create(
+            fundo=self.fundo, empresa=self.empresa, tipo_periodo="anual", ano=2026,
+            data_vencimento=date(2099, 3, 31), data_referencia=date(2026, 12, 31),
+            data_anterior=date(2025, 12, 31), status="nao_iniciada",
+        )
+        self.mov(self.fundo, self.caixa, date(2026, 2, 1), "100")
+        self.mov(self.fundo, self.receita, date(2026, 2, 1), "100")
+        self.como(self.viewer)
+        r = self.pagina(periodo_2026)
+        L = self.linhas(r)
+        self.assertTrue(r.context["tem_ajustes"])
+        lucros = L["2.03.02"]
+        self.assertEqual((lucros["anterior"], lucros["movimentos"], lucros["ajustes"], lucros["atual"]), (D("0"), D("0"), D("300"), D("300")))
+        self.assertEqual((L["3"]["anterior"], L["3"]["atual"]), (D("0"), D("100")))  # resultado zerou em 1/1
+        self.assertEqual((r.context["conferencia_atual"], r.context["conferencia_anterior"]), (0, 0))
+        for l in r.context["linhas"]:
+            self.assertEqual(l["anterior"] + l["movimentos"] + l["ajustes"], l["atual"], l["codigo"])
+
+    def test_grupo_com_total_zero_continua_na_arvore(self):
+        # receita +500 e despesa −200 já existem; mais −300 de despesa zera o grupo 3.01 (e a raiz 3)
+        self.mov(self.fundo, self.despesa, date(2025, 9, 1), "-300")
+        self.como(self.viewer)
+        L = self.linhas(self.pagina())
+        self.assertEqual((L["3.01"]["atual"], L["3"]["atual"]), (D("0"), D("0")))
+        # sem os ancestrais, as filhas ficariam inalcançáveis na árvore
+        self.assertEqual((L["3.01.01"]["atual"], L["3.01.02"]["atual"]), (D("500"), D("-500")))
+
+    def test_fundo_sem_dados(self):
+        PeriodoDF.objects.filter(pk=self.periodo_2025.pk).update(fundo=self.montar_fundo("Fundo Vazio", "44.444.444/0001-44"))
+        self.como(self.viewer)
+        r = self.pagina()
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.context["linhas"], [])
+
+    def test_exige_login_e_isola_empresa(self):
+        self.client.logout()
+        self.assertEqual(self.pagina().status_code, 302)
+        self.como(self.estranho)
+        self.assertEqual(self.pagina().status_code, 404)
+
+    def test_periodo_antigo_sem_datas_e_preenchido(self):
+        PeriodoDF.objects.filter(pk=self.periodo_2025.pk).update(data_referencia=None, data_anterior=None)
+        self.como(self.viewer)
+        self.assertEqual(self.pagina().status_code, 200)
+
+
+class PontosDeEntradaTests(ViewsMixin, TestCase):
+    def setUp(self):
+        self.montar()
+        self.como(self.viewer)
+
+    def test_pagina_da_df_tem_os_links_por_fundo_e_o_balancete_calculado(self):
+        html = self.client.get(reverse("demonstracao_financeira")).content.decode()
+        self.assertIn('id="link-movimentacoes"', html)
+        self.assertIn('id="link-saldos-iniciais"', html)
+        self.assertIn("/balancete/", html)
+        self.assertNotIn("/saldos/", html)  # o editor do balancete antigo saiu da tela
+
+    def test_lista_de_fundos_aponta_para_as_movimentacoes(self):
+        r = self.client.get(reverse("listar_fundos"))
+        self.assertContains(r, reverse("movimentacoes_fundo", args=[self.fundo.id]))

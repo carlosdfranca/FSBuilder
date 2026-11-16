@@ -18,8 +18,10 @@ from core.processing.importacao_movimentacao_service import (
     ImportacaoInvalida, desfazer_lote, importar_movimentacoes, importar_saldos_iniciais,
 )
 from core.upload.movimentacao_parser import MAX_LINHAS, parse_valor
-from df.models import Conta, Fundo, LoteImportacaoMovimentacao, Movimentacao, SaldoInicial
+from df.models import Conta, Fundo, LoteImportacaoMovimentacao, Movimentacao, PeriodoDF, SaldoInicial
 from df.services import movimentacao_service as ms
+from df.services.periodo_service import garantir_datas_periodo
+from df.services.saldo_calculo_service import balancete_calculado, conferencia, consolidar_arvore
 from usuarios.permissions import (
     company_can_manage_movimentacoes, company_can_view_data, get_empresa_escopo, pode_lancar_movimentacoes,
 )
@@ -357,3 +359,56 @@ def saldos_iniciais_importar(request, fundo_id):
         qtd = importar_saldos_iniciais(fundo, data_base, arquivo.name, arquivo.read(), request.user)
         return {"qtd": qtd, "mensagem": f"{qtd} saldo(s) inicial(is) gravado(s)."}
     return _resposta_importacao(fazer)
+
+
+# ------------------------------------------------------------------ balancete calculado
+COLUNAS_BALANCETE = ("anterior", "movimentos", "ajustes", "atual")
+
+
+@login_required
+@company_can_view_data
+def balancete_periodo(request, periodo_id):
+    """
+    Balancete do período calculado das movimentações: saldo anterior + movimentações + ajustes = saldo
+    atual, para todas as contas (sintéticas somadas na árvore). Nada disso é armazenado.
+    """
+    fundos = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
+    periodo = get_object_or_404(PeriodoDF.objects.select_related("fundo__empresa"), id=periodo_id, fundo__in=fundos)
+    garantir_datas_periodo(periodo)
+    fundo = periodo.fundo
+
+    analiticas = balancete_calculado(fundo.id, periodo.data_anterior, periodo.data_referencia)
+    consolidado = {
+        col: consolidar_arvore({l["conta_id"]: l[col] for l in analiticas}) for col in COLUNAS_BALANCETE
+    }
+
+    ids = {cid for col in consolidado.values() for cid in col}
+    codigos = set(Conta.objects.filter(id__in=ids).values_list("codigo", flat=True))
+    # Inclui os ancestrais mesmo quando o total deles dá zero (+100 e −100 nas filhas): sem eles a árvore quebra.
+    todos = set(codigos)
+    for codigo in codigos:
+        partes = codigo.split(".")
+        todos.update(".".join(partes[:i]) for i in range(1, len(partes)))
+    contas = list(Conta.objects.filter(codigo__in=todos).order_by("codigo"))
+
+    zero = Decimal("0")
+    linhas = [
+        {
+            "codigo": c.codigo, "descricao": c.descricao, "nivel": c.nivel, "tipo": c.tipo,
+            "natureza": c.get_natureza_display(),
+            **{col: consolidado[col].get(c.id, zero) for col in COLUNAS_BALANCETE},
+        }
+        for c in contas
+    ]
+
+    return render(request, "movimentacoes/balancete.html", {
+        "fundo": fundo,
+        "periodo": periodo,
+        "linhas": linhas,
+        "data_atual": periodo.data_referencia,
+        "data_anterior": periodo.data_anterior,
+        "tem_ajustes": any(l["ajustes"] for l in analiticas),
+        "contas_com_movimento": sum(1 for l in analiticas if l["movimentos"]),
+        "conferencia_atual": conferencia(fundo.id, periodo.data_referencia),
+        "conferencia_anterior": conferencia(fundo.id, periodo.data_anterior),
+    })

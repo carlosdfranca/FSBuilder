@@ -383,6 +383,12 @@
             <span id="fundo-tipo-badge" class="badge" style="display:none;"></span>
           </h6>
           <div id="period-actions" class="d-flex gap-2" style="display:none;">
+            <a id="link-movimentacoes" href="#" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-list-ul me-1"></i>Movimentações
+            </a>
+            <a id="link-saldos-iniciais" href="#" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-flag me-1"></i>Saldos iniciais
+            </a>
             <a id="link-criar-periodo" href="#" class="btn btn-sm btn-outline-secondary">
               <i class="bi bi-gear me-1"></i>Gerenciar períodos
             </a>
@@ -671,6 +677,10 @@
 
       const linkCriar = document.getElementById("link-criar-periodo");
       if (linkCriar) linkCriar.href = `/fundos/${fundoAtual}/periodos/`;
+      const linkMov = document.getElementById("link-movimentacoes");
+      if (linkMov) linkMov.href = `/fundos/${fundoAtual}/movimentacoes/`;
+      const linkSaldos = document.getElementById("link-saldos-iniciais");
+      if (linkSaldos) linkSaldos.href = `/fundos/${fundoAtual}/saldos-iniciais/`;
       const periodActions = document.getElementById("period-actions");
       if (periodActions) periodActions.style.display = "flex";
       const formCriarEl = document.getElementById('form-criar-periodo-df');
@@ -986,11 +996,11 @@
         ? `<a href="/dre-resultado/${p.id}/" class="btn btn-sm btn-outline-primary" title="Ver DF">
              <i class="bi bi-graph-up"></i>
            </a>`
-        : `<button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Sem balancete">
+        : `<button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Sem movimentações">
              <i class="bi bi-graph-up"></i>
            </button>`;
 
-      const saldosBtn = `<a href="/periodos/${p.id}/saldos/" class="btn btn-sm btn-outline-secondary" title="Saldos do balancete">
+      const saldosBtn = `<a href="/periodos/${p.id}/balancete/" class="btn btn-sm btn-outline-secondary" title="Balancete calculado">
              <i class="bi bi-table"></i>
            </a>`;
 
@@ -1027,8 +1037,8 @@
              <i class="bi bi-graph-up me-1"></i>Ver DF
            </button>`;
 
-      const saldosBtn = `<a href="/periodos/${p.id}/saldos/" class="btn btn-sm btn-outline-secondary">
-             <i class="bi bi-table me-1"></i>Saldos
+      const saldosBtn = `<a href="/periodos/${p.id}/balancete/" class="btn btn-sm btn-outline-secondary">
+             <i class="bi bi-table me-1"></i>Balancete
            </a>`;
 
       return `<article class="record-card ${cardMod}" data-periodo-id="${p.id}">

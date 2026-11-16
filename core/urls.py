@@ -56,6 +56,7 @@ urlpatterns = [
     path('fundos/<int:fundo_id>/movimentacoes/importar/', views_movimentacoes.movimentacoes_importar, name='movimentacoes_importar'),
     path('fundos/<int:fundo_id>/movimentacoes/importar/modelo/', views_movimentacoes.movimentacoes_modelo, name='movimentacoes_modelo'),
     path('fundos/<int:fundo_id>/movimentacoes/lotes/<int:lote_id>/desfazer/', views_movimentacoes.movimentacoes_lote_desfazer, name='movimentacoes_lote_desfazer'),
+    path('periodos/<int:periodo_id>/balancete/', views_movimentacoes.balancete_periodo, name='balancete_periodo'),
     path('fundos/<int:fundo_id>/saldos-iniciais/', views_movimentacoes.saldos_iniciais_fundo, name='saldos_iniciais_fundo'),
     path('fundos/<int:fundo_id>/saldos-iniciais/salvar/', views_movimentacoes.saldo_inicial_salvar, name='saldo_inicial_salvar'),
     path('fundos/<int:fundo_id>/saldos-iniciais/importar/', views_movimentacoes.saldos_iniciais_importar, name='saldos_iniciais_importar'),
