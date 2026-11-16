@@ -37,6 +37,24 @@ def datas_padrao_periodo(tipo_periodo: str, ano: int, data_vencimento: date) -> 
     return referencia, date(referencia.year - 1, 12, 31)
 
 
+def garantir_datas_periodo(periodo_df) -> None:
+    """
+    Preenche as datas dos períodos criados antes de elas serem definidas na criação.
+    Sem dados antes do início do fundo o comparativo sai zerado, igual ao antigo "zerado".
+    """
+    campos = []
+    if periodo_df.data_referencia is None:
+        periodo_df.data_referencia, _ = datas_padrao_periodo(
+            periodo_df.tipo_periodo, periodo_df.ano, periodo_df.data_vencimento
+        )
+        campos.append('data_referencia')
+    if periodo_df.data_anterior is None:
+        periodo_df.data_anterior = date(periodo_df.data_referencia.year - 1, 12, 31)
+        campos.append('data_anterior')
+    if campos:
+        periodo_df.save(update_fields=campos + ['atualizado_em'])
+
+
 def movimentacoes_na_janela(periodo_df):
     """Movimentações e saldos iniciais do fundo dentro de (data_anterior, data_referencia]."""
     ref = periodo_df.data_referencia

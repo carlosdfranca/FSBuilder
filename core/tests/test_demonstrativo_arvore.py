@@ -125,7 +125,9 @@ class DreArvoreTests(CenarioMixin, TestCase):
         self.assertEqual(dre["linhas"][0]["anterior"], D("300"))
 
 
-class DfArvoreViewTests(CenarioMixin, TestCase):
+class DfResultadoViewTests(CenarioMixin, TestCase):
+    """Tela principal da DF (/dre-resultado/<id>/), agora pelo plano de contas."""
+
     def setUp(self):
         self.montar_cenario()
         self.periodo = PeriodoDF.objects.create(
@@ -137,18 +139,34 @@ class DfArvoreViewTests(CenarioMixin, TestCase):
         Membership.objects.create(
             usuario=self.user, empresa=self.fundo.empresa, role=Membership.Role.VIEWER, is_active=True
         )
-        self.url = reverse("df_resultado_arvore", args=[self.periodo.id])
+        self.url = reverse("dre_resultado", args=[self.periodo.id])
 
     def test_exige_login(self):
         self.assertEqual(self.client.get(self.url).status_code, 302)
 
-    def test_renderiza_com_valores(self):
+    def test_renderiza_as_quatro_demonstracoes(self):
         self.client.force_login(self.user)
         r = self.client.get(self.url)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.context["nivel"], 4)
         self.assertEqual(r.context["dpf"]["totais"]["ativo"]["atual"], D("1"))  # R$ mil arredondado
-        self.assertContains(r, "Resultado do exercício")
+        for contem in ("Resultado do exercício", "Total do Ativo", "Fluxo de caixa das atividades operacionais"):
+            self.assertContains(r, contem)
+
+    def test_pl_e_resultado_alimentam_a_dmpl(self):
+        self.client.force_login(self.user)
+        ctx = self.client.get(self.url).context
+        self.assertEqual(ctx["pl_ajustado_atual"], ctx["dpf"]["totais"]["pl"]["atual"])
+        self.assertEqual(ctx["resultado_exercicio"], ctx["dre"]["resultado_atual"])
+
+    def test_alerta_quando_o_ativo_nao_fecha(self):
+        self.mov(self.fundo, self.caixa, date(2025, 7, 1), "5000000")  # sem contrapartida
+        self.client.force_login(self.user)
+        self.assertContains(self.client.get(self.url), "não fecha com o passivo")
+
+    def test_sem_alerta_quando_fecha(self):
+        self.client.force_login(self.user)
+        self.assertNotContains(self.client.get(self.url), "não fecha com o passivo")
 
     def test_nivel_e_limitado(self):
         self.client.force_login(self.user)
@@ -164,9 +182,11 @@ class DfArvoreViewTests(CenarioMixin, TestCase):
             data_vencimento=date(2099, 3, 31), data_referencia=FIM_2025, status="nao_iniciada",
         )
         self.client.force_login(self.user)
-        self.assertEqual(self.client.get(reverse("df_resultado_arvore", args=[periodo_b.id])).status_code, 404)
+        self.assertEqual(self.client.get(reverse("dre_resultado", args=[periodo_b.id])).status_code, 404)
 
-    def test_periodo_sem_data_referencia_redireciona(self):
-        PeriodoDF.objects.filter(pk=self.periodo.pk).update(data_referencia=None)
+    def test_periodo_antigo_sem_datas_e_preenchido_na_hora(self):
+        PeriodoDF.objects.filter(pk=self.periodo.pk).update(data_referencia=None, data_anterior=None)
         self.client.force_login(self.user)
-        self.assertEqual(self.client.get(self.url).status_code, 302)
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+        self.periodo.refresh_from_db()
+        self.assertEqual((self.periodo.data_referencia, self.periodo.data_anterior), (FIM_2025, date(2024, 12, 31)))

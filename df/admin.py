@@ -10,6 +10,10 @@ from .models import (
     ChecklistItemPadrao,
     DocumentoDF,
     LogAcessoDocumento,
+    Conta,
+    LinhaDFC,
+    Movimentacao,
+    SaldoInicial,
 )
 from .admin_mixins import TenantScopedAdminMixin
 
@@ -132,3 +136,48 @@ class MecItemAdmin(admin.ModelAdmin):
     search_fields = ("fundo__nome",)
     ordering = ("-data_posicao", "fundo")
     autocomplete_fields = ("fundo",)
+
+
+@admin.register(LinhaDFC)
+class LinhaDFCAdmin(admin.ModelAdmin):
+    """Linhas da DFC. O clean() do modelo recusa código inexistente e sobreposição entre linhas."""
+    list_display = ("secao", "ordem", "descricao", "prefixos", "sinal", "is_ativa")
+    list_filter = ("secao", "is_ativa")
+    list_editable = ("ordem", "is_ativa")
+    search_fields = ("descricao", "prefixos")
+    ordering = ("secao", "ordem")
+
+
+class SomenteConsultaAdmin(admin.ModelAdmin):
+    """Alterações passam pelos services (período fechado, vigência, saldo inicial), não pelo admin."""
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Conta)
+class ContaAdmin(SomenteConsultaAdmin):
+    list_display = ("codigo", "descricao", "tipo", "natureza", "nivel", "papel", "is_ativa")
+    list_filter = ("natureza", "tipo", "origem_tabela", "is_ativa")
+    search_fields = ("codigo", "descricao")
+
+
+@admin.register(SaldoInicial)
+class SaldoInicialAdmin(SomenteConsultaAdmin):
+    list_display = ("fundo", "conta", "data_base", "valor")
+    list_filter = ("fundo",)
+    search_fields = ("conta__codigo", "conta__descricao", "fundo__nome")
+
+
+@admin.register(Movimentacao)
+class MovimentacaoAdmin(SomenteConsultaAdmin):
+    list_display = ("data", "fundo", "conta", "valor", "historico", "origem")
+    list_filter = ("fundo", "origem")
+    search_fields = ("conta__codigo", "historico", "documento", "fundo__nome")
+    date_hierarchy = "data"

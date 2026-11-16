@@ -182,6 +182,11 @@ def gerar_dpf_arvore(
         "passivo": passivo,
         "pl": pl,
         "totais": totais,
+        # Seções já com o total no fim: tela e Excel percorrem a mesma lista.
+        "secao_ativo": ativo + [totais["ativo"]],
+        "secao_passivo": passivo + [totais["passivo"]],
+        "secao_pl": pl + [totais["pl"]],
+        "secao_fechamento": [totais["passivo_pl"]],
         # Conferência com os valores exatos: arredondar cada total antes de subtrair criaria ±1 falso.
         "diferenca_atual": _mil(tot_ativo[0] - tot_passivo[0] - tot_pl[0], dividir_por_mil),
         "diferenca_anterior": _mil(tot_ativo[1] - tot_passivo[1] - tot_pl[1], dividir_por_mil),

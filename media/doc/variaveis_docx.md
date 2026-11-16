@@ -67,17 +67,24 @@ Entra como lista de parágrafos (blocos separados por linha em branco). Se estiv
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `row.descricao` | texto | Nome do grupo ou sub-item |
+| `row.descricao` | texto | Nome da conta do plano de contas |
 | `row.atual` | número | Valor atual em R$ mil (inteiro) |
 | `row.anterior` | número | Valor anterior em R$ mil (inteiro) |
 | `row.perc_atual` | número | % sobre PL atual (float, 2 casas) |
 | `row.perc_anterior` | número | % sobre PL anterior (float, 2 casas) |
-| `row.tipo` | texto | `"grupo"` (linha em negrito) ou `"item"` (sub-item recuado) |
+| `row.tipo` | texto | `"grupo"` (conta com contas abaixo, em negrito) ou `"item"` (conta final) |
+| `row.nivel` | número | Nível da conta no plano (1 = raiz). Use para o recuo da linha |
 
-### 2.2 Loop de linhas do Passivo
+> As linhas seguem a hierarquia do plano de contas único e o **nível de detalhe** escolhido na tela
+> (padrão 4). Os valores de cada linha já incluem as contas abaixo dela.
 
-**Variável da lista:** `passivo_rows`  
+### 2.2 Loops de linhas do Passivo e do Patrimônio Líquido
+
+**Variáveis das listas:** `passivo_rows` e `pl_rows`  
 *(campos idênticos ao `ativo_rows`)*
+
+`passivo_rows` traz só o passivo exigível (circulante e não circulante). O patrimônio líquido vem em
+`pl_rows`, que termina com a linha "Resultado do exercício".
 
 ### 2.3 Totais e PL (escalares)
 
@@ -112,7 +119,7 @@ Entra como lista de parágrafos (blocos separados por linha em branco). Se estiv
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `row.descricao` | texto | Nome do grupo ou sub-item |
+| `row.descricao` | texto | Nome da conta do plano de contas |
 | `row.atual` | número | Valor atual em R$ mil |
 | `row.anterior` | número | Valor anterior em R$ mil |
 | `row.tipo` | texto | `"grupo"` (negrito, com soma) ou `"item"` (recuado) |
@@ -184,71 +191,37 @@ Não há loops. Todas as variáveis são escalares.
 
 ## 5. DFC — Demonstração dos Fluxos de Caixa
 
-### 5.1 Bloco Operacional
+A DFC é gerada pelas linhas cadastradas em **Linhas da DFC** (admin), por variação de saldo das contas
+do plano. Por isso o conteúdo é uma lista única, e não variáveis fixas por linha.
+
+### 5.1 Loop de linhas
+
+**Variável da lista:** `dfc_rows`
+
+```
+{%tr for row in dfc_rows %}
+{{row.descricao}}  |  {{row.atual}}  |  {{row.anterior}}
+{%tr endfor %}
+```
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `row.descricao` | texto | Título da atividade, linha, total ou saldo de caixa |
+| `row.atual` | número | Valor atual em R$ mil (vazio nas linhas de título) |
+| `row.anterior` | número | Valor do período anterior em R$ mil (vazio nas linhas de título) |
+| `row.tipo` | texto | `"grupo"` (título da atividade), `"item"` (linha) ou `"total"` (subtotal/saldo) |
+| `row.nivel` | número | 1 = título/total; 2 = linha dentro da atividade |
+
+A lista já traz, em ordem: atividades operacionais, de investimento e de financiamento (cada uma com seu
+total), a variação no caixa e os saldos de caixa no início e no final.
+
+### 5.2 Variação e saldos de caixa (escalares)
 
 | Variável | Descrição |
 |---|---|
-| `{{dfc_op_titulo}}` | Título do bloco (ex: "Atividades operacionais") |
-| `{{dfc_resultado_liq_titulo}}` | Rótulo resultado líquido |
-| `{{dfc_resultado_liq_atual}}` | Resultado líquido — atual |
-| `{{dfc_resultado_liq_anterior}}` | Resultado líquido — anterior |
-| `{{dfc_ajustes_titulo}}` | Título dos ajustes |
-| `{{dfc_rendimento_dc_titulo}}` | Rótulo rendimento de direitos creditórios |
-| `{{dfc_rendimento_dc_atual}}` | Rendimento DC — atual |
-| `{{dfc_rendimento_dc_anterior}}` | Rendimento DC — anterior |
-| `{{dfc_provisao_perdas_titulo}}` | Rótulo provisão para perdas |
-| `{{dfc_provisao_perdas_atual}}` | Provisão perdas — atual |
-| `{{dfc_provisao_perdas_anterior}}` | Provisão perdas — anterior |
-| `{{dfc_taxa_adm_titulo}}` | Rótulo taxa de administração |
-| `{{dfc_taxa_adm_atual}}` | Taxa adm — atual |
-| `{{dfc_taxa_adm_anterior}}` | Taxa adm — anterior |
-| `{{dfc_taxa_gestao_titulo}}` | Rótulo taxa de gestão |
-| `{{dfc_taxa_gestao_atual}}` | Taxa gestão — atual |
-| `{{dfc_taxa_gestao_anterior}}` | Taxa gestão — anterior |
-| `{{dfc_resultado_ajustado_titulo}}` | Rótulo resultado ajustado |
-| `{{dfc_resultado_ajustado_atual}}` | Resultado ajustado — atual |
-| `{{dfc_resultado_ajustado_anterior}}` | Resultado ajustado — anterior |
-| `{{dfc_aumento_dc_titulo}}` | Rótulo aumento em direitos creditórios |
-| `{{dfc_aumento_dc_atual}}` | Aumento DC — atual |
-| `{{dfc_aumento_dc_anterior}}` | Aumento DC — anterior |
-| `{{dfc_aumento_receber_titulo}}` | Rótulo aumento em contas a receber |
-| `{{dfc_aumento_receber_atual}}` | Aumento a receber — atual |
-| `{{dfc_aumento_receber_anterior}}` | Aumento a receber — anterior |
-| `{{dfc_reducao_pagar_titulo}}` | Rótulo redução em contas a pagar |
-| `{{dfc_reducao_pagar_atual}}` | Redução a pagar — atual |
-| `{{dfc_reducao_pagar_anterior}}` | Redução a pagar — anterior |
-| `{{dfc_caixa_operacional_titulo}}` | Rótulo caixa gerado nas atividades operacionais |
-| `{{dfc_caixa_operacional_atual}}` | Caixa operacional — atual |
-| `{{dfc_caixa_operacional_anterior}}` | Caixa operacional — anterior |
-
-### 5.2 Bloco Financiamento
-
-| Variável | Descrição |
-|---|---|
-| `{{dfc_fin_titulo}}` | Título do bloco (ex: "Atividades de financiamento") |
-| `{{dfc_emissao_titulo}}` | Rótulo emissão de cotas |
-| `{{dfc_emissao_atual}}` | Emissão — atual |
-| `{{dfc_emissao_anterior}}` | Emissão — anterior |
-| `{{dfc_resgate_titulo}}` | Rótulo resgate de cotas |
-| `{{dfc_resgate_atual}}` | Resgate — atual |
-| `{{dfc_resgate_anterior}}` | Resgate — anterior |
-| `{{dfc_caixa_financiamento_titulo}}` | Rótulo caixa das atividades de financiamento |
-| `{{dfc_caixa_financiamento_atual}}` | Caixa financiamento — atual |
-| `{{dfc_caixa_financiamento_anterior}}` | Caixa financiamento — anterior |
-
-### 5.3 Variação e saldos de caixa
-
-| Variável | Descrição |
-|---|---|
-| `{{dfc_variacao_caixa_titulo}}` | Rótulo variação no caixa e equivalentes |
-| `{{dfc_variacao_caixa_atual}}` | Variação caixa — atual |
-| `{{dfc_variacao_caixa_anterior}}` | Variação caixa — anterior |
-| `{{dfc_caixa_inicio_titulo}}` | Rótulo caixa e equivalentes no início |
-| `{{dfc_caixa_inicio_atual}}` | Caixa início — atual |
-| `{{dfc_caixa_inicio_anterior}}` | Caixa início — anterior |
-| `{{dfc_caixa_final_titulo}}` | Rótulo caixa e equivalentes no final |
-| `{{dfc_caixa_final_atual}}` | Caixa final — atual |
-| `{{dfc_caixa_final_anterior}}` | Caixa final — anterior |
+| `{{dfc_variacao_caixa_atual}}` / `{{dfc_variacao_caixa_anterior}}` | Variação no caixa e equivalentes |
+| `{{dfc_caixa_inicio_atual}}` / `{{dfc_caixa_inicio_anterior}}` | Caixa no início do período |
+| `{{dfc_caixa_final_atual}}` / `{{dfc_caixa_final_anterior}}` | Caixa no final do período |
 
 ---
 
@@ -272,31 +245,17 @@ Não há loops. Todas as variáveis são escalares.
 {{dmpl_resgate_qtd}}  {{dmpl_resgate_valor}}
 {{dmpl_pl_antes_resultado}}
 {{dmpl_cotas_fim_qtd}}  {{dmpl_cotas_fim_valor}}  {{dmpl_valor_ultimo}}
-{{dfc_op_titulo}}
-{{dfc_resultado_liq_titulo}}  {{dfc_resultado_liq_atual}}  {{dfc_resultado_liq_anterior}}
-{{dfc_ajustes_titulo}}
-{{dfc_rendimento_dc_titulo}}  {{dfc_rendimento_dc_atual}}  {{dfc_rendimento_dc_anterior}}
-{{dfc_provisao_perdas_titulo}}  {{dfc_provisao_perdas_atual}}  {{dfc_provisao_perdas_anterior}}
-{{dfc_taxa_adm_titulo}}  {{dfc_taxa_adm_atual}}  {{dfc_taxa_adm_anterior}}
-{{dfc_taxa_gestao_titulo}}  {{dfc_taxa_gestao_atual}}  {{dfc_taxa_gestao_anterior}}
-{{dfc_resultado_ajustado_titulo}}  {{dfc_resultado_ajustado_atual}}  {{dfc_resultado_ajustado_anterior}}
-{{dfc_aumento_dc_titulo}}  {{dfc_aumento_dc_atual}}  {{dfc_aumento_dc_anterior}}
-{{dfc_aumento_receber_titulo}}  {{dfc_aumento_receber_atual}}  {{dfc_aumento_receber_anterior}}
-{{dfc_reducao_pagar_titulo}}  {{dfc_reducao_pagar_atual}}  {{dfc_reducao_pagar_anterior}}
-{{dfc_caixa_operacional_titulo}}  {{dfc_caixa_operacional_atual}}  {{dfc_caixa_operacional_anterior}}
-{{dfc_fin_titulo}}
-{{dfc_emissao_titulo}}  {{dfc_emissao_atual}}  {{dfc_emissao_anterior}}
-{{dfc_resgate_titulo}}  {{dfc_resgate_atual}}  {{dfc_resgate_anterior}}
-{{dfc_caixa_financiamento_titulo}}  {{dfc_caixa_financiamento_atual}}  {{dfc_caixa_financiamento_anterior}}
-{{dfc_variacao_caixa_titulo}}  {{dfc_variacao_caixa_atual}}  {{dfc_variacao_caixa_anterior}}
-{{dfc_caixa_inicio_titulo}}  {{dfc_caixa_inicio_atual}}  {{dfc_caixa_inicio_anterior}}
-{{dfc_caixa_final_titulo}}  {{dfc_caixa_final_atual}}  {{dfc_caixa_final_anterior}}
+{{dfc_variacao_caixa_atual}}  {{dfc_variacao_caixa_anterior}}
+{{dfc_caixa_inicio_atual}}  {{dfc_caixa_inicio_anterior}}
+{{dfc_caixa_final_atual}}  {{dfc_caixa_final_anterior}}
 ```
 
 ### Listas (loops com `{%tr for %}`)
 ```
 contexto_operacional_paragrafos → lista de strings (loop com {%p for %})
-ativo_rows    → campos: descricao, atual, anterior, perc_atual, perc_anterior, tipo
-passivo_rows  → campos: descricao, atual, anterior, perc_atual, perc_anterior, tipo
-dre_rows      → campos: descricao, atual, anterior, tipo
+ativo_rows    → campos: descricao, atual, anterior, perc_atual, perc_anterior, tipo, nivel
+passivo_rows  → campos: descricao, atual, anterior, perc_atual, perc_anterior, tipo, nivel
+pl_rows       → campos: descricao, atual, anterior, perc_atual, perc_anterior, tipo, nivel
+dre_rows      → campos: descricao, atual, anterior, tipo, nivel
+dfc_rows      → campos: descricao, atual, anterior, tipo, nivel
 ```

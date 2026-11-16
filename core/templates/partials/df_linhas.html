@@ -1,0 +1,8 @@
+{% load custom_tags %}{% for l in linhas %}
+<tr class="{% if l.tipo_linha == 'grupo' or l.tipo_linha == 'total' %}table-secondary fw-bold{% elif l.tipo_linha == 'virtual' %}fst-italic{% endif %}">
+  <td style="padding-left: {{ l.nivel|add:'-1' }}rem;">{% if l.codigo and l.tipo_linha != 'total' %}<span class="text-muted small me-1">{{ l.codigo }}</span>{% endif %}{{ l.descricao }}</td>
+  <td class="text-end">{% if l.atual is not None %}{{ l.atual|formata_milhar }}{% endif %}</td>
+  {% if com_perc %}<td class="text-end text-muted">{% if l.perc_atual is not None %}{{ l.perc_atual|floatformat:1 }}{% endif %}</td>{% endif %}
+  <td class="text-end">{% if l.anterior is not None %}{{ l.anterior|formata_milhar }}{% endif %}</td>
+  {% if com_perc %}<td class="text-end text-muted">{% if l.perc_anterior is not None %}{{ l.perc_anterior|floatformat:1 }}{% endif %}</td>{% endif %}
+</tr>{% endfor %}

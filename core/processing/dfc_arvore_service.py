@@ -116,5 +116,9 @@ def gerar_dfc_arvore(
         "linhas": rows,
         "variacao_atual": _mil(variacao_a, dividir_por_mil),
         "variacao_anterior": _mil(variacao_p, dividir_por_mil),
+        "caixa_inicio_atual": _mil(caixa_ini_a, dividir_por_mil),
+        "caixa_inicio_anterior": _mil(caixa_ini_p, dividir_por_mil),
+        "caixa_final_atual": _mil(caixa_fim_a, dividir_por_mil),
+        "caixa_final_anterior": _mil(caixa_fim_p, dividir_por_mil),
         "tem_conciliacao": conciliacao_a != ZERO or conciliacao_p != ZERO,
     }

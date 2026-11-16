@@ -1,5 +1,5 @@
 {% load custom_tags %}
-
+{# DPF gerada pela árvore do plano de contas. Percentuais sobre o patrimônio líquido. #}
 <table class="table table-bordered table-sm mt-2">
   <thead class="table-light">
     <tr>
@@ -11,110 +11,26 @@
     </tr>
   </thead>
   <tbody>
-
-    {# ====== ATIVO ====== #}
-    {% with secao=dpf_tabela.ATIVO %}
-      {% for grupo_label, bloco in secao.items %}
-        {% if grupo_label|slice:":6" != "TOTAL_" and grupo_label|slice:":5" != "PERC_" %}
-          <tr class="table-secondary fw-bold">
-            <td colspan="1">{{ grupo_label }}</td>
-            <td class="text-end">{{ bloco.SOMA|default:0|formata_milhar }}</td>
-            <td class="text-end">{{ bloco.PERC_ATUAL|default:0|formata_milhar }}</td>
-            <td class="text-end">{{ bloco.SOMA_ANTERIOR|default:0|formata_milhar }}</td>
-            <td class="text-end">{{ bloco.PERC_ANTERIOR|default:0|formata_milhar }}</td>
-          </tr>
-
-          {% for subgrupo, valores in bloco.items %}
-            {% if subgrupo != "SOMA" and subgrupo != "SOMA_ANTERIOR" and subgrupo != "PERC_ATUAL" and subgrupo != "PERC_ANTERIOR" %}
-              <tr>
-                <td>{{ subgrupo }}</td>
-                <td class="text-end">{{ valores.ATUAL|default:0|formata_milhar }}</td>
-                <td class="text-end">{{ valores.PERC_ATUAL|default:0|formata_milhar }}</td>
-                <td class="text-end">{{ valores.ANTERIOR|default:0|formata_milhar }}</td>
-                <td class="text-end">{{ valores.PERC_ANTERIOR|default:0|formata_milhar }}</td>
-              </tr>
-            {% endif %}
-          {% endfor %}
-
-          <tr class="table-separator"><td colspan="5"></td></tr>
-        {% endif %}
-      {% endfor %}
-
-      <!-- TOTAL ATIVO -->
-      <tr class="table-secondary fw-bold">
-        <td>TOTAL ATIVO</td>
-        <td class="text-end">{{ secao.TOTAL_ATIVO.ATUAL|default:0|formata_milhar }}</td>
-        <td class="text-end">{{ secao.TOTAL_ATIVO.PERC_ATUAL|default:0|formata_milhar }}</td>
-        <td class="text-end">{{ secao.TOTAL_ATIVO.ANTERIOR|default:0|formata_milhar }}</td>
-        <td class="text-end">{{ secao.TOTAL_ATIVO.PERC_ANTERIOR|default:0|formata_milhar }}</td>
-      </tr>
-    {% endwith %}
-
-    <!-- Separador entre seções -->
+    <tr class="table-light"><td colspan="5" class="fw-bold small text-uppercase">Ativo</td></tr>
+    {% include 'partials/df_linhas.html' with linhas=dpf.secao_ativo com_perc=True %}
     <tr class="table-separator"><td colspan="5"></td></tr>
 
-    {# ====== PASSIVO ====== #}
-    {% with secao=dpf_tabela.PASSIVO %}
-      {% for grupo_label, bloco in secao.items %}
-        {% if grupo_label|slice:":6" != "TOTAL_" and grupo_label|slice:":5" != "PERC_" %}
-          <tr class="table-secondary fw-bold">
-            <td colspan="1">{{ grupo_label }}</td>
-            <td class="text-end">{{ bloco.SOMA|default:0|formata_milhar }}</td>
-            <td class="text-end">{{ bloco.PERC_ATUAL|default:0|formata_milhar }}</td>
-            <td class="text-end">{{ bloco.SOMA_ANTERIOR|default:0|formata_milhar }}</td>
-            <td class="text-end">{{ bloco.PERC_ANTERIOR|default:0|formata_milhar }}</td>
-          </tr>
-
-          {% for subgrupo, valores in bloco.items %}
-            {% if subgrupo != "SOMA" and subgrupo != "SOMA_ANTERIOR" and subgrupo != "PERC_ATUAL" and subgrupo != "PERC_ANTERIOR" %}
-              <tr>
-                <td>{{ subgrupo }}</td>
-                <td class="text-end">{{ valores.ATUAL|default:0|formata_milhar }}</td>
-                <td class="text-end">{{ valores.PERC_ATUAL|default:0|formata_milhar }}</td>
-                <td class="text-end">{{ valores.ANTERIOR|default:0|formata_milhar }}</td>
-                <td class="text-end">{{ valores.PERC_ANTERIOR|default:0|formata_milhar }}</td>
-              </tr>
-            {% endif %}
-          {% endfor %}
-
-          <tr class="table-separator"><td colspan="5"></td></tr>
-        {% endif %}
-      {% endfor %}
-
-      <!-- TOTAL PASSIVO -->
-      <tr class="table-secondary fw-bold">
-        <td>TOTAL PASSIVO</td>
-        <td class="text-end">{{ secao.TOTAL_PASSIVO.ATUAL|default:0|formata_milhar }}</td>
-        <td class="text-end">{{ secao.TOTAL_PASSIVO.PERC_ATUAL|default:0|formata_milhar }}</td>
-        <td class="text-end">{{ secao.TOTAL_PASSIVO.ANTERIOR|default:0|formata_milhar }}</td>
-        <td class="text-end">{{ secao.TOTAL_PASSIVO.PERC_ANTERIOR|default:0|formata_milhar }}</td>
-      </tr>
-    {% endwith %}
-
-    <!-- Separador entre seções -->
+    <tr class="table-light"><td colspan="5" class="fw-bold small text-uppercase">Passivo</td></tr>
+    {% include 'partials/df_linhas.html' with linhas=dpf.secao_passivo com_perc=True %}
     <tr class="table-separator"><td colspan="5"></td></tr>
 
-    <!-- PL -->
-    <tr class="table-secondary fw-bold">
-      <td>Patrimônio líquido</td>
-      <td class="text-end">{{ pl_ajustado_atual|formata_milhar }}</td>
-      <td class="text-end">-</td>
-      <td class="text-end">{{ pl_ajustado_anterior|formata_milhar }}</td>
-      <td class="text-end">-</td>
-    </tr>
-
-    <!-- Separador entre seções -->
+    <tr class="table-light"><td colspan="5" class="fw-bold small text-uppercase">Patrimônio líquido</td></tr>
+    {% include 'partials/df_linhas.html' with linhas=dpf.secao_pl com_perc=True %}
     <tr class="table-separator"><td colspan="5"></td></tr>
 
-    <!-- PL + PASSIVO -->
-    <tr class="table-secondary fw-bold">
-      <td>Total do patrimônio líquido e do passivo</td>
-      <td class="text-end">{{ total_pl_passivo_atual|formata_milhar }}</td>
-      <td class="text-end">{{ perc_total_pl_passivo_atual|formata_milhar }}</td>
-      <td class="text-end">{{ total_pl_passivo_anterior|formata_milhar }}</td>
-      <td class="text-end">{{ perc_total_pl_passivo_anterior|formata_milhar }}</td>
-    </tr>
-
+    {% include 'partials/df_linhas.html' with linhas=dpf.secao_fechamento com_perc=True %}
   </tbody>
 </table>
-  
+{% if dpf.diferenca_atual != 0 or dpf.diferenca_anterior != 0 %}
+  <div class="alert alert-warning small mt-2" role="alert">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    O ativo não fecha com o passivo e o patrimônio líquido (diferença de {{ dpf.diferenca_atual|formata_milhar }}
+    em {{ data_atual|date:"d/m/Y" }}{% if data_anterior %} e {{ dpf.diferenca_anterior|formata_milhar }} em {{ data_anterior|date:"d/m/Y" }}{% endif %}, em R$ mil).
+    Confira se há lançamentos sem a contrapartida.
+  </div>
+{% endif %}

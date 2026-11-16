@@ -80,17 +80,22 @@
             <i class="bi bi-exclamation-circle"></i>
           </span>
         </button>
-        <a href="{% url 'saldos_periodo' periodo.id %}" class="btn btn-outline-secondary">
-          <i class="bi bi-table me-1"></i>Editar saldos
-        </a>
-        <a href="{% url 'df_resultado_arvore' periodo.id %}" class="btn btn-outline-secondary">
-          <i class="bi bi-diagram-3 me-1"></i>Pela árvore do plano
-        </a>
+        <div class="dropdown">
+          <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                  title="Nível de detalhe do plano de contas">
+            <i class="bi bi-diagram-3 me-1"></i>Detalhe: nível {{ nivel }}
+          </button>
+          <ul class="dropdown-menu">
+            {% for n in niveis %}
+              <li><a class="dropdown-item{% if n == nivel %} active{% endif %}" href="?nivel={{ n }}">Nível {{ n }}</a></li>
+            {% endfor %}
+          </ul>
+        </div>
         <span class="vr df-toolbar__sep"></span>
-        <a href="{% url 'exportar_dfs_excel' periodo.id %}" class="btn btn-success">
+        <a href="{% url 'exportar_dfs_excel' periodo.id %}?nivel={{ nivel }}" class="btn btn-success">
           Exportar Excel <i class="bi bi-file-earmark-excel-fill ms-2"></i>
         </a>
-        <a href="{% url 'exportar_dfs_docx' periodo.id %}" class="btn btn-word">
+        <a href="{% url 'exportar_dfs_docx' periodo.id %}?nivel={{ nivel }}" class="btn btn-word">
           Exportar Word <i class="bi bi-file-earmark-word-fill ms-2"></i>
         </a>
       </div>

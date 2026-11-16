@@ -2,7 +2,7 @@ from django.urls import path, include
 from django.contrib.auth import views as auth_views
 from .views import *
 from usuarios.views import trocar_empresa_ativa
-from . import views_df_arvore, views_plano_unico
+from . import views_plano_unico
 
 urlpatterns = [
     # User Views
@@ -24,7 +24,6 @@ urlpatterns = [
     path("api/periodo/<int:periodo_id>/saldos/salvar/", salvar_saldo_view, name="salvar_saldo"),
     path("api/periodo/<int:periodo_id>/saldos/<int:item_id>/excluir/", excluir_saldo_view, name="excluir_saldo"),
     path('dre-resultado/<int:periodo_df_id>/', df_resultado, name='dre_resultado'),
-    path('dre-resultado/<int:periodo_df_id>/arvore/', views_df_arvore.df_resultado_arvore, name='df_resultado_arvore'),
     path("dre-resultado/<int:periodo_df_id>/exportar/", exportar_dfs_excel, name="exportar_dfs_excel"),
     path("dre-resultado/<int:periodo_df_id>/exportar-docx/", exportar_dfs_docx, name="exportar_dfs_docx"),
     path("dre-resultado/<int:periodo_df_id>/contexto-operacional/", salvar_contexto_operacional, name="salvar_contexto_operacional"),

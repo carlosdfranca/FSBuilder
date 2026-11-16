@@ -28,7 +28,7 @@ from df.services.mapeamento_service import (
     total_contas_pendentes,
 )
 from df.validators import validar_documento_upload
-from df.services.periodo_service import movimentacoes_na_janela, periodo_tem_dados
+from df.services.periodo_service import garantir_datas_periodo, movimentacoes_na_janela, periodo_tem_dados
 from df.services.documento_service import (
     sugerir_contem_dados_pessoais,
     registrar_acesso,
@@ -65,10 +65,8 @@ logger = logging.getLogger(__name__)
 from core.export.df_excel import criar_aba_dpf, criar_aba_dre, criar_aba_dmpl, criar_aba_dfc
 from core.export.df_docx import build_docx_context, gerar_docx
 from core.processing.import_service import import_balancete, import_mec
-from core.processing.dre_service import gerar_dados_dre
-from core.processing.dpf_service import gerar_dados_dpf
-from core.processing.dmpl_service import gerar_dados_dmpl
-from core.processing.dfc_service import gerar_tabela_dfc
+from core.processing.demonstrativo_service import NIVEL_MAX, NIVEL_MIN, NIVEL_PADRAO
+from core.processing.df_service import gerar_dfs
 from core.processing.status_service import calcular_status_periodo
 from core.upload.balancete_parser import parse_excel, BalanceteSchemaError
 from core.upload.mec_parser import parse_excel_mec, MecSchemaError
@@ -602,127 +600,39 @@ def api_periodos_fundo(request, fundo_id):
 # ===============================
 # DF RESULTADO / Exportações (sem mudanças)
 # ===============================
-def _pct(v, base):
+def _periodo_da_empresa(request, periodo_df_id):
+    """PeriodoDF dentro do escopo da empresa ativa (404 se for de outra empresa)."""
+    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
+    return get_object_or_404(
+        PeriodoDF.objects.select_related("fundo__empresa"),
+        id=periodo_df_id,
+        fundo__in=fundo_qs,
+    )
+
+
+def _nivel_df(request) -> int:
+    """Nível de detalhe da DF (?nivel=), limitado ao intervalo válido do plano."""
     try:
-        v = float(v or 0)
-        b = float(base or 0)
-        return round((v / b) * 100, 2) if b != 0 else 0.0
-    except Exception:
-        return 0.0
-
-
-def annotate_percents(dpf: dict, pl_atual_val: float, pl_ant_val: float) -> dict:
-    """
-    Adiciona PERC_ATUAL/PERC_ANTERIOR em:
-      - cada TOTAL_* (com base em ATUAL/ANTERIOR)
-      - cada grupo (com base em SOMA/SOMA_ANTERIOR)
-      - cada subgrupo (com base em ATUAL/ANTERIOR)
-    Sempre usando como base o PL ajustado (pl_atual_val / pl_ant_val).
-    """
-    for sec_name, sec in dpf.items():  # ATIVO, PASSIVO, PL
-        if not isinstance(sec, dict):
-            continue
-
-        for grupo_label, bloco in sec.items():
-            if not isinstance(bloco, dict):
-                continue
-
-            # Totais da seção (ex.: TOTAL_ATIVO, TOTAL_PASSIVO, TOTAL_PL)
-            if grupo_label.startswith("TOTAL_"):
-                atual_tot = bloco.get("ATUAL", 0)
-                ant_tot = bloco.get("ANTERIOR", 0)
-                bloco["PERC_ATUAL"] = _pct(atual_tot, pl_atual_val)
-                bloco["PERC_ANTERIOR"] = _pct(ant_tot, pl_ant_val)
-                continue
-
-            # Grupos normais
-            soma_atual = bloco.get("SOMA", 0)
-            soma_ant = bloco.get("SOMA_ANTERIOR", 0)
-            bloco["PERC_ATUAL"] = _pct(soma_atual, pl_atual_val)
-            bloco["PERC_ANTERIOR"] = _pct(soma_ant, pl_ant_val)
-
-            # Subgrupos
-            for sub_label, valores in bloco.items():
-                if sub_label in ("SOMA", "SOMA_ANTERIOR"):
-                    continue
-                if isinstance(valores, dict) and ("ATUAL" in valores or "ANTERIOR" in valores):
-                    atual_v = valores.get("ATUAL", 0)
-                    ant_v = valores.get("ANTERIOR", 0)
-                    valores["PERC_ATUAL"] = _pct(atual_v, pl_atual_val)
-                    valores["PERC_ANTERIOR"] = _pct(ant_v, pl_ant_val)
-
-    return dpf
+        nivel = int(request.GET.get("nivel", NIVEL_PADRAO))
+    except (TypeError, ValueError):
+        return NIVEL_PADRAO
+    return max(NIVEL_MIN, min(NIVEL_MAX, nivel))
 
 
 @login_required
 @company_can_view_data
 def df_resultado(request, periodo_df_id):
-    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
-    periodo = get_object_or_404(
-        PeriodoDF.objects.select_related("fundo"),
-        id=periodo_df_id,
-        fundo__in=fundo_qs,
-    )
+    periodo = _periodo_da_empresa(request, periodo_df_id)
     fundo = periodo.fundo
+    garantir_datas_periodo(periodo)
 
-    if not periodo.data_referencia:
-        messages.error(request, f"O período '{periodo.nome_exibicao}' ainda não possui balancete importado.")
-        return redirect("demonstracao_financeira")
-
-    data_atual_date = periodo.data_referencia
-    data_anterior_date = periodo.data_anterior
-    zerar_anterior = data_anterior_date is None
-
-    dre_tabela, resultado_exercicio, resultado_exercicio_anterior = gerar_dados_dre(
-        fundo_id=fundo.id,
-        data_atual=data_atual_date,
-        data_anterior=data_anterior_date,
-        zerar_anterior=zerar_anterior,
-    )
-    dpf_tabela, metricas_dpf = gerar_dados_dpf(
-        fundo_id=fundo.id,
-        data_atual=data_atual_date,
-        data_anterior=data_anterior_date,
-        zerar_anterior=zerar_anterior,
-    )
-    dados_dmpl = gerar_dados_dmpl(
-        fundo_id=fundo.id,
-        data_atual=data_atual_date,
-        data_anterior=data_anterior_date,
-        zerar_anterior=zerar_anterior,
-    )
-    dfc_tabela, variacao_caixa_atual, variacao_caixa_ant = gerar_tabela_dfc(
-        fundo_id=fundo.id,
-        data_atual=data_atual_date,
-        data_anterior=data_anterior_date,
-        zerar_anterior=zerar_anterior,
-    )
-
-    pl_atual = (dpf_tabela["PL"]["TOTAL_PL"]["ATUAL"] or 0) + (resultado_exercicio or 0)
-    pl_anterior = (dpf_tabela["PL"]["TOTAL_PL"]["ANTERIOR"] or 0) + (resultado_exercicio_anterior or 0)
-    total_pl_passivo_atual = pl_atual + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ATUAL"] or 0)
-    total_pl_passivo_anterior = pl_anterior + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ANTERIOR"] or 0)
-
-    dpf_tabela = annotate_percents(dpf_tabela, pl_atual, pl_anterior)
+    dfs = gerar_dfs(periodo, _nivel_df(request))
 
     context = {
         "fundo": fundo,
         "periodo": periodo,
-        "data_atual": data_atual_date,
-        "data_anterior": data_anterior_date,
-        "zerar_anterior": zerar_anterior,
-        "dre_tabela": dre_tabela,
-        "dpf_tabela": dpf_tabela,
-        "dados_dmpl": dados_dmpl,
-        "dfc_tabela": dfc_tabela,
-        "resultado_exercicio": resultado_exercicio,
-        "resultado_exercicio_anterior": 0 if zerar_anterior else resultado_exercicio_anterior,
-        "pl_ajustado_atual": pl_atual,
-        "pl_ajustado_anterior": pl_anterior,
-        "total_pl_passivo_atual": total_pl_passivo_atual,
-        "total_pl_passivo_anterior": total_pl_passivo_anterior,
-        "variacao_atual": variacao_caixa_atual,
-        "variacao_ant": 0 if zerar_anterior else variacao_caixa_ant,
+        "niveis": range(NIVEL_MIN, NIVEL_MAX + 1),
+        **dfs,
         "contexto_operacional": fundo.empresa.contexto_operacional,
         "contexto_operacional_max": CONTEXTO_OPERACIONAL_MAX_CHARS,
         "contexto_atualizado_em": fundo.empresa.contexto_operacional_atualizado_em,
@@ -775,158 +685,72 @@ def salvar_contexto_operacional(request, periodo_df_id):
     })
 
 
-@login_required
-@company_can_download_data
-def exportar_dfs_excel(request, periodo_df_id):
-    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
-    periodo = get_object_or_404(
-        PeriodoDF.objects.select_related("fundo"),
-        id=periodo_df_id,
-        fundo__in=fundo_qs,
-    )
-    fundo = periodo.fundo
-
-    if not periodo.data_referencia:
-        messages.error(request, f"O período '{periodo.nome_exibicao}' ainda não possui balancete importado.")
-        return redirect("demonstracao_financeira")
-
-    data_atual = periodo.data_referencia
-    data_anterior = periodo.data_anterior
-    zerar_anterior = data_anterior is None
-
-    dre_tabela, resultado_exercicio, resultado_exercicio_anterior = gerar_dados_dre(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-    dpf_tabela, _metricas_dpf = gerar_dados_dpf(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-
-    pl_atual = (dpf_tabela["PL"]["TOTAL_PL"]["ATUAL"] or 0) + (resultado_exercicio or 0)
-    pl_anterior = (dpf_tabela["PL"]["TOTAL_PL"]["ANTERIOR"] or 0) + (resultado_exercicio_anterior or 0)
-    total_pl_passivo_atual = pl_atual + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ATUAL"] or 0)
-    total_pl_passivo_anterior = pl_anterior + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ANTERIOR"] or 0)
-
-    dpf_tabela = annotate_percents(dpf_tabela, pl_atual, pl_anterior)
-
-    dados_dmpl = gerar_dados_dmpl(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-    dfc_tabela, variacao_atual, variacao_ant = gerar_tabela_dfc(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-
-    wb = Workbook()
-    criar_aba_dpf(wb, fundo, data_atual, data_anterior, dpf_tabela, pl_atual, pl_anterior, total_pl_passivo_atual, total_pl_passivo_anterior)
-    criar_aba_dre(wb, fundo, data_atual, data_anterior, dre_tabela, resultado_exercicio, resultado_exercicio_anterior)
-    criar_aba_dmpl(wb, fundo, data_atual, data_anterior, dados_dmpl, resultado_exercicio, resultado_exercicio_anterior, pl_atual, pl_anterior)
-    criar_aba_dfc(wb, fundo, data_atual, data_anterior, dfc_tabela, variacao_atual, variacao_ant)
-
-    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+def _nome_arquivo_df(fundo, data_atual, data_anterior, extensao):
     nome_curto = "_".join(str(fundo.nome).replace("-", "").split())
     if data_anterior:
-        response["Content-Disposition"] = f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{data_anterior.strftime('%Y%m%d')}_{nome_curto}.xlsx"
-    else:
-        response["Content-Disposition"] = f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{nome_curto}.xlsx"
+        return f"DFs_{data_atual:%Y%m%d}_{data_anterior:%Y%m%d}_{nome_curto}.{extensao}"
+    return f"DFs_{data_atual:%Y%m%d}_{nome_curto}.{extensao}"
 
-    wb.save(response)
 
+def _registrar_emissao(request, periodo, tipo):
     HistoricoEmissaoDF.objects.create(
-        fundo=fundo,
-        empresa=fundo.empresa,
+        fundo=periodo.fundo,
+        empresa=periodo.fundo.empresa,
         usuario=request.user if request.user.is_authenticated else None,
-        data_referencia_df=data_atual,
-        data_anterior_df=data_anterior,
-        tipo_exportacao='excel',
+        data_referencia_df=periodo.data_referencia,
+        data_anterior_df=periodo.data_anterior,
+        tipo_exportacao=tipo,
         periodo_df=periodo,
     )
 
+
+@login_required
+@company_can_download_data
+def exportar_dfs_excel(request, periodo_df_id):
+    periodo = _periodo_da_empresa(request, periodo_df_id)
+    fundo = periodo.fundo
+    garantir_datas_periodo(periodo)
+
+    dfs = gerar_dfs(periodo, _nivel_df(request))
+    data_atual, data_anterior = dfs["data_atual"], dfs["data_anterior"]
+
+    wb = Workbook()
+    criar_aba_dpf(wb, fundo, data_atual, data_anterior, dfs["dpf"])
+    criar_aba_dre(wb, fundo, data_atual, data_anterior, dfs["dre"])
+    criar_aba_dmpl(
+        wb, fundo, data_atual, data_anterior, dfs["dados_dmpl"],
+        dfs["resultado_exercicio"], dfs["resultado_exercicio_anterior"],
+        dfs["pl_ajustado_atual"], dfs["pl_ajustado_anterior"],
+    )
+    criar_aba_dfc(wb, fundo, data_atual, data_anterior, dfs["dfc"])
+
+    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = f"attachment; filename={_nome_arquivo_df(fundo, data_atual, data_anterior, 'xlsx')}"
+    wb.save(response)
+
+    _registrar_emissao(request, periodo, "excel")
     return response
 
 
 @login_required
 @company_can_download_data
 def exportar_dfs_docx(request, periodo_df_id):
-    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
-    periodo = get_object_or_404(
-        PeriodoDF.objects.select_related("fundo"),
-        id=periodo_df_id,
-        fundo__in=fundo_qs,
-    )
+    periodo = _periodo_da_empresa(request, periodo_df_id)
     fundo = periodo.fundo
+    garantir_datas_periodo(periodo)
 
-    if not periodo.data_referencia:
-        messages.error(request, f"O período '{periodo.nome_exibicao}' ainda não possui balancete importado.")
-        return redirect("demonstracao_financeira")
-
-    data_atual = periodo.data_referencia
-    data_anterior = periodo.data_anterior
-    zerar_anterior = data_anterior is None
-
-    dre_tabela, resultado_exercicio, resultado_exercicio_anterior = gerar_dados_dre(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-    dpf_tabela, _metricas_dpf = gerar_dados_dpf(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-
-    pl_atual = (dpf_tabela["PL"]["TOTAL_PL"]["ATUAL"] or 0) + (resultado_exercicio or 0)
-    pl_anterior = (dpf_tabela["PL"]["TOTAL_PL"]["ANTERIOR"] or 0) + (resultado_exercicio_anterior or 0)
-    total_pl_passivo_atual = pl_atual + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ATUAL"] or 0)
-    total_pl_passivo_anterior = pl_anterior + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ANTERIOR"] or 0)
-
-    dpf_tabela = annotate_percents(dpf_tabela, pl_atual, pl_anterior)
-
-    dados_dmpl = gerar_dados_dmpl(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-    dfc_tabela, variacao_atual, variacao_ant = gerar_tabela_dfc(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-
-    if zerar_anterior:
-        resultado_exercicio_anterior = 0
-        variacao_ant = 0
-
-    docx_context = build_docx_context(
-        fundo=fundo,
-        data_atual=data_atual,
-        data_anterior=data_anterior,
-        dre_tabela=dre_tabela,
-        dpf_tabela=dpf_tabela,
-        dados_dmpl=dados_dmpl,
-        dfc_tabela=dfc_tabela,
-        resultado_exercicio=resultado_exercicio,
-        resultado_exercicio_anterior=resultado_exercicio_anterior,
-        pl_ajustado_atual=pl_atual,
-        pl_ajustado_anterior=pl_anterior,
-        total_pl_passivo_atual=total_pl_passivo_atual,
-        total_pl_passivo_anterior=total_pl_passivo_anterior,
-        variacao_atual=variacao_atual,
-        variacao_ant=variacao_ant,
-    )
-
-    buffer = gerar_docx(docx_context)
+    dfs = gerar_dfs(periodo, _nivel_df(request))
+    buffer = gerar_docx(build_docx_context(fundo, dfs))
 
     response = HttpResponse(
         buffer,
         content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
-    nome_curto = "_".join(str(fundo.nome).replace("-", "").split())
-    if data_anterior:
-        response["Content-Disposition"] = f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{data_anterior.strftime('%Y%m%d')}_{nome_curto}.docx"
-    else:
-        response["Content-Disposition"] = f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{nome_curto}.docx"
-
-    HistoricoEmissaoDF.objects.create(
-        fundo=fundo,
-        empresa=fundo.empresa,
-        usuario=request.user if request.user.is_authenticated else None,
-        data_referencia_df=data_atual,
-        data_anterior_df=data_anterior,
-        tipo_exportacao='word',
-        periodo_df=periodo,
+    response["Content-Disposition"] = (
+        f"attachment; filename={_nome_arquivo_df(fundo, dfs['data_atual'], dfs['data_anterior'], 'docx')}"
     )
 
+    _registrar_emissao(request, periodo, "word")
     return response
 
 # ===========================
