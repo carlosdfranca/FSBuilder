@@ -17,6 +17,7 @@ SEM_MENU = {
     "senha/esqueci_senha_enviado.html",
     "senha/link_invalido.html",
     "senha/redefinir_senha.html",
+    "convites/aceitar_convite_escritorio.html",  # página pública: a pessoa ainda nem tem conta
 }
 
 

@@ -26,6 +26,13 @@
         — empresas vinculadas ao escritório e andamento das demonstrações financeiras
       </p>
     </div>
+    {% if escritorios_admin %}
+    <div class="d-flex flex-wrap gap-2">
+      {% for e in escritorios_admin %}
+        <a href="{% url 'escritorio_detalhe' e.id %}" class="btn btn-outline-secondary"><i class="bi bi-people me-1"></i>Gerenciar equipe{% if escritorios_admin|length > 1 %} · {{ e.nome }}{% endif %}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 
   <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));">

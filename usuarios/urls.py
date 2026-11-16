@@ -8,6 +8,7 @@ from usuarios.views_gerenciar import (
 )
 from usuarios.views_selecao import selecionar_empresa
 from usuarios.views_contabilidade import painel_contabilidade
+from usuarios import views_escritorios as esc
 from usuarios.views_convite import (
     convidar_usuario,
     listar_convites,
@@ -23,6 +24,20 @@ from usuarios.views_password_reset import (
 urlpatterns = [
     # Painel da contabilidade (empresas vinculadas ao escritório do usuário)
     path("contabilidade/", painel_contabilidade, name="painel_contabilidade"),
+
+    # Escritórios de contabilidade: cadastro, equipe (convites) e vínculos com empresas
+    path("escritorios/", esc.escritorios_listar, name="escritorios_listar"),
+    path("escritorios/criar/", esc.escritorio_criar, name="escritorio_criar"),
+    path("escritorios/convite/<uuid:token>/", esc.aceitar_convite_escritorio, name="aceitar_convite_escritorio"),
+    path("escritorios/<int:escritorio_id>/", esc.escritorio_detalhe, name="escritorio_detalhe"),
+    path("escritorios/<int:escritorio_id>/editar/", esc.escritorio_editar, name="escritorio_editar"),
+    path("escritorios/<int:escritorio_id>/convites/criar/", esc.escritorio_convite_criar, name="escritorio_convite_criar"),
+    path("escritorios/<int:escritorio_id>/convites/<int:convite_id>/reenviar/", esc.escritorio_convite_reenviar, name="escritorio_convite_reenviar"),
+    path("escritorios/<int:escritorio_id>/convites/<int:convite_id>/cancelar/", esc.escritorio_convite_cancelar, name="escritorio_convite_cancelar"),
+    path("escritorios/<int:escritorio_id>/membros/<int:membro_id>/editar/", esc.escritorio_membro_editar, name="escritorio_membro_editar"),
+    path("escritorios/<int:escritorio_id>/empresas/vincular/", esc.escritorio_empresa_vincular, name="escritorio_empresa_vincular"),
+    path("escritorios/<int:escritorio_id>/empresas/<int:vinculo_id>/alterar/", esc.escritorio_empresa_alterar, name="escritorio_empresa_alterar"),
+    path("api/empresas/buscar/", esc.empresas_buscar, name="empresas_buscar"),
 
     # Gestão de usuários
     path("empresa/usuarios/", gerenciar_usuarios, name="gerenciar_usuarios"),

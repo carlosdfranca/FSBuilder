@@ -6,7 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Min, Q
 from django.shortcuts import redirect, render
 
-from usuarios.models import Empresa, VinculoContabil
+from usuarios.models import Empresa, MembroEscritorio, VinculoContabil
 from usuarios.utils.acesso import escritorios_do_usuario
 
 
@@ -39,6 +39,14 @@ def painel_contabilidade(request):
         .filter(is_active=True, escritorio__in=escritorios)
         .values_list("empresa_id", "escritorio__nome")
     )
+    # Escritórios em que o usuário é Administrador: ganham o atalho para gerenciar a equipe
+    ids_admin = set(
+        MembroEscritorio.objects
+        .filter(usuario=request.user, is_active=True, role=MembroEscritorio.Role.ADMIN, escritorio__in=escritorios)
+        .values_list("escritorio_id", flat=True)
+    )
+    escritorios_admin = [e for e in escritorios if e.id in ids_admin]
+
     hoje = date.today()
     linhas = [
         {
@@ -51,6 +59,7 @@ def painel_contabilidade(request):
 
     return render(request, "usuarios/painel_contabilidade.html", {
         "escritorios": escritorios,
+        "escritorios_admin": escritorios_admin,
         "linhas": linhas,
         "mais_de_um_escritorio": len(escritorios) > 1,
         "total_abertos": sum(l["empresa"].periodos_abertos for l in linhas),

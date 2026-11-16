@@ -128,6 +128,13 @@
             <i class="bi bi-hdd-stack"></i> Painel de Documentos
           </a>
         </li>
+        <li class="site-nav__menu-item--drawer-only">
+          <a href="{% url 'escritorios_listar' %}"
+             class="site-nav__link{% if request.resolver_match.url_name == 'escritorios_listar' or request.resolver_match.url_name == 'escritorio_detalhe' %} is-active{% endif %}"
+             {% if request.resolver_match.url_name == 'escritorios_listar' or request.resolver_match.url_name == 'escritorio_detalhe' %}aria-current="page"{% endif %}>
+            <i class="bi bi-calculator"></i> Escritórios
+          </a>
+        </li>
         {% endif %}
         <li class="site-nav__menu-item--drawer-only">
           <a href="{% static 'docs/Tutorial FSbuilder.pptx' %}" download class="site-nav__link">
@@ -190,6 +197,13 @@
              href="{% url 'painel_documentos' %}"
              {% if request.resolver_match.url_name == 'painel_documentos' %}aria-current="page"{% endif %}>
             <i class="bi bi-hdd-stack"></i> Painel de Documentos
+          </a>
+        </li>
+        <li>
+          <a class="site-nav__dropdown-item{% if request.resolver_match.url_name == 'escritorios_listar' or request.resolver_match.url_name == 'escritorio_detalhe' %} is-active{% endif %}"
+             href="{% url 'escritorios_listar' %}"
+             {% if request.resolver_match.url_name == 'escritorios_listar' or request.resolver_match.url_name == 'escritorio_detalhe' %}aria-current="page"{% endif %}>
+            <i class="bi bi-calculator"></i> Escritórios
           </a>
         </li>
         {% endif %}
