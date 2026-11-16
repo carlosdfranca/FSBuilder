@@ -83,6 +83,9 @@
         <a href="{% url 'saldos_periodo' periodo.id %}" class="btn btn-outline-secondary">
           <i class="bi bi-table me-1"></i>Editar saldos
         </a>
+        <a href="{% url 'df_resultado_arvore' periodo.id %}" class="btn btn-outline-secondary">
+          <i class="bi bi-diagram-3 me-1"></i>Pela árvore do plano
+        </a>
         <span class="vr df-toolbar__sep"></span>
         <a href="{% url 'exportar_dfs_excel' periodo.id %}" class="btn btn-success">
           Exportar Excel <i class="bi bi-file-earmark-excel-fill ms-2"></i>
