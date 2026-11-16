@@ -19,14 +19,17 @@ def data_fechamento(fundo: Fundo) -> date | None:
     ).aggregate(d=Max("data_referencia"))["d"]
 
 
-def validar_data_aberta(fundo: Fundo, data: date) -> None:
-    """DF emitida não pode mudar sozinha: bloqueia datas dentro de período finalizado."""
-    fechamento = data_fechamento(fundo)
+def _checar_fechamento(fechamento: date | None, data: date) -> None:
     if fechamento is not None and data <= fechamento:
         raise ValidationError(
             f"A data {data:%d/%m/%Y} está dentro de um período já finalizado "
             f"(até {fechamento:%d/%m/%Y}). Reabra o período para alterar."
         )
+
+
+def validar_data_aberta(fundo: Fundo, data: date) -> None:
+    """DF emitida não pode mudar sozinha: bloqueia datas dentro de período finalizado."""
+    _checar_fechamento(data_fechamento(fundo), data)
 
 
 def validar_conta_lancavel(conta: Conta, data: date) -> None:
@@ -40,17 +43,27 @@ def validar_conta_lancavel(conta: Conta, data: date) -> None:
         raise ValidationError(f"A conta {conta.codigo} deixou de valer em {conta.vigencia_fim:%d/%m/%Y}.")
 
 
-def _validar_movimentacao(fundo: Fundo, conta: Conta, data: date, valor: Decimal) -> None:
+def validar_lancamento(
+    conta: Conta, data: date, valor: Decimal, fechamento: date | None, data_base_saldo: date | None
+) -> None:
+    """
+    Regras de uma movimentação, sem acessar o banco: serve ao lançamento manual e à importação
+    em lote (que carrega `fechamento` e as datas-base uma única vez).
+    """
     validar_conta_lancavel(conta, data)
-    validar_data_aberta(fundo, data)
+    _checar_fechamento(fechamento, data)
     if valor == 0:
         raise ValidationError("O valor da movimentação não pode ser zero.")
-    base = SaldoInicial.objects.filter(fundo=fundo, conta=conta).values_list("data_base", flat=True).first()
-    if base is not None and data <= base:
+    if data_base_saldo is not None and data <= data_base_saldo:
         raise ValidationError(
-            f"A conta {conta.codigo} tem saldo inicial em {base:%d/%m/%Y}; "
+            f"A conta {conta.codigo} tem saldo inicial em {data_base_saldo:%d/%m/%Y}; "
             f"só aceita movimentações posteriores a essa data."
         )
+
+
+def _validar_movimentacao(fundo: Fundo, conta: Conta, data: date, valor: Decimal) -> None:
+    base = SaldoInicial.objects.filter(fundo=fundo, conta=conta).values_list("data_base", flat=True).first()
+    validar_lancamento(conta, data, valor, data_fechamento(fundo), base)
 
 
 @transaction.atomic

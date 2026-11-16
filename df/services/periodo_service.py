@@ -94,6 +94,14 @@ def atualizar_periodos_da_data(fundo, data) -> None:
             atualizar_status_automatico(periodo)
 
 
+def atualizar_periodos_do_intervalo(fundo, data_min, data_max) -> None:
+    """Reavalia o status dos períodos do fundo cuja janela cruza [data_min, data_max]."""
+    candidatos = PeriodoDF.objects.filter(fundo=fundo, data_referencia__gte=data_min)
+    for periodo in candidatos:
+        if periodo.data_anterior is None or periodo.data_anterior < data_max:
+            atualizar_status_automatico(periodo)
+
+
 def gerar_periodos_anuais(fundo, ano_inicial, ano_final=None):
     """
     Gera períodos anuais para um fundo baseado na sua configuração.

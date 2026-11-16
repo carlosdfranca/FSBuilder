@@ -93,6 +93,39 @@ def company_can_manage_data(view):
         return HttpResponseForbidden("Você não tem permissão para gerenciar os dados desta empresa.")
     return _wrapped
 
+# ---------- Decorator específico: Movimentações e saldos iniciais ----------
+# Quem pode lançar/editar movimentações, saldos iniciais e importar planilhas.
+# A Fase 2 (perfil Contabilidade) acrescenta o papel CONTABILIDADE a este conjunto.
+ROLES_PODEM_LANCAR = {Membership.Role.MASTER, Membership.Role.ADMIN}
+
+
+def pode_lancar_movimentacoes(user, empresa) -> bool:
+    if is_global_admin(user):
+        return True
+    return role_na_empresa(user, empresa) in ROLES_PODEM_LANCAR
+
+
+def company_can_manage_movimentacoes(view):
+    """
+    Pode LANÇAR movimentações e saldos iniciais:
+    - Global ADMIN
+    - MASTER/ADMIN da empresa (e, na Fase 2, a Contabilidade vinculada)
+    (Global VIEWER, MEMBER e VIEWER NÃO podem)
+    """
+    @wraps(view)
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect("login")
+        empresa = get_empresa_escopo(request)
+        if not empresa:
+            maybe_redirect = _redirect_to_select(request, "Selecione uma empresa na barra superior para lançar movimentações.")
+            return maybe_redirect or view(request, *args, **kwargs)
+        if pode_lancar_movimentacoes(request.user, empresa):
+            return view(request, *args, **kwargs)
+        return HttpResponseForbidden("Você não tem permissão para lançar movimentações desta empresa.")
+    return _wrapped
+
+
 # ---------- Decorator específico: Fundos ----------
 def company_can_manage_fundos(view):
     """
