@@ -749,6 +749,118 @@ class Conta(models.Model):
                 raise ValidationError("Já existe outra conta com este papel.")
 
 
+# =========================
+# SALDO INICIAL (por fundo + conta patrimonial)
+# =========================
+class SaldoInicial(models.Model):
+    """
+    Ponto de partida de uma conta patrimonial (naturezas 1–3) de um fundo.
+    O saldo da conta numa data é `valor` + movimentações posteriores a `data_base`.
+    """
+    fundo = models.ForeignKey(Fundo, on_delete=models.CASCADE, related_name="saldos_iniciais")
+    conta = models.ForeignKey(Conta, on_delete=models.PROTECT, related_name="saldos_iniciais")
+    data_base = models.DateField()
+    valor = models.DecimalField(max_digits=20, decimal_places=2)
+    criado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    atualizado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Saldo inicial"
+        verbose_name_plural = "Saldos iniciais"
+        ordering = ["fundo", "conta__codigo"]
+        constraints = [
+            models.UniqueConstraint(fields=["fundo", "conta"], name="uq_saldoinicial_fundo_conta"),
+        ]
+
+    def __str__(self):
+        return f"{self.fundo} · {self.conta.codigo} · {self.data_base:%d/%m/%Y}"
+
+
+# =========================
+# LOTE DE IMPORTAÇÃO DE MOVIMENTAÇÕES
+# =========================
+class LoteImportacaoMovimentacao(models.Model):
+    fundo = models.ForeignKey(Fundo, on_delete=models.CASCADE, related_name="lotes_movimentacao")
+    nome_arquivo = models.CharField(max_length=255)
+    sha256 = models.CharField(max_length=64)
+    qtd_linhas = models.PositiveIntegerField(default=0)
+    valor_total = models.DecimalField(max_digits=20, decimal_places=2, default=Decimal("0"))
+    importado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    importado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Lote de movimentações"
+        verbose_name_plural = "Lotes de movimentações"
+        ordering = ["-importado_em"]
+        indexes = [models.Index(fields=["fundo", "sha256"], name="idx_lote_mov_fundo_sha")]
+
+    def __str__(self):
+        return f"{self.nome_arquivo} ({self.qtd_linhas} linhas)"
+
+
+# =========================
+# MOVIMENTAÇÃO (valor com sinal por conta analítica)
+# =========================
+class Movimentacao(models.Model):
+    """
+    Lançamento em uma conta analítica de um fundo. `valor` positivo aumenta a
+    conta no sentido da natureza dela (ver convenção de sinal no plano).
+    """
+
+    class Origem(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        IMPORTADO = "importado", "Importado"
+
+    fundo = models.ForeignKey(Fundo, on_delete=models.CASCADE, related_name="movimentacoes")
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="movimentacoes",
+        help_text="Desnormalizado a partir do fundo, para filtro por tenant.",
+    )
+    conta = models.ForeignKey(Conta, on_delete=models.PROTECT, related_name="movimentacoes")
+    data = models.DateField()
+    valor = models.DecimalField(max_digits=20, decimal_places=2)
+    historico = models.CharField(max_length=255, blank=True, default="")
+    documento = models.CharField(max_length=60, blank=True, default="")
+    origem = models.CharField(max_length=10, choices=Origem.choices, default=Origem.MANUAL)
+    lote = models.ForeignKey(
+        LoteImportacaoMovimentacao,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="movimentacoes",
+    )
+    criado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    atualizado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Movimentação"
+        verbose_name_plural = "Movimentações"
+        ordering = ["-data", "-id"]
+        indexes = [
+            models.Index(fields=["fundo", "data"], name="idx_mov_fundo_data"),
+            models.Index(fields=["fundo", "conta", "data"], name="idx_mov_fundo_conta_data"),
+        ]
+
+    def __str__(self):
+        return f"{self.data:%d/%m/%Y} · {self.conta.codigo} · {self.valor}"
+
+
 # =================================================
 # BALANCETE (por fundo, ano e conta mapeada)
 # =================================================
