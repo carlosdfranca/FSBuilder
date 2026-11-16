@@ -647,6 +647,108 @@ class MapeamentoContas(models.Model):
         return f"{self.conta} - {self.empresa.nome}"
 
 
+# =========================
+# PLANO DE CONTAS ÚNICO (global, hierárquico)
+# =========================
+class Conta(models.Model):
+    """
+    Conta do plano único (Plano Referencial RFB, abas L100A + L300A).
+    Global: não pertence a nenhuma empresa. O `codigo` é o caminho na árvore
+    (1 → 1.01 → 1.01.01 ...), e `conta_superior` aponta para o pai.
+    """
+
+    class Tipo(models.TextChoices):
+        SINTETICA = "S", "Sintética"
+        ANALITICA = "A", "Analítica"
+
+    class Natureza(models.IntegerChoices):
+        ATIVO = 1, "Ativo"
+        PASSIVO = 2, "Passivo"
+        PATRIMONIO_LIQUIDO = 3, "Patrimônio Líquido"
+        RESULTADO = 4, "Resultado"
+
+    class Papel(models.TextChoices):
+        LUCROS_ACUMULADOS = "LUCROS_ACUMULADOS", "Lucros acumulados"
+        PREJUIZOS_ACUMULADOS = "PREJUIZOS_ACUMULADOS", "Prejuízos acumulados"
+
+    codigo = models.CharField(max_length=30, unique=True)
+    descricao = models.CharField(max_length=255)
+    tipo = models.CharField(max_length=1, choices=Tipo.choices)
+    conta_superior = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="filhas",
+    )
+    nivel = models.PositiveSmallIntegerField()
+    natureza = models.PositiveSmallIntegerField(choices=Natureza.choices)
+    vigencia_inicio = models.DateField(null=True, blank=True)
+    vigencia_fim = models.DateField(null=True, blank=True)
+    orientacoes = models.TextField(blank=True, default="")
+    papel = models.CharField(
+        max_length=20,
+        choices=Papel.choices,
+        null=True,
+        blank=True,
+        help_text="Conta que recebe o resultado acumulado dos exercícios anteriores.",
+    )
+    is_ativa = models.BooleanField(default=True)
+    origem_tabela = models.CharField(max_length=10, blank=True, default="")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Conta"
+        verbose_name_plural = "Plano de contas"
+        ordering = ["codigo"]
+        indexes = [
+            models.Index(fields=["natureza", "tipo"], name="idx_conta_natureza_tipo"),
+            models.Index(fields=["conta_superior"], name="idx_conta_superior"),
+        ]
+
+    def __str__(self):
+        return f"{self.codigo} - {self.descricao}"
+
+    @property
+    def is_resultado(self) -> bool:
+        return self.natureza == self.Natureza.RESULTADO
+
+    @property
+    def is_analitica(self) -> bool:
+        return self.tipo == self.Tipo.ANALITICA
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        pai = self.conta_superior
+        if pai is None:
+            if self.nivel != 1:
+                raise ValidationError("Conta sem conta superior deve ser de nível 1.")
+        else:
+            if not self.codigo.startswith(f"{pai.codigo}."):
+                raise ValidationError("O código deve começar com o código da conta superior.")
+            if self.nivel != pai.nivel + 1:
+                raise ValidationError("O nível deve ser o da conta superior + 1.")
+            # No plano referencial o PL (natureza 3) é filho de PASSIVO (natureza 2).
+            if self.natureza != pai.natureza and not (
+                pai.natureza == self.Natureza.PASSIVO and self.natureza == self.Natureza.PATRIMONIO_LIQUIDO
+            ):
+                raise ValidationError("A natureza deve ser a mesma da conta superior.")
+            if pai.is_analitica:
+                raise ValidationError("Conta analítica não pode ter contas filhas.")
+
+        if self.papel:
+            if not self.is_analitica:
+                raise ValidationError("Só conta analítica pode ter papel de resultado acumulado.")
+            if self.natureza != self.Natureza.PATRIMONIO_LIQUIDO:
+                raise ValidationError("O papel de resultado acumulado exige conta de Patrimônio Líquido.")
+            # MySQL ignora UniqueConstraint(condition=...): valida aqui.
+            outras = Conta.objects.filter(papel=self.papel).exclude(pk=self.pk)
+            if outras.exists():
+                raise ValidationError("Já existe outra conta com este papel.")
+
+
 # =================================================
 # BALANCETE (por fundo, ano e conta mapeada)
 # =================================================
