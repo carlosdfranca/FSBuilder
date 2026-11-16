@@ -2,7 +2,7 @@ from django.urls import path, include
 from django.contrib.auth import views as auth_views
 from .views import *
 from usuarios.views import trocar_empresa_ativa
-from . import views_plano_unico
+from . import views_movimentacoes, views_plano_unico
 
 urlpatterns = [
     # User Views
@@ -46,6 +46,20 @@ urlpatterns = [
     path('plano-de-contas-unico/', views_plano_unico.plano_contas_unico, name='plano_contas_unico'),
     path('api/plano-de-contas-unico/', views_plano_unico.criar_conta, name='criar_conta'),
     path('api/plano-de-contas-unico/<int:conta_id>/editar/', views_plano_unico.editar_conta, name='editar_conta'),
+    path('api/plano-de-contas-unico/buscar/', views_movimentacoes.contas_buscar, name='contas_buscar'),
+
+    # Movimentações e saldos iniciais (por fundo)
+    path('fundos/<int:fundo_id>/movimentacoes/', views_movimentacoes.movimentacoes_fundo, name='movimentacoes_fundo'),
+    path('fundos/<int:fundo_id>/movimentacoes/nova/', views_movimentacoes.movimentacao_criar, name='movimentacao_criar'),
+    path('fundos/<int:fundo_id>/movimentacoes/<int:mov_id>/editar/', views_movimentacoes.movimentacao_editar, name='movimentacao_editar'),
+    path('fundos/<int:fundo_id>/movimentacoes/<int:mov_id>/excluir/', views_movimentacoes.movimentacao_excluir, name='movimentacao_excluir'),
+    path('fundos/<int:fundo_id>/movimentacoes/importar/', views_movimentacoes.movimentacoes_importar, name='movimentacoes_importar'),
+    path('fundos/<int:fundo_id>/movimentacoes/importar/modelo/', views_movimentacoes.movimentacoes_modelo, name='movimentacoes_modelo'),
+    path('fundos/<int:fundo_id>/movimentacoes/lotes/<int:lote_id>/desfazer/', views_movimentacoes.movimentacoes_lote_desfazer, name='movimentacoes_lote_desfazer'),
+    path('fundos/<int:fundo_id>/saldos-iniciais/', views_movimentacoes.saldos_iniciais_fundo, name='saldos_iniciais_fundo'),
+    path('fundos/<int:fundo_id>/saldos-iniciais/salvar/', views_movimentacoes.saldo_inicial_salvar, name='saldo_inicial_salvar'),
+    path('fundos/<int:fundo_id>/saldos-iniciais/importar/', views_movimentacoes.saldos_iniciais_importar, name='saldos_iniciais_importar'),
+    path('fundos/<int:fundo_id>/saldos-iniciais/<int:saldo_id>/excluir/', views_movimentacoes.saldo_inicial_excluir, name='saldo_inicial_excluir'),
 
     # Gestoras
     path('gestoras/adicionar/', adicionar_gestora, name='adicionar_gestora'),

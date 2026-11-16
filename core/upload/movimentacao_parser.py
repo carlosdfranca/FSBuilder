@@ -94,6 +94,9 @@ def _parse_valor(valor) -> Decimal | None:
     return numero.quantize(CENTAVOS, rounding=ROUND_HALF_UP)
 
 
+parse_valor = _parse_valor  # usado também pelo formulário de lançamento manual
+
+
 def _parse_conta(valor) -> str:
     if isinstance(valor, float) and valor.is_integer():
         valor = int(valor)  # a célula "1" vem como 1.0
