@@ -174,6 +174,15 @@ class DfResultadoViewTests(CenarioMixin, TestCase):
         self.assertEqual(self.client.get(self.url + "?nivel=0").context["nivel"], 2)
         self.assertEqual(self.client.get(self.url + "?nivel=abc").context["nivel"], 4)
 
+    def test_troca_de_nivel_sem_recarregar_tem_o_que_o_js_precisa(self):
+        """O JS troca só o conteúdo dos 4 painéis: cada um precisa existir na resposta de ?nivel=N."""
+        self.client.force_login(self.user)
+        r = self.client.get(self.url + "?nivel=2", HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        for pid in ("dpf-justified", "dre-justified", "dmpl-justified", "dfc-justified"):
+            self.assertContains(r, 'id="%s"' % pid)
+        for marcador in ('id="df-nivel-menu"', 'data-nivel="2"', 'id="df-exp-excel"', 'id="df-exp-word"'):
+            self.assertContains(r, marcador)
+
     def test_nao_ve_periodo_de_outra_empresa(self):
         outra = Empresa.objects.create(nome="Empresa B")
         fundo_b = Fundo.objects.create(empresa=outra, nome="Fundo B", cnpj="33.333.333/0001-33", tipo_fundo="FIDC")
