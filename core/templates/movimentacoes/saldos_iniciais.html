@@ -1,0 +1,232 @@
+{% extends 'base/base.html' %}
+
+{% block title %}Saldos iniciais · {{ fundo.nome }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .si-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; }
+  .si-card { background: var(--surface-2); border: 1px solid var(--border-color); border-radius: 14px; padding: .75rem; margin-bottom: 1.25rem; overflow-x: auto; }
+  .si-conta { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 600; white-space: nowrap; }
+  .si-sub { display: block; font-size: .74rem; color: var(--text-muted); font-family: inherit; font-weight: 400; }
+  .si-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .si-neg { color: #ef4444; }
+  .si-btn { min-width: 2rem; height: 2rem; padding: 0 .5rem; border-radius: 8px; cursor: pointer; background: transparent;
+    color: var(--text-secondary); border: 1px solid var(--border-color); font-size: .8rem; }
+  .si-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--accent-primary); }
+  .si-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .si-import h2 { font-size: 1rem; }
+  .si-erros { max-height: 20rem; overflow-y: auto; margin-top: .75rem; }
+  .si-erros table { width: 100%; font-size: .84rem; border-collapse: collapse; }
+  .si-erros td, .si-erros th { padding: .3rem .5rem; border-bottom: 1px solid var(--border-color); text-align: left; }
+  .si-erros td:first-child { white-space: nowrap; color: var(--text-muted); width: 5rem; }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+{% include 'base/navbar.html' %}
+<div class="container-fluid py-3">
+  <div class="page-header si-head">
+    <div class="page-header__titles">
+      <h1 class="page-header__title">Saldos iniciais</h1>
+      <p class="page-header__subtitle">{{ fundo.nome }} · ponto de partida das contas de Ativo, Passivo e Patrimônio Líquido. Contas de resultado zeram a cada 31/12 e não têm saldo inicial.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'movimentacoes_fundo' fundo.id %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Movimentações</a>
+      {% if pode_lancar %}<button type="button" class="btn btn-primary" id="siNovo"><i class="bi bi-plus-lg me-1"></i>Novo saldo inicial</button>{% endif %}
+    </div>
+  </div>
+
+  {% if fechamento %}
+    <div class="alert alert-warning small"><i class="bi bi-lock me-1"></i>
+      Períodos finalizados até {{ fechamento|date:"d/m/Y" }}: saldos com data-base nesse intervalo não podem ser alterados.</div>
+  {% endif %}
+
+  {% if pode_lancar %}
+  <div class="si-card si-import">
+    <h2>Importar planilha de saldos</h2>
+    <p class="small text-muted mb-2">Colunas <code>CONTA</code> e <code>VALOR</code> (ou <code>DÉBITO</code>/<code>CRÉDITO</code>). Substitui o saldo das contas citadas; as demais ficam como estão. Tudo ou nada.</p>
+    <form id="siImportForm" class="d-flex flex-wrap gap-2 align-items-end">
+      <div><label class="form-label small mb-1" for="siImpData">Data-base</label>
+        <input type="date" class="form-control" id="siImpData" name="data_base" required></div>
+      <div style="flex: 1 1 18rem; max-width: 26rem;"><label class="form-label small mb-1" for="siImpArq">Arquivo</label>
+        <input type="file" class="form-control" id="siImpArq" name="arquivo" accept=".xlsx,.csv" required></div>
+      <button type="submit" class="btn btn-outline-primary" id="siImpBotao"><i class="bi bi-upload me-1"></i>Importar</button>
+    </form>
+    <div id="siImpResultado" class="mt-3" hidden></div>
+  </div>
+  {% endif %}
+
+  <div class="si-card">
+    <table id="siTabela" class="table-ds" style="width:100%">
+      <thead><tr><th>Conta</th><th>Natureza</th><th>Data-base</th><th class="si-num">Valor (R$)</th>{% if pode_lancar %}<th></th>{% endif %}</tr></thead>
+      <tbody>
+        {% for s in saldos %}
+        <tr data-id="{{ s.id }}">
+          <td><span class="si-conta">{{ s.conta }}<span class="si-sub">{{ s.conta_descricao }}</span></span></td>
+          <td>{{ s.natureza }}</td>
+          <td data-order="{{ s.data_base }}">{{ s.data_base|slice:"8:10" }}/{{ s.data_base|slice:"5:7" }}/{{ s.data_base|slice:":4" }}</td>
+          <td class="si-num{% if s.negativo %} si-neg{% endif %}" data-order="{{ s.valor }}">{{ s.valor|floatformat:"2g" }}</td>
+          {% if pode_lancar %}
+          <td style="white-space:nowrap;">
+            {% if s.editavel %}
+              <button type="button" class="si-btn si-editar" title="Editar"><i class="bi bi-pencil"></i></button>
+              <button type="button" class="si-btn si-excluir" title="Excluir"><i class="bi bi-trash"></i></button>
+            {% else %}
+              <button type="button" class="si-btn" disabled title="Período finalizado"><i class="bi bi-lock"></i></button>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if pode_lancar %}
+<div class="modal fade" id="siModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-sm-down"><div class="modal-content">
+    <form id="siForm" autocomplete="off">
+      <div class="modal-header"><h5 class="modal-title" id="siTitulo">Novo saldo inicial</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+      <div class="modal-body">
+        <div class="alert alert-danger" id="siErro" hidden></div>
+        <div class="row g-3">
+          <div class="col-12"><label class="form-label" id="siContaLabel">Conta</label>
+            <div id="siContaPicker"></div>
+            <input type="hidden" name="conta_id" id="siContaId">
+            <div class="form-text">Só contas de Ativo, Passivo e Patrimônio Líquido.</div></div>
+          <div class="col-md-5"><label class="form-label" for="siData">Data-base</label>
+            <input type="date" class="form-control" id="siData" name="data_base" required></div>
+          <div class="col-md-7"><label class="form-label" for="siValor">Valor (R$)</label>
+            <input type="text" class="form-control" id="siValor" name="valor" inputmode="decimal" placeholder="1.234,56 ou -500,00" required></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="siSalvar">Salvar</button></div>
+    </form>
+  </div></div>
+</div>
+
+<div class="modal fade" id="siExcluirModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Excluir saldo inicial</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+    <div class="modal-body"><div class="alert alert-danger" id="siExcluirErro" hidden></div>
+      <p class="mb-0" id="siExcluirTexto"></p></div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+      <button type="button" class="btn btn-danger" id="siExcluirOk">Excluir</button></div>
+  </div></div>
+</div>
+{% include 'movimentacoes/_conta_autocomplete.html' %}
+{{ catalogo_contas|json_script:"ca-catalogo" }}
+{% endif %}
+
+{{ saldos|json_script:"si-dados" }}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const dados = {};
+  JSON.parse(document.getElementById("si-dados").textContent).forEach(function (s) { dados[s.id] = s; });
+
+  $("#siTabela").DataTable({
+    dom: 'rt<"mt-2"ip>', pageLength: 50, order: [[0, "asc"]], autoWidth: false,
+    {% if pode_lancar %}columnDefs: [{ orderable: false, targets: -1 }],{% endif %}
+    language: { emptyTable: "Nenhum saldo inicial cadastrado.", zeroRecords: "Nada encontrado.",
+      info: "_START_–_END_ de _TOTAL_", infoEmpty: "0 saldos", paginate: { previous: "‹", next: "›" } }
+  });
+
+  {% if pode_lancar %}
+  const CSRF = "{{ csrf_token }}";
+  const URL_SALVAR = "{% url 'saldo_inicial_salvar' fundo.id %}";
+  const URL_EXCLUIR = "{% url 'saldo_inicial_excluir' fundo.id 0 %}";
+  const URL_IMPORTAR = "{% url 'saldos_iniciais_importar' fundo.id %}";
+  const modal = new bootstrap.Modal(document.getElementById("siModal"));
+  const modalExcluir = new bootstrap.Modal(document.getElementById("siExcluirModal"));
+  const form = document.getElementById("siForm"), erro = document.getElementById("siErro");
+  const ac = contaAutocomplete({
+    container: document.getElementById("siContaPicker"), hidden: document.getElementById("siContaId"),
+    labelId: "siContaLabel", url: "{% url 'contas_buscar' %}", patrimonial: true,
+    catalogo: JSON.parse(document.getElementById("ca-catalogo").textContent)
+  });
+  let excluindoId = null;
+
+  function post(url, corpo) {
+    return fetch(url, { method: "POST", headers: { "X-CSRFToken": CSRF, "X-Requested-With": "XMLHttpRequest" }, body: corpo })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); });
+  }
+  function mensagens(json) {
+    const e = json.errors || {};
+    return [].concat.apply([], Object.keys(e).map(function (k) { return e[k]; })).join(" ") || "Não foi possível salvar.";
+  }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function numeroBR(t) { return String(t).replace(".", ","); }
+
+  document.getElementById("siNovo").addEventListener("click", function () {
+    form.reset(); ac.limpar(); erro.hidden = true;
+    document.getElementById("siTitulo").textContent = "Novo saldo inicial";
+    modal.show();
+  });
+
+  document.getElementById("siTabela").addEventListener("click", function (ev) {
+    const linha = ev.target.closest("tr");
+    if (!linha) return;
+    const s = dados[linha.dataset.id];
+    if (ev.target.closest(".si-editar")) {
+      form.reset(); erro.hidden = true;
+      document.getElementById("siTitulo").textContent = "Editar saldo inicial";
+      document.getElementById("siData").value = s.data_base;
+      document.getElementById("siValor").value = numeroBR(s.valor);
+      ac.definir(s.conta_detalhe);
+      modal.show();
+    } else if (ev.target.closest(".si-excluir")) {
+      excluindoId = s.id;
+      document.getElementById("siExcluirErro").hidden = true;
+      document.getElementById("siExcluirTexto").textContent = "Excluir o saldo inicial da conta " + s.conta + " (R$ " + numeroBR(s.valor) + ")?";
+      modalExcluir.show();
+    }
+  });
+
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    if (!document.getElementById("siContaId").value) { erro.textContent = "Escolha uma conta da lista."; erro.hidden = false; return; }
+    document.getElementById("siSalvar").disabled = true;
+    post(URL_SALVAR, new FormData(form)).then(function (res) {
+      document.getElementById("siSalvar").disabled = false;
+      if (!res.ok) { erro.textContent = mensagens(res.json); erro.hidden = false; return; }
+      window.location.reload();
+    });
+  });
+
+  document.getElementById("siExcluirOk").addEventListener("click", function () {
+    post(URL_EXCLUIR.replace("/0/", "/" + excluindoId + "/"), new FormData()).then(function (res) {
+      if (!res.ok) { const e = document.getElementById("siExcluirErro"); e.textContent = mensagens(res.json); e.hidden = false; return; }
+      window.location.reload();
+    });
+  });
+
+  document.getElementById("siImportForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    const out = document.getElementById("siImpResultado"), botao = document.getElementById("siImpBotao");
+    botao.disabled = true; out.hidden = true;
+    post(URL_IMPORTAR, new FormData(ev.target)).then(function (res) {
+      botao.disabled = false; out.hidden = false;
+      if (res.ok) {
+        out.innerHTML = '<div class="alert alert-success mb-0"><i class="bi bi-check-circle me-1"></i>' + esc(res.json.mensagem) + " Recarregando…</div>";
+        setTimeout(function () { window.location.reload(); }, 900);
+        return;
+      }
+      const erros = res.json.erros || [], total = res.json.total || erros.length;
+      out.innerHTML = '<div class="alert alert-danger mb-0"><i class="bi bi-x-octagon me-1"></i><b>Nada foi importado.</b> ' + total +
+        " problema(s)" + (total > erros.length ? " (mostrando os " + erros.length + " primeiros)" : "") + ".</div>" +
+        '<div class="si-erros"><table><thead><tr><th>Linha</th><th>Problema</th></tr></thead><tbody>' +
+        erros.map(function (e) { return "<tr><td>" + (e.linha ? e.linha : "—") + "</td><td>" + esc(e.mensagem) + "</td></tr>"; }).join("") +
+        "</tbody></table></div>";
+    });
+  });
+  {% endif %}
+});
+</script>
+{% endblock %}

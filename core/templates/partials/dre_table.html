@@ -1,6 +1,4 @@
-{% load custom_tags %}
-
-<!-- Tabela DRE - layout original adaptado para datas -->
+{# DRE gerada pela árvore do plano de contas (conta 3). #}
 <table class="table table-bordered table-sm mt-2 align-middle">
   <thead class="table-light">
     <tr>
@@ -10,34 +8,6 @@
     </tr>
   </thead>
   <tbody>
-    {% for grupo, valores in dre_tabela.items %}
-      <!-- Linha do grupo principal -->
-      <tr class="table-secondary fw-bold">
-        <td colspan="1">{{ grupo }}</td>
-        <td class="text-end">{{ valores.SOMA|formata_milhar }}</td>
-        <td class="text-end">{{ valores.SOMA_ANTERIOR|formata_milhar }}</td>
-      </tr>
-
-      <!-- Subgrupos -->
-      {% for subgrupo, val in valores.items %}
-        {% if subgrupo != 'SOMA' and subgrupo != 'SOMA_ANTERIOR' %}
-          <tr>
-            <td>{{ subgrupo }}</td>
-            <td class="text-end">{{ val.ATUAL|formata_milhar }}</td>
-            <td class="text-end">{{ val.ANTERIOR|formata_milhar }}</td>
-          </tr>
-        {% endif %}
-      {% endfor %}
-
-      <!-- Linha separadora -->
-      <tr class="table-separator"><td colspan="3"></td></tr>
-    {% endfor %}
-
-    <!-- Resultado do exercício -->
-    <tr class="table-secondary fw-bold">
-      <td>Resultado do exercício</td>
-      <td class="text-end">{{ resultado_exercicio|formata_milhar }}</td>
-      <td class="text-end">{{ resultado_exercicio_anterior|formata_milhar }}</td>
-    </tr>
+    {% include 'partials/df_linhas.html' with linhas=dre.linhas com_perc=False %}
   </tbody>
 </table>

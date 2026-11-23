@@ -2,14 +2,15 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from usuarios.models import Empresa, Membership
+from usuarios.models import Empresa
+from usuarios.utils.acesso import empresas_acessiveis
 
 @login_required
 def selecionar_empresa(request):
     """
     Página neutra para o usuário escolher a empresa ativa.
     - Para globais: lista todas as empresas
-    - Para não-globais: lista apenas as que o usuário participa (fallback seguro)
+    - Para não-globais: lista as que o usuário alcança (vínculo direto ou escritório de contabilidade)
     """
     user = request.user
 
@@ -17,8 +18,7 @@ def selecionar_empresa(request):
     if getattr(user, "has_global_scope", None) and user.has_global_scope():
         empresas = Empresa.objects.all().only("id", "nome").order_by("nome")
     else:
-        empresa_ids = Membership.objects.filter(usuario=user, is_active=True).values_list("empresa_id", flat=True)
-        empresas = Empresa.objects.filter(id__in=list(empresa_ids)).only("id", "nome").order_by("nome")
+        empresas = empresas_acessiveis(user).only("id", "nome").order_by("nome")
 
     if request.method == "POST":
         empresa_id = request.POST.get("empresa_id")

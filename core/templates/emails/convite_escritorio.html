@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Convite - FSBuilder</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F8F5F0;font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,Arial,sans-serif;line-height:1.6;color:#1C1C1E;">
+  <div style="max-width:600px;margin:40px auto;background:#FFFFFF;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
+    <div style="background:linear-gradient(135deg,#6B1A2A 0%,#4A0F1C 100%);padding:28px 32px;color:#FFFFFF;">
+      <div style="font-size:22px;font-weight:700;">FSBuilder</div>
+      <div style="font-size:13px;opacity:.85;">Plataforma de Demonstrações Financeiras</div>
+    </div>
+
+    <div style="padding:32px;">
+      <h1 style="font-size:20px;margin:0 0 16px;color:#6B1A2A;">Você foi convidado!</h1>
+      <p style="margin:0 0 12px;">Olá,</p>
+      <p style="margin:0 0 12px;">
+        <strong>{{ convidante_nome }}</strong> ({{ convidante_role }}) convidou você para fazer parte da equipe do
+        escritório de contabilidade <strong>{{ escritorio.nome }}</strong> na plataforma FSBuilder.
+      </p>
+      <p style="margin:0 0 20px;">Seu papel será: <strong>{{ role_display }}</strong>.</p>
+      <p style="margin:0 0 24px;">
+        Com o acesso do escritório você acompanha e lança as movimentações das empresas vinculadas a ele.
+      </p>
+
+      <p style="text-align:center;margin:0 0 24px;">
+        <a href="{{ link_aceite }}"
+           style="display:inline-block;background:#6B1A2A;color:#FFFFFF;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;">
+          Aceitar convite
+        </a>
+      </p>
+
+      <p style="font-size:13px;color:#555;margin:0 0 8px;">Se o botão não funcionar, copie e cole este link no navegador:</p>
+      <p style="font-size:13px;word-break:break-all;margin:0 0 24px;"><a href="{{ link_aceite }}" style="color:#6B1A2A;">{{ link_aceite }}</a></p>
+
+      <p style="font-size:13px;color:#555;margin:0 0 8px;">
+        Se você ainda não tem conta, vai escolher seu usuário e senha. Se este e-mail já tem conta na plataforma,
+        basta entrar nela para aceitar.
+      </p>
+      <p style="font-size:13px;color:#555;margin:0;">
+        Este convite expira em <strong>{{ convite.expira_em|date:"d/m/Y às H:i" }}</strong> ({{ dias_validade }} dias).
+        Se você não esperava este convite, pode ignorá-lo com segurança.
+      </p>
+    </div>
+
+    <div style="background:#F8F5F0;padding:16px 32px;font-size:12px;color:#777;text-align:center;">
+      © {{ "now"|date:"Y" }} FSBuilder. Todos os direitos reservados.
+    </div>
+  </div>
+</body>
+</html>

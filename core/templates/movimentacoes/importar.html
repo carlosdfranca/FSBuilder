@@ -1,0 +1,160 @@
+{% extends 'base/base.html' %}
+
+{% block title %}Importar movimentações · {{ fundo.nome }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .im-card { background: var(--surface-2); border: 1px solid var(--border-color); border-radius: 14px; padding: 1.1rem 1.25rem; margin-bottom: 1.25rem; }
+  .im-card h2 { font-size: 1rem; margin-bottom: .75rem; }
+  .im-cols { font-size: .85rem; color: var(--text-secondary); margin: 0; padding-left: 1.1rem; }
+  .im-cols code { color: var(--text-primary); }
+  .im-resultado[hidden] { display: none; }
+  .im-erros { max-height: 22rem; overflow-y: auto; margin-top: .75rem; }
+  .im-erros table { width: 100%; font-size: .84rem; border-collapse: collapse; }
+  .im-erros td, .im-erros th { padding: .3rem .5rem; border-bottom: 1px solid var(--border-color); text-align: left; }
+  .im-erros td:first-child { white-space: nowrap; color: var(--text-muted); width: 5rem; }
+  .im-num { text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+{% include 'base/navbar.html' %}
+<div class="container-fluid py-3" style="max-width: 1100px;">
+  <div class="page-header">
+    <div class="page-header__titles">
+      <h1 class="page-header__title">Importar movimentações</h1>
+      <p class="page-header__subtitle">{{ fundo.nome }} · planilha .xlsx ou .csv</p>
+    </div>
+    <a href="{% url 'movimentacoes_fundo' fundo.id %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Movimentações</a>
+  </div>
+
+  {% if pode_lancar %}
+  <div class="im-card">
+    <h2>Enviar planilha</h2>
+    <ul class="im-cols mb-3">
+      <li>Colunas: <code>DATA</code>, <code>CONTA</code> (código do plano) e <code>VALOR</code>; opcionais <code>HISTÓRICO</code> e <code>DOCUMENTO</code>.</li>
+      <li>Em vez de <code>VALOR</code> pode usar <code>DÉBITO</code> e <code>CRÉDITO</code>: o sistema converte pela natureza da conta.</li>
+      <li><b>Tudo ou nada:</b> se qualquer linha tiver problema, nada é importado e você recebe a lista de erros por linha.</li>
+      <li>Até {{ max_linhas }} linhas por arquivo. Um arquivo já importado não é aceito de novo.</li>
+    </ul>
+    <form id="imForm" class="d-flex flex-wrap gap-2 align-items-center">
+      <input type="file" class="form-control" id="imArquivo" name="arquivo" accept=".xlsx,.csv" required style="max-width: 26rem;">
+      <button type="submit" class="btn btn-primary" id="imEnviar"><i class="bi bi-upload me-1"></i>Importar</button>
+      <a href="{% url 'movimentacoes_modelo' fundo.id %}" class="btn btn-outline-secondary"><i class="bi bi-download me-1"></i>Baixar modelo</a>
+    </form>
+    <div class="im-resultado mt-3" id="imResultado" hidden></div>
+  </div>
+  {% else %}
+  <div class="alert alert-info">Você pode consultar os lotes, mas não importar. Peça a um administrador da empresa ou à contabilidade.</div>
+  {% endif %}
+
+  <div class="im-card">
+    <h2>Lotes importados</h2>
+    {% if lotes %}
+    <table class="table-ds" style="width:100%">
+      <thead><tr><th>Quando</th><th>Arquivo</th><th class="im-num">Linhas</th><th>Por</th>{% if pode_lancar %}<th></th>{% endif %}</tr></thead>
+      <tbody>
+        {% for item in lotes %}
+        <tr>
+          <td>{{ item.lote.importado_em|date:"d/m/Y H:i" }}</td>
+          <td>{{ item.lote.nome_arquivo }}</td>
+          <td class="im-num">{{ item.lote.qtd_linhas }}</td>
+          <td>{{ item.lote.importado_por.get_full_name|default:item.lote.importado_por.username|default:"—" }}</td>
+          {% if pode_lancar %}
+          <td class="text-end">
+            {% if item.pode_desfazer %}
+              <button type="button" class="btn btn-sm btn-outline-danger im-desfazer" data-lote="{{ item.lote.id }}"
+                      data-nome="{{ item.lote.nome_arquivo }}" data-qtd="{{ item.lote.qtd_linhas }}"><i class="bi bi-arrow-counterclockwise me-1"></i>Desfazer</button>
+            {% else %}
+              <span class="text-muted small" title="Há lançamentos em período finalizado"><i class="bi bi-lock me-1"></i>Período finalizado</span>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="text-muted mb-0">Nenhuma planilha importada ainda.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% if pode_lancar %}
+<div class="modal fade" id="imDesfazerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Desfazer importação</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+    <div class="modal-body"><div class="alert alert-danger" id="imDesfazerErro" hidden></div>
+      <p class="mb-0" id="imDesfazerTexto"></p></div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+      <button type="button" class="btn btn-danger" id="imDesfazerOk">Desfazer</button></div>
+  </div></div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if pode_lancar %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const CSRF = "{{ csrf_token }}";
+  const URL_IMPORTAR = "{% url 'movimentacoes_importar' fundo.id %}";
+  const URL_DESFAZER = "{% url 'movimentacoes_lote_desfazer' fundo.id 0 %}";
+  const resultado = document.getElementById("imResultado");
+  const modal = new bootstrap.Modal(document.getElementById("imDesfazerModal"));
+  let loteDesfazer = null;
+
+  function post(url, corpo) {
+    return fetch(url, { method: "POST", headers: { "X-CSRFToken": CSRF, "X-Requested-With": "XMLHttpRequest" }, body: corpo })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); });
+  }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+
+  document.getElementById("imForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    const botao = document.getElementById("imEnviar");
+    botao.disabled = true;
+    resultado.hidden = true;
+    post(URL_IMPORTAR, new FormData(ev.target)).then(function (res) {
+      botao.disabled = false;
+      resultado.hidden = false;
+      if (res.ok) {
+        resultado.innerHTML = '<div class="alert alert-success mb-0"><i class="bi bi-check-circle me-1"></i>' + esc(res.json.mensagem) + " Recarregando…</div>";
+        setTimeout(function () { window.location.reload(); }, 900);
+        return;
+      }
+      const erros = res.json.erros || [], total = res.json.total || erros.length;
+      let html = '<div class="alert alert-danger mb-0"><i class="bi bi-x-octagon me-1"></i><b>Nada foi importado.</b> ' +
+        total + " problema(s) encontrado(s)" + (total > erros.length ? " (mostrando os " + erros.length + " primeiros)" : "") + ".</div>";
+      html += '<div class="im-erros"><table><thead><tr><th>Linha</th><th>Problema</th></tr></thead><tbody>' +
+        erros.map(function (e) { return "<tr><td>" + (e.linha ? e.linha : "—") + "</td><td>" + esc(e.mensagem) + "</td></tr>"; }).join("") +
+        "</tbody></table></div>";
+      resultado.innerHTML = html;
+    });
+  });
+
+  document.querySelectorAll(".im-desfazer").forEach(function (b) {
+    b.addEventListener("click", function () {
+      loteDesfazer = b.dataset.lote;
+      document.getElementById("imDesfazerErro").hidden = true;
+      document.getElementById("imDesfazerTexto").textContent =
+        "Remover as " + b.dataset.qtd + " movimentações do arquivo \"" + b.dataset.nome + "\"? Os saldos e a DF voltam ao que eram antes da importação.";
+      modal.show();
+    });
+  });
+  document.getElementById("imDesfazerOk").addEventListener("click", function () {
+    post(URL_DESFAZER.replace("/0/", "/" + loteDesfazer + "/"), new FormData()).then(function (res) {
+      if (!res.ok) {
+        const e = document.getElementById("imDesfazerErro");
+        e.textContent = (res.json.erros || []).map(function (x) { return x.mensagem; }).join(" ");
+        e.hidden = false;
+        return;
+      }
+      window.location.reload();
+    });
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

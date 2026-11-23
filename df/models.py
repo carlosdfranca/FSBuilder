@@ -268,6 +268,7 @@ class PeriodoDF(models.Model):
         ('em_andamento', 'Em Andamento'),
         ('finalizada', 'Finalizada'),
         ('vencida', 'Vencida'),
+        ('historico', 'Histórico'),
     ]
     status = models.CharField(
         max_length=20,
@@ -329,6 +330,28 @@ class PeriodoDF(models.Model):
             desc = f" - {self.descricao}" if self.descricao else ""
             return f"{self.ano} Encerramento{desc}"
         return f"{self.ano} {self.get_tipo_periodo_display()}"
+
+
+class AlteracaoStatusPeriodo(models.Model):
+    """Registro de cada troca manual de status de um período (principalmente as reaberturas)."""
+    periodo = models.ForeignKey(PeriodoDF, on_delete=models.CASCADE, related_name="alteracoes_status")
+    status_anterior = models.CharField(max_length=20)
+    status_novo = models.CharField(max_length=20)
+    motivo = models.TextField(blank=True)
+    usuario = models.ForeignKey(Usuario, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Alteração de status do período"
+        verbose_name_plural = "Alterações de status dos períodos"
+        ordering = ["-criado_em", "-id"]
+
+    @property
+    def e_reabertura(self) -> bool:
+        return self.status_anterior == "finalizada" and self.status_novo != "finalizada"
+
+    def __str__(self):
+        return f"{self.periodo_id}: {self.status_anterior} → {self.status_novo}"
 
 
 # =========================
@@ -558,213 +581,276 @@ class LogAcessoDocumento(models.Model):
         return f"[{self.get_acao_display()}] doc #{self.documento_id_hist} — {self.ocorrido_em:%d/%m/%Y %H:%M}"
 
 
+# PLANO DE CONTAS ÚNICO (global, hierárquico)
 # =========================
-# GRUPÕES (nível 1)
-# =========================
-class GrupoGrande(models.Model):
-    nome = models.CharField(max_length=255)
-    ordem = models.IntegerField(null=True, blank=True, default=None)
+class Conta(models.Model):
+    """
+    Conta do plano único (Plano Referencial RFB, abas L100A + L300A).
+    Global: não pertence a nenhuma empresa. O `codigo` é o caminho na árvore
+    (1 → 1.01 → 1.01.01 ...), e `conta_superior` aponta para o pai.
+    """
 
-    TIPO_CHOICES = [
-        (1, "Ativo"),
-        (2, "Passivo"),
-        (3, "Patrimônio Líquido"),
-        (4, "Resultado"),
-    ]
-    tipo = models.IntegerField(choices=TIPO_CHOICES, null=True, blank=True)
+    class Tipo(models.TextChoices):
+        SINTETICA = "S", "Sintética"
+        ANALITICA = "A", "Analítica"
 
-    class Meta:
-        verbose_name = "Grupão de Contas"
-        verbose_name_plural = "Grupões de Contas"
-        ordering = ["nome"]
-        constraints = [
-            models.UniqueConstraint(fields=["nome", "tipo"], name="uq_grupogrande_nome_tipo")
-        ]
+    class Natureza(models.IntegerChoices):
+        ATIVO = 1, "Ativo"
+        PASSIVO = 2, "Passivo"
+        PATRIMONIO_LIQUIDO = 3, "Patrimônio Líquido"
+        RESULTADO = 4, "Resultado"
 
-    def __str__(self):
-        return f"{self.nome} ({self.get_tipo_display()})"
+    class Papel(models.TextChoices):
+        LUCROS_ACUMULADOS = "LUCROS_ACUMULADOS", "Lucros acumulados"
+        PREJUIZOS_ACUMULADOS = "PREJUIZOS_ACUMULADOS", "Prejuízos acumulados"
 
-
-# =========================
-# GRUPINHOS (nível 2)
-# =========================
-class GrupoPequeno(models.Model):
-    nome = models.CharField(max_length=255)
-    grupao = models.ForeignKey(
-        GrupoGrande,
-        on_delete=models.CASCADE,
-        related_name="grupinhos"
-    )
-
-    class Meta:
-        verbose_name = "Grupinho de Contas"
-        verbose_name_plural = "Grupinhos de Contas"
-        ordering = ["grupao", "nome"]
-        constraints = [
-            models.UniqueConstraint(fields=["nome", "grupao"], name="uq_grupopequeno_nome_grupao")
-        ]
-
-    def __str__(self):
-        return f"{self.nome} (→ {self.grupao.nome})"
-
-
-# =========================
-# MAPA DE CONTAS
-# =========================
-class MapeamentoContas(models.Model):
-    empresa = models.ForeignKey(
-        Empresa,
-        on_delete=models.CASCADE,
-        related_name="mapeamentos_contas",
-        db_index=True,
-        help_text="Empresa (tenant) proprietária deste mapeamento."
-    )
-    conta = models.CharField(max_length=30)
-    grupo_pequeno = models.ForeignKey(
-        GrupoPequeno,
+    codigo = models.CharField(max_length=30, unique=True)
+    descricao = models.CharField(max_length=255)
+    tipo = models.CharField(max_length=1, choices=Tipo.choices)
+    conta_superior = models.ForeignKey(
+        "self",
         on_delete=models.PROTECT,
-        related_name="contas",
-        null=True,
-        blank=True
-    )
-    descricao = models.CharField(max_length=255, null=True, blank=True)
-
-    class Meta:
-        verbose_name = "Mapeamento de CC"
-        verbose_name_plural = "Mapeamentos de CC"
-        ordering = ["empresa", "grupo_pequeno", "conta"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["empresa", "conta"],
-                name="uq_mapeamento_empresa_conta"
-            )
-        ]
-        indexes = [
-            models.Index(fields=["empresa", "conta"], name="idx_map_empresa_conta"),
-        ]
-    
-    def __str__(self):
-        return f"{self.conta} - {self.empresa.nome}"
-
-
-# =================================================
-# BALANCETE (por fundo, ano e conta mapeada)
-# =================================================
-class BalanceteItem(models.Model):
-    fundo = models.ForeignKey(
-        Fundo,
-        on_delete=models.CASCADE,
-        related_name="balancete",
-        db_index=True,
-    )
-    periodo_df = models.ForeignKey(
-        'PeriodoDF',
-        on_delete=models.CASCADE,
-        related_name="balancete_items",
         null=True,
         blank=True,
-        db_index=True,
-        help_text="Período de DF ao qual estes dados pertencem (null para dados legados)"
+        related_name="filhas",
     )
-    data_referencia = models.DateField(null=True, blank=True, db_index=True)
-    conta_corrente = models.ForeignKey(
-        MapeamentoContas,
-        on_delete=models.PROTECT,
-        null=True, blank=True,
-        related_name="itens",
-    )
-    saldo_final = models.DecimalField(max_digits=20, decimal_places=2, null=True, blank=True)
-    data_importacao = models.DateTimeField(auto_now_add=True)
-
-    ORIGEM_IMPORTADO = "importado"
-    ORIGEM_MANUAL = "manual"
-    ORIGEM_CHOICES = [
-        (ORIGEM_IMPORTADO, "Importado"),
-        (ORIGEM_MANUAL, "Manual"),
-    ]
-    origem = models.CharField(max_length=10, choices=ORIGEM_CHOICES, default=ORIGEM_IMPORTADO)
-    atualizado_em = models.DateTimeField(auto_now=True, null=True)
-    atualizado_por = models.ForeignKey(
-        Usuario,
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name="+",
-    )
-
-    class Meta:
-        verbose_name = "Item do Balancete"
-        verbose_name_plural = "Itens do Balancete"
-        ordering = ["fundo", "conta_corrente"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["fundo", "data_referencia", "conta_corrente"],
-                name="uq_balancete_fundo_data_conta"
-            )
-        ]
-        indexes = [
-            models.Index(fields=["data_referencia"], name="idx_bal_data_referencia"),
-            models.Index(fields=["fundo", "data_referencia"], name="idx_bal_fundo_data_referencia"),
-        ]
-
-    def __str__(self):
-        conta = self.conta_corrente.conta if self.conta_corrente else "—"
-        saldo = f"{self.saldo_final:.2f}" if self.saldo_final is not None else "—"
-        return f"[{self.data_referencia}] {self.fundo.nome} | {conta} | Saldo: R$ {saldo}"
-
-
-# =================================================
-# BALANCETE — linhas sem mapeamento (aguardando Plano de Contas)
-# =================================================
-class BalanceteLinhaPendente(models.Model):
-    """
-    Linha do balancete cuja conta ainda não tinha MapeamentoContas na empresa no momento
-    do import. Guardada para ser materializada em BalanceteItem assim que a conta for
-    mapeada, sem exigir reimportação da planilha.
-    """
-    empresa = models.ForeignKey(
-        Empresa,
-        on_delete=models.CASCADE,
-        related_name="balancete_pendentes",
-        db_index=True,
-    )
-    fundo = models.ForeignKey(
-        Fundo,
-        on_delete=models.CASCADE,
-        related_name="balancete_pendentes",
-    )
-    periodo_df = models.ForeignKey(
-        'PeriodoDF',
-        on_delete=models.CASCADE,
-        related_name="balancete_pendentes",
+    nivel = models.PositiveSmallIntegerField()
+    natureza = models.PositiveSmallIntegerField(choices=Natureza.choices)
+    vigencia_inicio = models.DateField(null=True, blank=True)
+    vigencia_fim = models.DateField(null=True, blank=True)
+    orientacoes = models.TextField(blank=True, default="")
+    papel = models.CharField(
+        max_length=20,
+        choices=Papel.choices,
         null=True,
         blank=True,
+        help_text="Conta que recebe o resultado acumulado dos exercícios anteriores.",
     )
-    data_referencia = models.DateField()
-    conta = models.CharField(max_length=30)
-    descricao = models.CharField(max_length=255, null=True, blank=True)
-    saldo_final = models.DecimalField(max_digits=20, decimal_places=2, null=True, blank=True)
+    is_ativa = models.BooleanField(default=True)
+    origem_tabela = models.CharField(max_length=10, blank=True, default="")
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "Linha pendente do balancete"
-        verbose_name_plural = "Linhas pendentes do balancete"
-        ordering = ["empresa", "conta", "-data_referencia"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["fundo", "data_referencia", "conta"],
-                name="uq_balpend_fundo_data_conta",
-            )
-        ]
+        verbose_name = "Conta"
+        verbose_name_plural = "Plano de contas"
+        ordering = ["codigo"]
         indexes = [
-            models.Index(fields=["empresa", "conta"], name="idx_balpend_empresa_conta"),
+            models.Index(fields=["natureza", "tipo"], name="idx_conta_natureza_tipo"),
+            models.Index(fields=["conta_superior"], name="idx_conta_superior"),
         ]
 
     def __str__(self):
-        return f"[{self.data_referencia}] {self.fundo.nome} | {self.conta} (pendente)"
+        return f"{self.codigo} - {self.descricao}"
+
+    @property
+    def is_resultado(self) -> bool:
+        return self.natureza == self.Natureza.RESULTADO
+
+    @property
+    def is_analitica(self) -> bool:
+        return self.tipo == self.Tipo.ANALITICA
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        pai = self.conta_superior
+        if pai is None:
+            if self.nivel != 1:
+                raise ValidationError("Conta sem conta superior deve ser de nível 1.")
+        else:
+            if not self.codigo.startswith(f"{pai.codigo}."):
+                raise ValidationError("O código deve começar com o código da conta superior.")
+            if self.nivel != pai.nivel + 1:
+                raise ValidationError("O nível deve ser o da conta superior + 1.")
+            # No plano referencial o PL (natureza 3) é filho de PASSIVO (natureza 2).
+            if self.natureza != pai.natureza and not (
+                pai.natureza == self.Natureza.PASSIVO and self.natureza == self.Natureza.PATRIMONIO_LIQUIDO
+            ):
+                raise ValidationError("A natureza deve ser a mesma da conta superior.")
+            if pai.is_analitica:
+                raise ValidationError("Conta analítica não pode ter contas filhas.")
+
+        if self.papel:
+            if not self.is_analitica:
+                raise ValidationError("Só conta analítica pode ter papel de resultado acumulado.")
+            if self.natureza != self.Natureza.PATRIMONIO_LIQUIDO:
+                raise ValidationError("O papel de resultado acumulado exige conta de Patrimônio Líquido.")
+            # MySQL ignora UniqueConstraint(condition=...): valida aqui.
+            outras = Conta.objects.filter(papel=self.papel).exclude(pk=self.pk)
+            if outras.exists():
+                raise ValidationError("Já existe outra conta com este papel.")
 
 
-# =================================================
+# =========================
+# LINHAS DA DFC (método indireto, por variação de contas do plano)
+# =========================
+class LinhaDFC(models.Model):
+    """
+    Linha da DFC: o efeito no caixa é `sinal` × (saldo das contas em `prefixos` no fim do período
+    − saldo no início). Ativo: sinal −1 (aumento consome caixa). Passivo, PL e resultado: +1.
+    Cada conta do plano deve cair em no máximo uma linha, senão a DFC deixa de fechar com o caixa.
+    """
+
+    class Secao(models.TextChoices):
+        OPERACIONAL = "operacional", "Atividades operacionais"
+        INVESTIMENTO = "investimento", "Atividades de investimento"
+        FINANCIAMENTO = "financiamento", "Atividades de financiamento"
+
+    secao = models.CharField(max_length=15, choices=Secao.choices)
+    ordem = models.PositiveSmallIntegerField(default=0)
+    descricao = models.CharField(max_length=200)
+    prefixos = models.CharField(
+        max_length=500,
+        help_text="Códigos de conta do plano, separados por vírgula (ex.: 1.01.02,1.01.03). "
+                  "Inclui toda a subárvore de cada código.",
+    )
+    sinal = models.SmallIntegerField(choices=[(1, "+1 (passivo, PL, resultado)"), (-1, "−1 (ativo)")], default=1)
+    is_ativa = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Linha da DFC"
+        verbose_name_plural = "Linhas da DFC"
+        ordering = ["secao", "ordem", "id"]
+
+    def __str__(self):
+        return f"{self.get_secao_display()} · {self.descricao}"
+
+    @property
+    def lista_prefixos(self) -> list[str]:
+        return [p.strip() for p in self.prefixos.split(",") if p.strip()]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        codigos = self.lista_prefixos
+        if not codigos:
+            raise ValidationError("Informe ao menos um código de conta.")
+        existentes = set(Conta.objects.filter(codigo__in=codigos).values_list("codigo", flat=True))
+        faltando = [c for c in codigos if c not in existentes]
+        if faltando:
+            raise ValidationError(f"Código(s) inexistente(s) no plano: {', '.join(faltando)}.")
+
+        # MySQL não impõe regra cruzada: evita a mesma conta contada em duas linhas.
+        for outra in LinhaDFC.objects.filter(is_ativa=True).exclude(pk=self.pk):
+            for a in codigos:
+                for b in outra.lista_prefixos:
+                    if a == b or a.startswith(b + ".") or b.startswith(a + "."):
+                        raise ValidationError(f"O código {a} se sobrepõe a {b}, já usado em '{outra.descricao}'.")
+
+
+# =========================
+# SALDO INICIAL (por fundo + conta patrimonial)
+# =========================
+class SaldoInicial(models.Model):
+    """
+    Ponto de partida de uma conta patrimonial (naturezas 1–3) de um fundo.
+    O saldo da conta numa data é `valor` + movimentações posteriores a `data_base`.
+    """
+    fundo = models.ForeignKey(Fundo, on_delete=models.CASCADE, related_name="saldos_iniciais")
+    conta = models.ForeignKey(Conta, on_delete=models.PROTECT, related_name="saldos_iniciais")
+    data_base = models.DateField()
+    valor = models.DecimalField(max_digits=20, decimal_places=2)
+    criado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    atualizado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Saldo inicial"
+        verbose_name_plural = "Saldos iniciais"
+        ordering = ["fundo", "conta__codigo"]
+        constraints = [
+            models.UniqueConstraint(fields=["fundo", "conta"], name="uq_saldoinicial_fundo_conta"),
+        ]
+
+    def __str__(self):
+        return f"{self.fundo} · {self.conta.codigo} · {self.data_base:%d/%m/%Y}"
+
+
+# =========================
+# LOTE DE IMPORTAÇÃO DE MOVIMENTAÇÕES
+# =========================
+class LoteImportacaoMovimentacao(models.Model):
+    fundo = models.ForeignKey(Fundo, on_delete=models.CASCADE, related_name="lotes_movimentacao")
+    nome_arquivo = models.CharField(max_length=255)
+    sha256 = models.CharField(max_length=64)
+    qtd_linhas = models.PositiveIntegerField(default=0)
+    valor_total = models.DecimalField(max_digits=20, decimal_places=2, default=Decimal("0"))
+    importado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    importado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Lote de movimentações"
+        verbose_name_plural = "Lotes de movimentações"
+        ordering = ["-importado_em"]
+        indexes = [models.Index(fields=["fundo", "sha256"], name="idx_lote_mov_fundo_sha")]
+
+    def __str__(self):
+        return f"{self.nome_arquivo} ({self.qtd_linhas} linhas)"
+
+
+# =========================
+# MOVIMENTAÇÃO (valor com sinal por conta analítica)
+# =========================
+class Movimentacao(models.Model):
+    """
+    Lançamento em uma conta analítica de um fundo. `valor` positivo aumenta a
+    conta no sentido da natureza dela (ver convenção de sinal no plano).
+    """
+
+    class Origem(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        IMPORTADO = "importado", "Importado"
+
+    fundo = models.ForeignKey(Fundo, on_delete=models.CASCADE, related_name="movimentacoes")
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="movimentacoes",
+        help_text="Desnormalizado a partir do fundo, para filtro por tenant.",
+    )
+    conta = models.ForeignKey(Conta, on_delete=models.PROTECT, related_name="movimentacoes")
+    data = models.DateField()
+    valor = models.DecimalField(max_digits=20, decimal_places=2)
+    historico = models.CharField(max_length=255, blank=True, default="")
+    documento = models.CharField(max_length=60, blank=True, default="")
+    origem = models.CharField(max_length=10, choices=Origem.choices, default=Origem.MANUAL)
+    lote = models.ForeignKey(
+        LoteImportacaoMovimentacao,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="movimentacoes",
+    )
+    criado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    atualizado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Movimentação"
+        verbose_name_plural = "Movimentações"
+        ordering = ["-data", "-id"]
+        indexes = [
+            models.Index(fields=["fundo", "data"], name="idx_mov_fundo_data"),
+            models.Index(fields=["fundo", "conta", "data"], name="idx_mov_fundo_conta_data"),
+        ]
+
+    def __str__(self):
+        return f"{self.data:%d/%m/%Y} · {self.conta.codigo} · {self.valor}"
+
+
 # MEC (por fundo, e Data da posição)
 # =================================================
 class MecItem(models.Model):

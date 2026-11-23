@@ -1,0 +1,141 @@
+{% extends 'base/base.html' %}
+
+{% block title %}Balancete calculado · {{ fundo.nome }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .bc-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; }
+  .bc-card { background: var(--surface-2); border: 1px solid var(--border-color); border-radius: 14px; padding: .5rem; margin-bottom: 1.25rem; overflow-x: auto; }
+  .bc-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .bc-table th { color: var(--text-muted); font-size: .72rem; text-transform: uppercase; text-align: right; padding: .5rem .6rem; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+  .bc-table th:first-child { text-align: left; }
+  .bc-table td { padding: .32rem .6rem; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+  .bc-row[hidden] { display: none; }
+  .bc-row--S td { font-weight: 600; color: var(--text-primary); }
+  .bc-row--A td { color: var(--text-secondary); }
+  .bc-cod { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .76rem; color: var(--text-muted); margin-right: .35rem; }
+  .bc-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bc-neg { color: #ef4444; }
+  .bc-toggle { background: none; border: 0; color: var(--text-secondary); width: 1.4rem; padding: 0; cursor: pointer; }
+  .bc-toggle i { transition: transform .12s ease; }
+  .bc-toggle[aria-expanded="true"] i { transform: rotate(90deg); }
+  .bc-ok { color: #22c55e; } .bc-erro { color: #ef4444; font-weight: 700; }
+  .bc-vazio { padding: 2rem 1rem; text-align: center; color: var(--text-muted); }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+{% include 'base/navbar.html' %}
+<div class="container-fluid py-3">
+  <div class="page-header bc-head">
+    <div class="page-header__titles">
+      <h1 class="page-header__title">Balancete calculado</h1>
+      <p class="page-header__subtitle">
+        {{ fundo.nome }} · {{ periodo.nome_exibicao }} · {{ data_anterior|date:"d/m/Y" }} → {{ data_atual|date:"d/m/Y" }} ·
+        saldo anterior + movimentações{% if tem_ajustes %} + ajustes{% endif %} = saldo atual (R$)
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'demonstracao_financeira' %}?fundo={{ fundo.id }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
+      <a href="{% url 'movimentacoes_fundo' fundo.id %}" class="btn btn-outline-secondary"><i class="bi bi-list-ul me-1"></i>Movimentações</a>
+      <a href="{% url 'dre_resultado' periodo.id %}" class="btn btn-primary"><i class="bi bi-graph-up me-1"></i>Ver DF</a>
+    </div>
+  </div>
+
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));">
+    <div class="kpi-card kpi-card--blue">
+      <div class="kpi-card__label">Contas com movimento</div>
+      <div class="kpi-card__value">{{ contas_com_movimento }}</div>
+      <div class="kpi-card__sub">no período</div>
+      <i class="bi bi-list-check kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card {% if conferencia_atual == 0 %}kpi-card--green{% else %}kpi-card--amber{% endif %}">
+      <div class="kpi-card__label">Conferência em {{ data_atual|date:"d/m/Y" }}</div>
+      <div class="kpi-card__value" style="font-size:1.35rem;">{{ conferencia_atual|floatformat:"2g" }}</div>
+      <div class="kpi-card__sub">Ativo − Passivo − Resultado (deve ser 0)</div>
+      <i class="bi bi-check2-square kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card {% if conferencia_anterior == 0 %}kpi-card--green{% else %}kpi-card--amber{% endif %}">
+      <div class="kpi-card__label">Conferência em {{ data_anterior|date:"d/m/Y" }}</div>
+      <div class="kpi-card__value" style="font-size:1.35rem;">{{ conferencia_anterior|floatformat:"2g" }}</div>
+      <div class="kpi-card__sub">mesma conta, na data anterior</div>
+      <i class="bi bi-check2-square kpi-card__ghost-icon"></i>
+    </div>
+  </div>
+
+  {% if conferencia_atual != 0 or conferencia_anterior != 0 %}
+    <div class="alert alert-warning small"><i class="bi bi-exclamation-triangle me-1"></i>
+      O balancete não fecha: o Passivo (que já inclui o Patrimônio Líquido) mais o resultado do exercício difere do Ativo.
+      Procure lançamentos sem a contrapartida (um lado sem o outro) ou saldos iniciais incompletos.</div>
+  {% endif %}
+
+  {% if not linhas %}
+    <div class="bc-card"><div class="bc-vazio">Nenhum saldo nem movimentação para este fundo até {{ data_atual|date:"d/m/Y" }}.</div></div>
+  {% else %}
+  <div class="d-flex gap-2 mb-2">
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="bcExpandir">Expandir tudo</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="bcRecolher">Recolher</button>
+  </div>
+  <div class="bc-card">
+    <table class="bc-table" id="bcTabela">
+      <thead><tr>
+        <th>Conta</th><th>Saldo anterior</th><th>Movimentações</th>
+        {% if tem_ajustes %}<th title="Resultado de anos anteriores transferido para Lucros/Prejuízos acumulados e saldos iniciais que entram no período">Ajustes</th>{% endif %}
+        <th>Saldo atual</th>
+      </tr></thead>
+      <tbody>
+        {% for l in linhas %}
+        <tr class="bc-row bc-row--{{ l.tipo }}" data-codigo="{{ l.codigo }}" data-nivel="{{ l.nivel }}" data-tipo="{{ l.tipo }}"{% if l.nivel > 1 %} hidden{% endif %}>
+          <td style="padding-left: {{ l.nivel|add:'-1' }}rem;">
+            {% if l.tipo == 'S' %}<button type="button" class="bc-toggle" aria-expanded="false" aria-label="Expandir {{ l.codigo }}"><i class="bi bi-chevron-right"></i></button>{% else %}<span class="bc-toggle d-inline-block"></span>{% endif %}
+            <span class="bc-cod">{{ l.codigo }}</span>{{ l.descricao }}
+          </td>
+          <td class="bc-num{% if l.anterior < 0 %} bc-neg{% endif %}">{{ l.anterior|floatformat:"2g" }}</td>
+          <td class="bc-num{% if l.movimentos < 0 %} bc-neg{% endif %}">{{ l.movimentos|floatformat:"2g" }}</td>
+          {% if tem_ajustes %}<td class="bc-num{% if l.ajustes < 0 %} bc-neg{% endif %}">{{ l.ajustes|floatformat:"2g" }}</td>{% endif %}
+          <td class="bc-num{% if l.atual < 0 %} bc-neg{% endif %}"><b>{{ l.atual|floatformat:"2g" }}</b></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const tabela = document.getElementById("bcTabela");
+  if (!tabela) return;
+  const linhas = Array.from(tabela.querySelectorAll("tbody tr"));
+  const expandidos = new Set();
+
+  function ancestrais(codigo) {
+    const partes = codigo.split("."), out = [];
+    for (let i = 1; i < partes.length; i++) out.push(partes.slice(0, i).join("."));
+    return out;
+  }
+  function render() {
+    linhas.forEach(function (r) {
+      r.hidden = !ancestrais(r.dataset.codigo).every(function (a) { return expandidos.has(a); });
+      const t = r.querySelector(".bc-toggle[aria-expanded]");
+      if (t) t.setAttribute("aria-expanded", expandidos.has(r.dataset.codigo) ? "true" : "false");
+    });
+  }
+  tabela.addEventListener("click", function (ev) {
+    const t = ev.target.closest(".bc-toggle[aria-expanded]");
+    if (!t) return;
+    const cod = t.closest("tr").dataset.codigo;
+    if (expandidos.has(cod)) expandidos.delete(cod); else expandidos.add(cod);
+    render();
+  });
+  document.getElementById("bcExpandir").addEventListener("click", function () {
+    linhas.forEach(function (r) { if (r.dataset.tipo === "S") expandidos.add(r.dataset.codigo); });
+    render();
+  });
+  document.getElementById("bcRecolher").addEventListener("click", function () { expandidos.clear(); render(); });
+  render();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,489 @@
+{% extends 'base/base.html' %}
+
+{% block title %}{{ escritorio.nome }} · Escritório{% endblock %}
+
+{% block extra_head %}
+<style>
+  .ed-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; }
+  .ed-acoes { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .ed-card { background: var(--surface-2); border: 1px solid var(--border-color); border-radius: 14px; padding: .75rem; margin-bottom: 1.25rem; overflow-x: auto; }
+  .ed-card h2 { font-size: 1rem; margin: .25rem .25rem .6rem; display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+  .ed-sub { display: block; font-size: .74rem; color: var(--text-muted); font-weight: 400; }
+  .ed-nome { font-weight: 600; color: var(--text-primary); }
+  .ed-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ed-btn { min-width: 2rem; height: 2rem; padding: 0 .5rem; border-radius: 8px; cursor: pointer; background: transparent;
+    color: var(--text-secondary); border: 1px solid var(--border-color); font-size: .8rem; }
+  .ed-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--accent-primary); }
+  .ed-btn--perigo:hover:not(:disabled) { color: #ef4444; border-color: #ef4444; }
+  .ed-acoes-linha { display: inline-flex; gap: .35rem; justify-content: flex-end; flex-wrap: wrap; }
+  .ed-papel { display: inline-block; padding: .1rem .55rem; border-radius: 999px; font-size: .7rem; font-weight: 600;
+    background: var(--surface-3); color: var(--text-secondary); border: 1px solid var(--border-color); }
+  .ed-papel--admin { background: rgba(251,191,36,.12); color: #fbbf24; border-color: rgba(251,191,36,.32); }
+  .st { display: inline-block; padding: .1rem .55rem; border-radius: 999px; font-size: .7rem; font-weight: 600; border: 1px solid transparent; }
+  .st--PENDING { background: rgba(251,191,36,.12); color: #fbbf24; border-color: rgba(251,191,36,.32); }
+  .st--ACCEPTED { background: rgba(34,197,94,.12); color: #22c55e; border-color: rgba(34,197,94,.32); }
+  .st--EXPIRED, .st--CANCELLED { background: var(--surface-3); color: var(--text-muted); border-color: var(--border-color); }
+  .ed-aviso { padding: .7rem 1rem; border-radius: 12px; margin-bottom: 1rem; font-size: .86rem; color: var(--text-primary);
+    background: rgba(239,68,68,.10); border: 1px solid rgba(239,68,68,.32); }
+  .ed-linha-inativa td { opacity: .55; }
+  .ed-link { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+{% include 'base/navbar.html' %}
+<div class="container-fluid py-3">
+
+  <div class="page-header ed-head">
+    <div class="page-header__titles">
+      <h1 class="page-header__title">{{ escritorio.nome }}
+        {% if escritorio.is_ativo %}<span class="badge-ativo ms-2">Ativo</span>{% else %}<span class="badge-inativo ms-2">Inativo</span>{% endif %}
+      </h1>
+      <p class="page-header__subtitle">{% if escritorio.cnpj %}CNPJ {{ escritorio.cnpj }} · {% endif %}escritório de contabilidade</p>
+    </div>
+    <div class="ed-acoes">
+      {% if e_plataforma %}
+        <a href="{% url 'escritorios_listar' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Escritórios</a>
+        <button type="button" class="btn btn-outline-secondary" id="edEditar"><i class="bi bi-pencil me-1"></i>Editar</button>
+      {% else %}
+        <a href="{% url 'painel_contabilidade' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Painel</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not escritorio.is_ativo %}
+    <div class="ed-aviso"><i class="bi bi-exclamation-octagon me-1"></i>
+      Escritório desativado: nenhum membro acessa as empresas vinculadas e os convites pendentes não podem ser aceitos.</div>
+  {% endif %}
+
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));">
+    <div class="kpi-card kpi-card--green">
+      <div class="kpi-card__label">Membros ativos</div><div class="kpi-card__value">{{ kpis.membros }}</div>
+      <div class="kpi-card__sub">na equipe</div><i class="bi bi-people kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card kpi-card--blue">
+      <div class="kpi-card__label">Empresas</div><div class="kpi-card__value">{{ kpis.empresas }}</div>
+      <div class="kpi-card__sub">vinculadas e ativas</div><i class="bi bi-buildings kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card kpi-card--amber">
+      <div class="kpi-card__label">Convites pendentes</div><div class="kpi-card__value">{{ kpis.convites }}</div>
+      <div class="kpi-card__sub">aguardando aceite</div><i class="bi bi-envelope-paper kpi-card__ghost-icon"></i>
+    </div>
+  </div>
+
+  <ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item"><button class="nav-link{% if aba != 'empresas' %} active{% endif %}" data-bs-toggle="tab" data-bs-target="#edEquipe" data-aba="equipe" type="button" role="tab">Equipe</button></li>
+    <li class="nav-item"><button class="nav-link{% if aba == 'empresas' %} active{% endif %}" data-bs-toggle="tab" data-bs-target="#edEmpresas" data-aba="empresas" type="button" role="tab">Empresas</button></li>
+  </ul>
+
+  <div class="tab-content">
+    <!-- ============ EQUIPE ============ -->
+    <div class="tab-pane fade{% if aba != 'empresas' %} show active{% endif %}" id="edEquipe" role="tabpanel">
+      <div class="ed-card">
+        <h2>Membros
+          {% if escritorio.is_ativo or e_plataforma %}<button type="button" class="btn btn-sm btn-primary" id="edConvidar"><i class="bi bi-envelope-plus me-1"></i>Convidar usuário</button>{% endif %}
+        </h2>
+        {% if membros %}
+        <table class="table-ds" style="width:100%">
+          <thead><tr><th>Pessoa</th><th>E-mail</th><th>Papel</th><th>Status</th><th>Desde</th><th></th></tr></thead>
+          <tbody>
+            {% for m in membros %}
+            <tr class="{% if not m.is_active %}ed-linha-inativa{% endif %}" data-membro="{{ m.id }}" data-role="{{ m.role }}" data-ativo="{{ m.is_active|yesno:'1,0' }}" data-nome="{{ m.usuario.get_full_name|default:m.usuario.username }}">
+              <td><span class="ed-nome">{{ m.usuario.get_full_name|default:m.usuario.username }}</span><span class="ed-sub">{{ m.usuario.username }}</span></td>
+              <td>{{ m.usuario.email|default:"—" }}</td>
+              <td><span class="ed-papel{% if m.role == 'ADMIN' %} ed-papel--admin{% endif %}">{{ m.get_role_display }}</span></td>
+              <td>{% if m.is_active %}<span class="badge-ativo">Ativo</span>{% else %}<span class="badge-inativo">Inativo</span>{% endif %}</td>
+              <td>{{ m.criado_em|date:"d/m/Y" }}</td>
+              <td class="text-end">{% if m.pode_alterar %}<button type="button" class="ed-btn ed-membro-editar" title="Alterar papel ou status"><i class="bi bi-pencil"></i></button>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <p class="text-muted px-2 mb-2">Nenhum membro ainda. Convide o primeiro usuário pelo botão acima.</p>
+        {% endif %}
+      </div>
+
+      <div class="ed-card">
+        <h2>Convites</h2>
+        {% if convites %}
+        <table class="table-ds" style="width:100%">
+          <thead><tr><th>E-mail</th><th>Papel</th><th>Status</th><th>Enviado</th><th>Expira</th><th class="ed-num">Envios</th><th></th></tr></thead>
+          <tbody>
+            {% for c in convites %}
+            <tr data-convite="{{ c.id }}" data-email="{{ c.email }}" data-link="{{ c.link }}">
+              <td>{{ c.email }}{% if c.convidado_por %}<span class="ed-sub">por {{ c.convidado_por.get_full_name|default:c.convidado_por.username }}</span>{% endif %}</td>
+              <td><span class="ed-papel{% if c.role == 'ADMIN' %} ed-papel--admin{% endif %}">{{ c.get_role_display }}</span></td>
+              <td><span class="st st--{{ c.status }}">{{ c.get_status_display }}</span></td>
+              <td>{{ c.criado_em|date:"d/m/Y H:i" }}</td>
+              <td>{{ c.expira_em|date:"d/m/Y" }}</td>
+              <td class="ed-num">{{ c.tentativas_envio }}</td>
+              <td class="text-end"><span class="ed-acoes-linha">
+                {% if c.link %}<button type="button" class="ed-btn ed-copiar" title="Copiar o link do convite"><i class="bi bi-link-45deg"></i></button>{% endif %}
+                {% if c.pode_reenviar_agora %}<button type="button" class="ed-btn ed-reenviar" title="Reenviar (gera novo link)"><i class="bi bi-arrow-repeat"></i></button>{% endif %}
+                {% if c.status == 'PENDING' and c.pode_gerir %}<button type="button" class="ed-btn ed-btn--perigo ed-cancelar" title="Cancelar convite"><i class="bi bi-x-lg"></i></button>{% endif %}
+              </span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <p class="text-muted px-2 mb-2">Nenhum convite enviado.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ============ EMPRESAS ============ -->
+    <div class="tab-pane fade{% if aba == 'empresas' %} show active{% endif %}" id="edEmpresas" role="tabpanel">
+      <div class="ed-card">
+        <h2>Empresas atendidas
+          {% if e_plataforma %}<button type="button" class="btn btn-sm btn-primary" id="edVincular"><i class="bi bi-link-45deg me-1"></i>Vincular empresa</button>{% endif %}
+        </h2>
+        {% if not e_plataforma %}<p class="text-muted small px-2">Só o administrador da plataforma altera os vínculos com empresas.</p>{% endif %}
+        {% if vinculos %}
+        <table class="table-ds" style="width:100%">
+          <thead><tr><th>Empresa</th><th>Status</th><th>Vinculada em</th><th>Por</th>{% if e_plataforma %}<th></th>{% endif %}</tr></thead>
+          <tbody>
+            {% for v in vinculos %}
+            <tr class="{% if not v.is_active %}ed-linha-inativa{% endif %}" data-vinculo="{{ v.id }}" data-empresa="{{ v.empresa.nome }}" data-ativo="{{ v.is_active|yesno:'1,0' }}">
+              <td><span class="ed-nome">{{ v.empresa.nome }}</span>{% if v.empresa.cnpj %}<span class="ed-sub">{{ v.empresa.cnpj }}</span>{% endif %}</td>
+              <td>{% if v.is_active %}<span class="badge-ativo">Vinculada</span>{% else %}<span class="badge-inativo">Desvinculada</span>{% endif %}</td>
+              <td>{{ v.criado_em|date:"d/m/Y" }}</td>
+              <td>{% if v.criado_por %}{{ v.criado_por.get_full_name|default:v.criado_por.username }}{% else %}—{% endif %}</td>
+              {% if e_plataforma %}<td class="text-end">
+                {% if v.is_active %}<button type="button" class="ed-btn ed-btn--perigo ed-desvincular" title="Desvincular"><i class="bi bi-link-45deg"></i> Desvincular</button>
+                {% else %}<button type="button" class="ed-btn ed-reativar" title="Reativar vínculo"><i class="bi bi-arrow-counterclockwise"></i> Reativar</button>{% endif %}
+              </td>{% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <p class="text-muted px-2 mb-2">Nenhuma empresa vinculada.{% if e_plataforma %} Use "Vincular empresa" para começar.{% endif %}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Confirmação genérica -->
+<div class="modal fade" id="edConfirmaModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title" id="edConfirmaTitulo"></h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+    <div class="modal-body"><div class="alert alert-danger" id="edConfirmaErro" hidden></div><p class="mb-0" id="edConfirmaTexto"></p></div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+      <button type="button" class="btn btn-danger" id="edConfirmaOk">Confirmar</button></div>
+  </div></div>
+</div>
+
+<!-- Convidar -->
+<div class="modal fade" id="edConviteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <form id="edConviteForm" autocomplete="off">
+      <div class="modal-header"><h5 class="modal-title">Convidar usuário</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+      <div class="modal-body">
+        <div id="edConviteCampos">
+          <div class="alert alert-danger" id="edConviteErro" hidden></div>
+          <div class="mb-3"><label class="form-label" for="edConviteEmail">E-mail</label>
+            <input type="email" class="form-control" id="edConviteEmail" name="email" required placeholder="pessoa@escritorio.com.br"></div>
+          <div class="mb-1"><label class="form-label" for="edConviteRole">Papel</label>
+            <select class="form-select" id="edConviteRole" name="role">
+              {% for valor, rotulo in roles_convite %}<option value="{{ valor }}"{% if valor == 'MEMBRO' %} selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+            </select>
+            <div class="form-text">A pessoa recebe um link por e-mail (válido por 7 dias) para criar a conta, ou entrar na conta que já tem.</div></div>
+        </div>
+        <div id="edConviteSucesso" hidden>
+          <div class="alert alert-success"><i class="bi bi-check-circle me-1"></i>Convite criado. O e-mail está sendo enviado.</div>
+          <label class="form-label small" for="edConviteLink">Se o e-mail não chegar, envie este link:</label>
+          <div class="input-group"><input type="text" class="form-control ed-link" id="edConviteLink" readonly>
+            <button type="button" class="btn btn-outline-secondary" id="edConviteCopiar"><i class="bi bi-clipboard me-1"></i>Copiar</button></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" id="edConviteFechar" data-bs-dismiss="modal">Fechar</button>
+        <button type="submit" class="btn btn-primary" id="edConviteEnviar">Enviar convite</button></div>
+    </form>
+  </div></div>
+</div>
+
+<!-- Editar membro -->
+<div class="modal fade" id="edMembroModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <form id="edMembroForm" autocomplete="off">
+      <div class="modal-header"><h5 class="modal-title" id="edMembroTitulo">Membro</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+      <div class="modal-body">
+        <div class="alert alert-danger" id="edMembroErro" hidden></div>
+        <div class="mb-3"><label class="form-label" for="edMembroRole">Papel</label>
+          <select class="form-select" id="edMembroRole" name="role">
+            {% for valor, rotulo in roles_convite %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+          </select></div>
+        <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="edMembroAtivo">
+          <label class="form-check-label" for="edMembroAtivo">Membro ativo (acessa as empresas do escritório)</label></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="edMembroSalvar">Salvar</button></div>
+    </form>
+  </div></div>
+</div>
+
+{% if e_plataforma %}
+<!-- Editar escritório -->
+<div class="modal fade" id="edEscModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <form id="edEscForm" autocomplete="off">
+      <div class="modal-header"><h5 class="modal-title">Editar escritório</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+      <div class="modal-body">
+        <div class="alert alert-danger" id="edEscErro" hidden></div>
+        <div class="mb-3"><label class="form-label" for="edEscNome">Nome</label>
+          <input type="text" class="form-control" id="edEscNome" name="nome" maxlength="255" required value="{{ escritorio.nome }}"></div>
+        <div class="mb-3"><label class="form-label" for="edEscCnpj">CNPJ <span class="text-muted small">(opcional)</span></label>
+          <input type="text" class="form-control" id="edEscCnpj" name="cnpj" maxlength="18" value="{{ escritorio.cnpj|default:'' }}" placeholder="00.000.000/0000-00"></div>
+        <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="edEscAtivo" name="is_ativo"{% if escritorio.is_ativo %} checked{% endif %}>
+          <label class="form-check-label" for="edEscAtivo">Escritório ativo</label>
+          <div class="form-text">Desativar suspende o acesso de toda a equipe às empresas vinculadas.</div></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="edEscSalvar">Salvar</button></div>
+    </form>
+  </div></div>
+</div>
+
+<!-- Vincular empresa -->
+<div class="modal fade" id="edVinculoModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <form id="edVinculoForm" autocomplete="off">
+      <div class="modal-header"><h5 class="modal-title">Vincular empresa</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+      <div class="modal-body">
+        <div class="alert alert-danger" id="edVinculoErro" hidden></div>
+        <label class="form-label" for="edVinculoBusca">Empresa</label>
+        <div class="ca-wrap"><input type="text" class="form-control" id="edVinculoBusca" placeholder="Digite o nome ou o CNPJ" required>
+          <input type="hidden" name="empresa_id" id="edVinculoId"></div>
+        <div class="form-text">Uma empresa só pode ter um escritório ativo. As que já têm aparecem esmaecidas, com o escritório atual.</div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="edVinculoSalvar">Vincular</button></div>
+    </form>
+  </div></div>
+</div>
+{% include 'partials/_autocomplete.html' %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const CSRF = "{{ csrf_token }}";
+  const ESC = {{ escritorio.id }};
+  const URLS = {
+    editar: "{% url 'escritorio_editar' escritorio.id %}",
+    convidar: "{% url 'escritorio_convite_criar' escritorio.id %}",
+    reenviar: "{% url 'escritorio_convite_reenviar' escritorio.id 0 %}",
+    cancelar: "{% url 'escritorio_convite_cancelar' escritorio.id 0 %}",
+    membro: "{% url 'escritorio_membro_editar' escritorio.id 0 %}",
+    vincular: "{% url 'escritorio_empresa_vincular' escritorio.id %}",
+    vinculo: "{% url 'escritorio_empresa_alterar' escritorio.id 0 %}"
+  };
+  let abaAtual = "{{ aba }}";
+
+  function post(url, corpo) {
+    return fetch(url, { method: "POST", headers: { "X-CSRFToken": CSRF, "X-Requested-With": "XMLHttpRequest" }, body: corpo || new FormData() })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); });
+  }
+  function mensagens(json) {
+    const e = json.errors || {};
+    return [].concat.apply([], Object.keys(e).map(function (k) { return e[k]; })).join(" ") || "Não foi possível concluir.";
+  }
+  function mostrar(el, texto) { el.textContent = texto; el.hidden = false; }
+  function recarregar() { window.location.href = window.location.pathname + "?aba=" + abaAtual; }
+  function id(url, n) { return url.replace("/0/", "/" + n + "/"); }
+  function modal(idEl) { return bootstrap.Modal.getOrCreateInstance(document.getElementById(idEl)); }
+  function copiar(texto) {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(texto);
+    const t = document.createElement("textarea"); t.value = texto; document.body.appendChild(t); t.select();
+    document.execCommand("copy"); document.body.removeChild(t); return Promise.resolve();
+  }
+
+  document.querySelectorAll("[data-aba]").forEach(function (b) {
+    b.addEventListener("shown.bs.tab", function () { abaAtual = b.dataset.aba; });
+  });
+
+  // ── confirmação genérica ──────────────────────────────────────────
+  let acaoConfirmada = null;
+  function confirmar(titulo, texto, textoBotao, acao) {
+    document.getElementById("edConfirmaTitulo").textContent = titulo;
+    document.getElementById("edConfirmaTexto").textContent = texto;
+    document.getElementById("edConfirmaOk").textContent = textoBotao || "Confirmar";
+    document.getElementById("edConfirmaErro").hidden = true;
+    acaoConfirmada = acao;
+    modal("edConfirmaModal").show();
+  }
+  document.getElementById("edConfirmaOk").addEventListener("click", function () {
+    if (!acaoConfirmada) return;
+    acaoConfirmada().then(function (res) {
+      if (res.ok) { recarregar(); return; }
+      mostrar(document.getElementById("edConfirmaErro"), mensagens(res.json));
+    });
+  });
+
+  // ── convidar ──────────────────────────────────────────────────────
+  const btnConvidar = document.getElementById("edConvidar");
+  if (btnConvidar) btnConvidar.addEventListener("click", function () {
+    document.getElementById("edConviteForm").reset();
+    document.getElementById("edConviteErro").hidden = true;
+    document.getElementById("edConviteCampos").hidden = false;
+    document.getElementById("edConviteSucesso").hidden = true;
+    document.getElementById("edConviteEnviar").hidden = false;
+    document.getElementById("edConviteFechar").textContent = "Cancelar";
+    modal("edConviteModal").show();
+  });
+  document.getElementById("edConviteForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    const botao = document.getElementById("edConviteEnviar");
+    botao.disabled = true;
+    post(URLS.convidar, new FormData(ev.target)).then(function (res) {
+      botao.disabled = false;
+      if (!res.ok) { mostrar(document.getElementById("edConviteErro"), mensagens(res.json)); return; }
+      document.getElementById("edConviteLink").value = res.json.item.link;
+      document.getElementById("edConviteCampos").hidden = true;
+      document.getElementById("edConviteSucesso").hidden = false;
+      botao.hidden = true;
+      document.getElementById("edConviteFechar").textContent = "Fechar";
+      document.getElementById("edConviteModal").addEventListener("hidden.bs.modal", recarregar, { once: true });
+    });
+  });
+  document.getElementById("edConviteCopiar").addEventListener("click", function () {
+    copiar(document.getElementById("edConviteLink").value).then(function () {
+      document.getElementById("edConviteCopiar").innerHTML = '<i class="bi bi-check2 me-1"></i>Copiado';
+    });
+  });
+
+  // ── ações nas linhas de convite ───────────────────────────────────
+  document.querySelectorAll(".ed-copiar").forEach(function (b) {
+    b.addEventListener("click", function () {
+      const link = b.closest("tr").dataset.link;
+      copiar(link).then(function () { b.innerHTML = '<i class="bi bi-check2"></i>'; setTimeout(function () { b.innerHTML = '<i class="bi bi-link-45deg"></i>'; }, 1500); });
+    });
+  });
+  document.querySelectorAll(".ed-reenviar").forEach(function (b) {
+    b.addEventListener("click", function () {
+      const tr = b.closest("tr");
+      confirmar("Reenviar convite", "Reenviar o convite para " + tr.dataset.email + "? O link anterior deixa de valer e um novo e-mail é enviado.", "Reenviar",
+        function () { return post(id(URLS.reenviar, tr.dataset.convite)); });
+    });
+  });
+  document.querySelectorAll(".ed-cancelar").forEach(function (b) {
+    b.addEventListener("click", function () {
+      const tr = b.closest("tr");
+      confirmar("Cancelar convite", "Cancelar o convite de " + tr.dataset.email + "? O link enviado deixa de funcionar.", "Cancelar convite",
+        function () { return post(id(URLS.cancelar, tr.dataset.convite)); });
+    });
+  });
+
+  // ── membros ───────────────────────────────────────────────────────
+  let membroEditando = null;
+  document.querySelectorAll(".ed-membro-editar").forEach(function (b) {
+    b.addEventListener("click", function () {
+      const tr = b.closest("tr");
+      membroEditando = tr.dataset.membro;
+      document.getElementById("edMembroTitulo").textContent = tr.dataset.nome;
+      const select = document.getElementById("edMembroRole");
+      if (!Array.prototype.some.call(select.options, function (o) { return o.value === tr.dataset.role && !o.disabled; })) select.value = "MEMBRO";
+      else select.value = tr.dataset.role;
+      document.getElementById("edMembroAtivo").checked = tr.dataset.ativo === "1";
+      document.getElementById("edMembroErro").hidden = true;
+      modal("edMembroModal").show();
+    });
+  });
+  document.getElementById("edMembroForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    const dados = new FormData(ev.target);
+    dados.set("is_active", document.getElementById("edMembroAtivo").checked ? "1" : "0");
+    document.getElementById("edMembroSalvar").disabled = true;
+    post(id(URLS.membro, membroEditando), dados).then(function (res) {
+      document.getElementById("edMembroSalvar").disabled = false;
+      if (!res.ok) { mostrar(document.getElementById("edMembroErro"), mensagens(res.json)); return; }
+      recarregar();
+    });
+  });
+
+  {% if e_plataforma %}
+  // ── editar escritório ─────────────────────────────────────────────
+  if (window.IMask) IMask(document.getElementById("edEscCnpj"), { mask: "00.000.000/0000-00" });
+  document.getElementById("edEditar").addEventListener("click", function () {
+    window.confirmouDesativar = false;
+    document.getElementById("edEscErro").hidden = true; modal("edEscModal").show();
+  });
+  document.getElementById("edEscForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    const ativo = document.getElementById("edEscAtivo").checked;
+    const salvar = function () {
+      document.getElementById("edEscSalvar").disabled = true;
+      post(URLS.editar, new FormData(ev.target)).then(function (res) {
+        document.getElementById("edEscSalvar").disabled = false;
+        if (!res.ok) { mostrar(document.getElementById("edEscErro"), mensagens(res.json)); return; }
+        recarregar();
+      });
+    };
+    {% if escritorio.is_ativo %}
+    if (!ativo && !window.confirmouDesativar) {
+      window.confirmouDesativar = true;
+      mostrar(document.getElementById("edEscErro"), "Desativar suspende o acesso de toda a equipe às empresas vinculadas. Clique em Salvar de novo para confirmar.");
+      return;
+    }
+    {% endif %}
+    salvar();
+  });
+
+  // ── vincular / desvincular empresas ───────────────────────────────
+  const ac = autocomplete({
+    input: document.getElementById("edVinculoBusca"), hidden: document.getElementById("edVinculoId"),
+    url: "{% url 'empresas_buscar' %}", params: { escritorio: ESC }, resultsKey: "empresas",
+    emptyText: "Nenhuma empresa encontrada.",
+    label: function (e) { return e.nome; },
+    isDisabled: function (e) { return e.bloqueada; },
+    render: function (e, li) {
+      const t = document.createElement("span"); t.textContent = e.nome;
+      li.appendChild(t);
+      if (e.cnpj) { const c = document.createElement("small"); c.textContent = e.cnpj; li.appendChild(c); }
+      if (e.bloqueada) {
+        const s = document.createElement("small");
+        s.textContent = e.ja_neste ? "· já vinculada a este escritório" : "· já atendida por " + e.escritorio_atual;
+        li.appendChild(s);
+      }
+    }
+  });
+  document.getElementById("edVincular").addEventListener("click", function () {
+    document.getElementById("edVinculoForm").reset(); ac.limpar();
+    document.getElementById("edVinculoErro").hidden = true; modal("edVinculoModal").show();
+  });
+  document.getElementById("edVinculoForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    if (!document.getElementById("edVinculoId").value) { mostrar(document.getElementById("edVinculoErro"), "Escolha uma empresa da lista."); return; }
+    document.getElementById("edVinculoSalvar").disabled = true;
+    post(URLS.vincular, new FormData(ev.target)).then(function (res) {
+      document.getElementById("edVinculoSalvar").disabled = false;
+      if (!res.ok) { mostrar(document.getElementById("edVinculoErro"), mensagens(res.json)); return; }
+      abaAtual = "empresas"; recarregar();
+    });
+  });
+  function alterarVinculo(botao, ativo, titulo, texto, rotulo) {
+    const tr = botao.closest("tr");
+    confirmar(titulo, texto.replace("{empresa}", tr.dataset.empresa), rotulo, function () {
+      const d = new FormData(); d.set("ativo", ativo ? "1" : "0");
+      abaAtual = "empresas";
+      return post(id(URLS.vinculo, tr.dataset.vinculo), d);
+    });
+  }
+  document.querySelectorAll(".ed-desvincular").forEach(function (b) {
+    b.addEventListener("click", function () {
+      alterarVinculo(b, false, "Desvincular empresa", "A equipe deste escritório deixa de acessar {empresa}. Os dados da empresa não são alterados.", "Desvincular");
+    });
+  });
+  document.querySelectorAll(".ed-reativar").forEach(function (b) {
+    b.addEventListener("click", function () {
+      alterarVinculo(b, true, "Reativar vínculo", "Reativar o vínculo com {empresa}? A equipe volta a acessá-la.", "Reativar");
+    });
+  });
+  {% endif %}
+});
+</script>
+{% endblock %}

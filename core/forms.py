@@ -3,80 +3,8 @@ from django.core.exceptions import ValidationError
 from django.contrib.auth.password_validation import validate_password
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from df.models import Fundo, ConfiguracaoDF, Gestora, GrupoPequeno, MapeamentoContas
+from df.models import Fundo, ConfiguracaoDF, Gestora
 from usuarios.models import Usuario, Empresa
-
-
-class MapeamentoContasForm(forms.ModelForm):
-    """
-    Plano de Contas: conta do balancete → grupinho. A empresa nunca vem do POST;
-    é passada pela view. Com `travar_conta=True` (conta já usada em balancetes) o
-    código não pode mudar, só descrição e grupinho.
-    """
-    class Meta:
-        model = MapeamentoContas
-        fields = ['conta', 'descricao', 'grupo_pequeno']
-
-    def __init__(self, *args, empresa, travar_conta=False, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.empresa = empresa
-        self.travar_conta = travar_conta
-        self.fields['grupo_pequeno'].queryset = (
-            GrupoPequeno.objects.select_related('grupao')
-            .order_by('grupao__tipo', 'grupao__ordem', 'grupao__nome', 'nome')
-        )
-        self.fields['grupo_pequeno'].required = False
-
-    def clean_conta(self):
-        if self.travar_conta and self.instance.pk:
-            return self.instance.conta
-        conta = (self.cleaned_data.get('conta') or '').strip()
-        if not conta:
-            raise ValidationError("Informe o código da conta.")
-        duplicada = MapeamentoContas.objects.filter(empresa=self.empresa, conta=conta)
-        if self.instance.pk:
-            duplicada = duplicada.exclude(pk=self.instance.pk)
-        if duplicada.exists():
-            raise ValidationError(f"A conta {conta} já está mapeada nesta empresa.")
-        return conta
-
-    def clean_descricao(self):
-        return (self.cleaned_data.get('descricao') or '').strip() or None
-
-
-class SaldoBalanceteForm(forms.Form):
-    """
-    Lançamento manual de um saldo (atual ou anterior) de um período. A empresa vem da
-    view; só contas já classificadas no Plano de Contas dessa empresa são aceitas.
-    """
-    COLUNA_CHOICES = [('atual', 'Saldo atual'), ('anterior', 'Saldo anterior')]
-
-    mapeamento = forms.ModelChoiceField(queryset=MapeamentoContas.objects.none())
-    coluna = forms.ChoiceField(choices=COLUNA_CHOICES)
-    saldo_final = forms.CharField()
-
-    def __init__(self, *args, empresa, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['mapeamento'].queryset = MapeamentoContas.objects.filter(
-            empresa=empresa, grupo_pequeno__isnull=False
-        )
-        self.fields['mapeamento'].error_messages['invalid_choice'] = (
-            "Conta inválida ou ainda não classificada no Plano de Contas."
-        )
-
-    def clean_saldo_final(self):
-        bruto = (self.cleaned_data.get('saldo_final') or '').strip().replace('R$', '').replace(' ', '')
-        if not bruto:
-            raise ValidationError("Informe o valor do saldo.")
-        if ',' in bruto:
-            bruto = bruto.replace('.', '').replace(',', '.')
-        try:
-            valor = Decimal(bruto)
-        except InvalidOperation:
-            raise ValidationError("Valor inválido.")
-        if not valor.is_finite() or abs(valor) >= Decimal('1e18'):
-            raise ValidationError("Valor fora do limite permitido.")
-        return valor.quantize(Decimal('0.01'))
 
 
 class GestoraForm(forms.ModelForm):

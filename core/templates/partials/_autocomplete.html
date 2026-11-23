@@ -1,0 +1,177 @@
+{# Autocomplete genérico (padrão combobox/listbox, acessível).
+   autocomplete({ input, hidden, url, params, resultsKey, label(item), render(item, li, entrada), isDisabled(item),
+                  emptyText, onSelect(item), entries(json), onEstado(estado, json), liveText(json, itens) })
+   - params: objeto ou função (lida a cada busca).
+   - entries(json): opcional; devolve [{tipo:"cabecalho"|"item"|"rodape"|"vazio", ...}] para montar a lista
+     (cabeçalhos, atalhos, rodapé). Sem ela, a lista é json[resultsKey]. #}
+<style>
+  .ca-wrap { position: relative; }
+  .ca-list { position: absolute; z-index: 1056; left: 0; right: 0; top: 100%; max-height: min(50vh, 20rem); overflow-y: auto;
+    margin: .15rem 0 0; padding: .25rem; list-style: none; border-radius: 10px;
+    background: var(--surface-2); border: 1px solid var(--border-color); box-shadow: var(--shadow-card-hover, 0 8px 24px rgba(0,0,0,.25)); }
+  .ca-list[hidden] { display: none; }
+  .ca-item { padding: .4rem .6rem; border-radius: 6px; cursor: pointer; font-size: .85rem; color: var(--text-secondary); }
+  .ca-item.is-active:not(.is-disabled), .ca-item:hover:not(.is-disabled) { background: var(--surface-3); color: var(--text-primary); }
+  .ca-item.is-disabled { opacity: .5; cursor: not-allowed; }
+  .ca-item b { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text-primary); margin-right: .4rem; }
+  .ca-item small { color: var(--text-muted); margin-left: .4rem; }
+  .ca-item mark { background: rgba(251,191,36,.28); color: inherit; border-radius: 3px; padding: 0 1px; }
+  .ca-grupo { padding: .5rem .6rem .2rem; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+  .ca-rodape { position: sticky; bottom: -.25rem; margin-top: .2rem; padding: .4rem .6rem; font-size: .74rem; color: var(--text-muted);
+    background: var(--surface-2); border-top: 1px solid var(--border-color); }
+  .ca-vazio { padding: .55rem .6rem; font-size: .82rem; color: var(--text-muted); }
+  .ca-vazio .ca-link { background: none; border: 0; padding: 0; margin-left: .4rem; color: var(--accent-primary); text-decoration: underline; cursor: pointer; }
+  .ca-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+<script>
+window.autocomplete = function (opts) {
+  const input = opts.input, hidden = opts.hidden;
+  const base = "ca" + Math.random().toString(36).slice(2, 8);
+  const lista = document.createElement("ul");
+  lista.className = "ca-list";
+  lista.id = base + "-lista";
+  lista.setAttribute("role", "listbox");
+  lista.hidden = true;
+  const vivo = document.createElement("div");  // anuncia a quantidade de resultados a leitores de tela
+  vivo.className = "ca-sr";
+  vivo.setAttribute("aria-live", "polite");
+  input.parentNode.appendChild(lista);
+  input.parentNode.appendChild(vivo);
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-autocomplete", "list");
+  input.setAttribute("aria-expanded", "false");
+  input.setAttribute("aria-controls", lista.id);
+
+  let itens = [], lis = [], ativo = -1, timer = null, seq = 0;
+  const desabilitado = function (item) { return !!(opts.isDisabled && opts.isDisabled(item)); };
+
+  function abrir() { lista.hidden = false; input.setAttribute("aria-expanded", "true"); }
+  function fechar() {
+    lista.hidden = true; ativo = -1;
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
+  }
+  function marcar(i, rolar) {
+    ativo = i;
+    lis.forEach(function (li, j) {
+      li.classList.toggle("is-active", j === i);
+      li.setAttribute("aria-selected", j === i ? "true" : "false");
+    });
+    if (i >= 0) {
+      input.setAttribute("aria-activedescendant", lis[i].id);
+      if (rolar) lis[i].scrollIntoView({ block: "nearest" });
+    } else {
+      input.removeAttribute("aria-activedescendant");
+    }
+  }
+  function proximo(passo) {
+    let i = ativo;
+    for (let n = 0; n < itens.length; n++) {
+      i = (i + passo + itens.length) % itens.length;
+      if (!desabilitado(itens[i])) return i;
+    }
+    return ativo;
+  }
+  function escolher(item) {
+    if (desabilitado(item)) return;
+    input.value = opts.label(item);
+    hidden.value = item.id;
+    input.setCustomValidity("");
+    fechar();
+    if (opts.onSelect) opts.onSelect(item);
+  }
+  function mensagem(texto, estado) {
+    lista.innerHTML = ""; itens = []; lis = []; ativo = -1;
+    const li = document.createElement("li");
+    li.className = "ca-vazio";
+    li.setAttribute("role", "presentation");
+    li.textContent = texto;
+    lista.appendChild(li);
+    abrir();
+    vivo.textContent = texto;
+    if (opts.onEstado) opts.onEstado(estado);
+  }
+  function desenhar(json) {
+    const entradas = opts.entries
+      ? opts.entries(json)
+      : (json[opts.resultsKey] || []).map(function (item) { return { tipo: "item", item: item }; });
+    if (!entradas.some(function (e) { return e.tipo === "item" || e.tipo === "vazio"; })) {
+      entradas.push({ tipo: "vazio", texto: opts.emptyText || "Nenhum resultado." });
+    }
+    lista.innerHTML = ""; itens = []; lis = [];
+    entradas.forEach(function (e) {
+      const li = document.createElement("li");
+      if (e.tipo === "item") {
+        li.className = "ca-item" + (desabilitado(e.item) ? " is-disabled" : "");
+        li.id = base + "-o" + itens.length;
+        li.setAttribute("role", "option");
+        li.setAttribute("aria-selected", "false");
+        if (desabilitado(e.item)) li.setAttribute("aria-disabled", "true");
+        opts.render(e.item, li, e);
+        li.addEventListener("mousedown", function (ev) { ev.preventDefault(); escolher(e.item); });
+        itens.push(e.item); lis.push(li);
+      } else {
+        li.setAttribute("role", "presentation");
+        li.className = e.tipo === "cabecalho" ? "ca-grupo" : e.tipo === "rodape" ? "ca-rodape" : "ca-vazio";
+        const span = document.createElement("span");
+        span.textContent = e.texto;
+        li.appendChild(span);
+        if (e.acao) {
+          const b = document.createElement("button");
+          b.type = "button"; b.className = "ca-link"; b.textContent = e.acao.rotulo;
+          b.addEventListener("mousedown", function (ev) { ev.preventDefault(); e.acao.fazer(); });
+          li.appendChild(b);
+        }
+      }
+      lista.appendChild(li);
+    });
+    abrir();
+    marcar(itens.findIndex(function (item) { return !desabilitado(item); }), false);
+    vivo.textContent = itens.length
+      ? (opts.liveText ? opts.liveText(json, itens) : itens.length + " resultados disponíveis")
+      : "Nenhum resultado";
+    if (opts.onEstado) opts.onEstado("pronto", json);
+  }
+  function buscar() {
+    const minha = ++seq;
+    const parametros = new URLSearchParams(typeof opts.params === "function" ? opts.params() : (opts.params || {}));
+    parametros.set("q", input.value.trim());
+    if (lista.hidden || !lis.length) mensagem("Buscando…", "carregando");
+    fetch(opts.url + "?" + parametros.toString(), { headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (json) { if (minha === seq) desenhar(json); })  // ignora respostas antigas
+      .catch(function () {
+        if (minha === seq) mensagem("Não foi possível buscar agora. Verifique a conexão e tente de novo.", "erro");
+      });
+  }
+
+  input.addEventListener("input", function () {
+    hidden.value = "";  // texto mudou: a escolha anterior deixa de valer
+    clearTimeout(timer);
+    timer = setTimeout(buscar, 180);
+  });
+  input.addEventListener("focus", function () { if (!hidden.value) buscar(); });
+  input.addEventListener("blur", function () { setTimeout(fechar, 120); });
+  input.addEventListener("keydown", function (e) {
+    if (lista.hidden) {
+      if (e.key === "ArrowDown") { e.preventDefault(); buscar(); }
+      return;
+    }
+    if (e.key === "ArrowDown") { e.preventDefault(); marcar(proximo(1), true); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); marcar(proximo(-1), true); }
+    else if (e.key === "Enter" && ativo >= 0) { e.preventDefault(); escolher(itens[ativo]); }
+    else if (e.key === "Escape") {
+      // Fecha só a lista: sem isso o Esc também fecharia o modal em que o campo está
+      e.preventDefault(); e.stopPropagation(); fechar();
+    } else if (e.key === "Tab") { fechar(); }
+  });
+
+  return {
+    definir: function (item) { item ? escolher(item) : (input.value = "", hidden.value = ""); },
+    limpar: function () { input.value = ""; hidden.value = ""; fechar(); },
+    abrir: function () { input.focus(); buscar(); },
+    atualizar: function () { if (!lista.hidden || document.activeElement === input) buscar(); },
+    fechar: fechar
+  };
+};
+</script>

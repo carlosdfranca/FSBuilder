@@ -6,6 +6,10 @@ from django.http import HttpResponseForbidden
 from django.urls import reverse
 
 from usuarios.models import Usuario, Membership
+from usuarios.utils.acesso import empresas_acessiveis, tem_acesso_contabil
+
+# Perfil de quem chega à empresa por um escritório de contabilidade (não é um Membership.Role).
+ROLE_CONTABILIDADE = "CONTABILIDADE"
 
 # -------- helpers globais --------
 def is_global(user):
@@ -16,27 +20,24 @@ def is_global_admin(user):
 
 def get_empresa_escopo(request):
     """
-    Empresa atual: empresa_ativa (middleware) ou primeira empresa do membership (para não-globais, fallback).
+    Empresa atual: empresa_ativa (middleware) ou primeira empresa acessível (para não-globais, fallback).
     Globais dependem de empresa ativa → None aqui força seleção.
     """
     emp = getattr(request, "empresa_ativa", None)
     if emp:
         return emp
     if not is_global(request.user):
-        memb = (
-            Membership.objects
-            .filter(usuario=request.user, is_active=True)
-            .select_related("empresa")
-            .first()
-        )
-        return memb.empresa if memb else None
+        return empresas_acessiveis(request.user).order_by("nome").first()
     return None
 
 def role_na_empresa(user, empresa):
     if not (user and empresa):
         return None
     memb = Membership.objects.filter(usuario=user, empresa=empresa, is_active=True).only("role").first()
-    return memb.role if memb else None
+    if memb:
+        return memb.role
+    # Sem vínculo direto: chega pelo escritório de contabilidade (se houver)
+    return ROLE_CONTABILIDADE if tem_acesso_contabil(user, empresa) else None
 
 def _redirect_to_select(request, msg=None):
     """Redireciona de forma segura para a página de seleção, sem criar loop nem spam de mensagens."""
@@ -92,6 +93,42 @@ def company_can_manage_data(view):
             return view(request, *args, **kwargs)
         return HttpResponseForbidden("Você não tem permissão para gerenciar os dados desta empresa.")
     return _wrapped
+
+# ---------- Decorator específico: Movimentações e saldos iniciais ----------
+# Quem pode lançar/editar movimentações, saldos iniciais e importar planilhas.
+# A Contabilidade (escritório vinculado à empresa) também lança, mesmo que o usuário tenha
+# um vínculo direto mais restrito com a empresa.
+ROLES_PODEM_LANCAR = {Membership.Role.MASTER, Membership.Role.ADMIN}
+
+
+def pode_lancar_movimentacoes(user, empresa) -> bool:
+    if is_global_admin(user):
+        return True
+    if role_na_empresa(user, empresa) in ROLES_PODEM_LANCAR:
+        return True
+    return tem_acesso_contabil(user, empresa)
+
+
+def company_can_manage_movimentacoes(view):
+    """
+    Pode LANÇAR movimentações e saldos iniciais:
+    - Global ADMIN
+    - MASTER/ADMIN da empresa e a Contabilidade vinculada à empresa
+    (Global VIEWER, MEMBER e VIEWER NÃO podem)
+    """
+    @wraps(view)
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect("login")
+        empresa = get_empresa_escopo(request)
+        if not empresa:
+            maybe_redirect = _redirect_to_select(request, "Selecione uma empresa na barra superior para lançar movimentações.")
+            return maybe_redirect or view(request, *args, **kwargs)
+        if pode_lancar_movimentacoes(request.user, empresa):
+            return view(request, *args, **kwargs)
+        return HttpResponseForbidden("Você não tem permissão para lançar movimentações desta empresa.")
+    return _wrapped
+
 
 # ---------- Decorator específico: Fundos ----------
 def company_can_manage_fundos(view):

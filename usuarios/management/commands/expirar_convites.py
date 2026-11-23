@@ -7,7 +7,7 @@ Uso:
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from usuarios.models import Convite
+from usuarios.models import Convite, ConviteEscritorio
 
 
 class Command(BaseCommand):
@@ -15,6 +15,14 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         agora = timezone.now()
+
+        total_escritorio = ConviteEscritorio.objects.filter(
+            status=ConviteEscritorio.Status.PENDING, expira_em__lt=agora
+        ).update(status=ConviteEscritorio.Status.EXPIRED)
+        if total_escritorio:
+            self.stdout.write(self.style.SUCCESS(
+                f'✅ {total_escritorio} convite(s) de escritório marcado(s) como EXPIRED.'
+            ))
         
         # Busca convites pendentes expirados
         convites_expirados = Convite.objects.filter(

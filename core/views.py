@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Count, ProtectedError
+from django.db.models import Count, Prefetch, ProtectedError
 from django.http import FileResponse, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
@@ -17,17 +17,14 @@ import json
 import logging
 
 from df.models import (
-    Fundo, BalanceteItem, HistoricoEmissaoDF, PeriodoDF, Gestora,
+    AlteracaoStatusPeriodo, Fundo, HistoricoEmissaoDF, PeriodoDF, Gestora,
     ChecklistItemPeriodo, DocumentoDF, LogAcessoDocumento,
-    GrupoGrande, GrupoPequeno, MapeamentoContas, BalanceteLinhaPendente,
-)
-from df.services.mapeamento_service import (
-    contas_pendentes_agrupadas,
-    descartar_pendentes,
-    materializar_pendentes,
-    total_contas_pendentes,
 )
 from df.validators import validar_documento_upload
+from df.services.periodo_service import (
+    alterar_status_manual, garantir_datas_periodo, movimentacoes_na_janela, periodo_tem_dados,
+    periodo_tem_movimentacao,
+)
 from df.services.documento_service import (
     sugerir_contem_dados_pessoais,
     registrar_acesso,
@@ -39,6 +36,7 @@ from df.services.documento_service import (
     serie_crescimento_mensal,
 )
 from usuarios.models import Empresa, Membership
+from usuarios.utils.acesso import empresas_acessiveis
 from usuarios.utils.company_scope import query_por_empresa_ativa
 from usuarios.permissions import (
     company_can_view_data,
@@ -54,7 +52,6 @@ from usuarios.permissions import (
 
 from .forms import (
     FundoForm, GestoraForm, EditarPerfilForm, EmpresaDocumentosConfigForm,
-    MapeamentoContasForm, SaldoBalanceteForm,
 )
 from df.forms import PeriodoDFManualForm
 
@@ -63,13 +60,10 @@ logger = logging.getLogger(__name__)
 # Camadas novas (core)
 from core.export.df_excel import criar_aba_dpf, criar_aba_dre, criar_aba_dmpl, criar_aba_dfc
 from core.export.df_docx import build_docx_context, gerar_docx
-from core.processing.import_service import import_balancete, import_mec
-from core.processing.dre_service import gerar_dados_dre
-from core.processing.dpf_service import gerar_dados_dpf
-from core.processing.dmpl_service import gerar_dados_dmpl
-from core.processing.dfc_service import gerar_tabela_dfc
+from core.processing.import_service import import_mec
+from core.processing.demonstrativo_service import NIVEL_MAX, NIVEL_MIN, NIVEL_PADRAO
+from core.processing.df_service import gerar_dfs
 from core.processing.status_service import calcular_status_periodo
-from core.upload.balancete_parser import parse_excel, BalanceteSchemaError
 from core.upload.mec_parser import parse_excel_mec, MecSchemaError
 
 import os
@@ -84,8 +78,7 @@ def _empresas_do_usuario(user):
     has_global = getattr(user, "has_global_scope", None)
     if has_global and user.has_global_scope():
         return Empresa.objects.all()
-    empresa_ids = Membership.objects.filter(usuario=user, is_active=True).values_list("empresa_id", flat=True)
-    return Empresa.objects.filter(id__in=list(empresa_ids))
+    return empresas_acessiveis(user)
 
 def _can_manage_fundos(request):
     """
@@ -161,7 +154,7 @@ def demonstracao_financeira(request):
                 'tipo': p.tipo_periodo,
                 'ano': p.ano,
                 'status': p.status,
-                'tem_balancete': p.balancete_items.exists(),
+                'tem_dados': periodo_tem_dados(p),
                 'data_referencia': p.data_referencia.isoformat() if p.data_referencia else None,
                 'data_referencia_calculada': data_ref_calculada.isoformat() if data_ref_calculada else None,
                 'data_vencimento': p.data_vencimento.isoformat() if p.data_vencimento else None,
@@ -171,7 +164,7 @@ def demonstracao_financeira(request):
 
         proximo_periodo = (
             PeriodoDF.objects.filter(fundo=fundo, data_vencimento__gte=hoje)
-            .exclude(status="finalizada")
+            .exclude(status__in=["finalizada", "historico"])
             .order_by("data_vencimento")
             .first()
         )
@@ -267,13 +260,13 @@ def controle_emissoes(request):
 
     metricas = {
         'total': len(todos),
-        'finalizadas': sum(1 for p in todos if p.status == 'finalizada'),
+        'finalizadas': sum(1 for p in todos if p.status in ('finalizada', 'historico')),  # concluídas
         'em_andamento': sum(1 for p in todos if p.status == 'em_andamento'),
         'nao_iniciadas': sum(1 for p in todos if p.status == 'nao_iniciada'),
         'vencidas': sum(1 for p in todos if p.status == 'vencida'),
         'quase_vencendo': sum(
             1 for p in todos
-            if p.status not in ('finalizada', 'vencida')
+            if p.status not in ('finalizada', 'historico', 'vencida')
             and p.data_vencimento
             and 0 <= (p.data_vencimento - hoje).days <= 30
         ),
@@ -282,10 +275,12 @@ def controle_emissoes(request):
     if status_filtro == 'quase_vencendo':
         periodos_base = [
             p for p in todos
-            if p.status not in ('finalizada', 'vencida')
+            if p.status not in ('finalizada', 'historico', 'vencida')
             and p.data_vencimento
             and 0 <= (p.data_vencimento - hoje).days <= 30
         ]
+    elif status_filtro == 'finalizada':
+        periodos_base = [p for p in todos if p.status in ('finalizada', 'historico')]
     elif status_filtro:
         periodos_base = [p for p in todos if p.status == status_filtro]
     else:
@@ -294,7 +289,7 @@ def controle_emissoes(request):
     periodos = []
     for p in periodos_base:
         dias = (p.data_vencimento - hoje).days if p.data_vencimento else None
-        if p.status == 'finalizada':
+        if p.status in ('finalizada', 'historico'):
             urgencia = 'finalizada'
         elif p.status == 'vencida':
             urgencia = 'vencida'
@@ -344,7 +339,7 @@ def controle_emissoes(request):
         yr = str(p.ano)
         if yr not in ano_breakdown:
             ano_breakdown[yr] = {'finalizada': 0, 'em_andamento': 0, 'vencida': 0, 'nao_iniciada': 0}
-        key = p.status if p.status in ano_breakdown[yr] else 'nao_iniciada'
+        key = 'finalizada' if p.status == 'historico' else (p.status if p.status in ano_breakdown[yr] else 'nao_iniciada')
         ano_breakdown[yr][key] += 1
 
     anos_sorted = sorted(ano_breakdown.keys())
@@ -381,145 +376,6 @@ def controle_emissoes(request):
         "hoje": hoje,
         "dashboard_data": json.dumps(dashboard_data),
     })
-
-
-# ===============================
-# IMPORTAR BALANCETE (orientado a período)
-# ===============================
-def _destino_seguro(request, padrao="demonstracao_financeira"):
-    from django.utils.http import url_has_allowed_host_and_scheme
-    nxt = request.POST.get("next")
-    if nxt and url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}):
-        return nxt
-    return reverse(padrao)
-
-
-@login_required
-@company_can_manage_fundos
-def importar_balancete_view(request):
-    if request.method != "POST":
-        return redirect("demonstracao_financeira")
-
-    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
-    destino = _destino_seguro(request)
-
-    def _err(msg):
-        if is_ajax:
-            return JsonResponse({"ok": False, "message": msg}, status=400)
-        messages.error(request, msg)
-        return redirect(destino)
-
-    fundo_id = request.POST.get("fundo_id")
-    periodo_df_id = request.POST.get("periodo_df_id")
-    saldo_anterior_mode = request.POST.get("saldo_anterior_mode", "zerado")
-    periodo_anterior_id = request.POST.get("periodo_anterior_id")
-    substituir = request.POST.get("modo_importacao") == "substituir"
-    arquivo_balancete = request.FILES.get("arquivo_balancete")
-    arquivo_saldo_anterior = request.FILES.get("arquivo_saldo_anterior")
-
-    fundo_qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
-    fundo = get_object_or_404(fundo_qs, id=fundo_id)
-
-    if not periodo_df_id:
-        return _err("Selecione o período da DF.")
-
-    periodo = get_object_or_404(PeriodoDF, id=periodo_df_id, fundo=fundo)
-
-    from core.processing.import_service import (
-        calcular_data_referencia_periodo,
-        calcular_data_referencia_periodo_anterior,
-    )
-    from df.services.periodo_service import atualizar_status_automatico
-    data_referencia = calcular_data_referencia_periodo(periodo)
-
-    if not arquivo_balancete:
-        return _err("Selecione o arquivo do balancete (Saldo Final).")
-
-    # Tudo é validado e lido antes de gravar, para não deixar a importação pela metade.
-    data_anterior = None
-    periodo_origem = None
-    rows_ant = None
-    try:
-        rows = parse_excel(arquivo_balancete)
-    except BalanceteSchemaError as e:
-        return _err(f"Planilha inválida: faltam colunas {', '.join(e.missing_columns)}")
-    except Exception as e:
-        return _err(f"Erro ao importar balancete: {e}")
-
-    if saldo_anterior_mode == "clone":
-        if not periodo_anterior_id:
-            return _err("Selecione o período de origem para o clone.")
-        periodo_origem = get_object_or_404(PeriodoDF, id=periodo_anterior_id, fundo=fundo)
-        if not periodo_origem.data_referencia:
-            return _err(f"O período '{periodo_origem.nome_exibicao}' ainda não possui balancete importado.")
-    elif saldo_anterior_mode == "spreadsheet":
-        if not arquivo_saldo_anterior:
-            return _err("Selecione o arquivo do saldo anterior.")
-        data_anterior = calcular_data_referencia_periodo_anterior(periodo)
-        if not data_anterior:
-            return _err("Não foi possível determinar a data do saldo anterior para este tipo de período.")
-        try:
-            rows_ant = parse_excel(arquivo_saldo_anterior)
-        except BalanceteSchemaError as e:
-            return _err(f"Planilha do saldo anterior inválida: faltam colunas {', '.join(e.missing_columns)}")
-        except Exception as e:
-            return _err(f"Erro ao importar saldo anterior: {e}")
-
-    try:
-        with transaction.atomic():
-            report = import_balancete(
-                fundo_id=fundo.id,
-                data_referencia=data_referencia,
-                rows=rows,
-                periodo_df_id=periodo.id,
-                usuario=request.user,
-                substituir=substituir,
-            )
-            periodo.data_referencia = data_referencia
-
-            if saldo_anterior_mode == "zerado":
-                periodo.data_anterior = None
-            elif saldo_anterior_mode == "clone":
-                periodo.data_anterior = periodo_origem.data_referencia
-            elif saldo_anterior_mode == "spreadsheet":
-                import_balancete(
-                    fundo_id=fundo.id,
-                    data_referencia=data_anterior,
-                    rows=rows_ant,
-                    usuario=request.user,
-                    substituir=substituir,
-                )
-                periodo.data_anterior = data_anterior
-            periodo.save()
-            atualizar_status_automatico(periodo)
-    except Exception as e:
-        return _err(f"Erro ao importar balancete: {e}")
-
-    plano_url = reverse("plano_de_contas") + "?filtro=pendentes"
-    aviso_pendentes = ""
-    if report.pendentes:
-        aviso_pendentes = (
-            f" {report.pendentes} linha(s) com conta sem mapeamento ficaram de fora da DF — "
-            f"mapeie-as no Plano de Contas."
-        )
-
-    if report.errors:
-        msg = f"Balancete importado com avisos. {report.imported} inseridos, {report.updated} atualizados, {report.ignored} ignorados.{aviso_pendentes}"
-        if is_ajax:
-            return JsonResponse({"ok": True, "warning": True, "message": msg,
-                                 "pendentes": report.pendentes, "plano_url": plano_url})
-        messages.warning(request, msg)
-    else:
-        msg = f"Balancete importado com sucesso para '{periodo.nome_exibicao}': {report.imported} inseridos, {report.updated} atualizados.{aviso_pendentes}"
-        if is_ajax:
-            return JsonResponse({"ok": True, "warning": bool(report.pendentes), "message": msg,
-                                 "pendentes": report.pendentes, "plano_url": plano_url})
-        if report.pendentes:
-            messages.warning(request, msg)
-        else:
-            messages.success(request, msg)
-
-    return redirect(destino)
 
 
 @login_required
@@ -589,7 +445,7 @@ def api_periodos_fundo(request, fundo_id):
             "tipo": p.tipo_periodo,
             "ano": p.ano,
             "status": p.status,
-            "tem_balancete": p.balancete_items.exists(),
+            "tem_dados": periodo_tem_dados(p),
             "data_referencia": p.data_referencia.isoformat() if p.data_referencia else None,
             "data_referencia_calculada": data_ref_calc.isoformat() if data_ref_calc else None,
             "data_vencimento": p.data_vencimento.isoformat() if p.data_vencimento else None,
@@ -601,127 +457,39 @@ def api_periodos_fundo(request, fundo_id):
 # ===============================
 # DF RESULTADO / Exportações (sem mudanças)
 # ===============================
-def _pct(v, base):
+def _periodo_da_empresa(request, periodo_df_id):
+    """PeriodoDF dentro do escopo da empresa ativa (404 se for de outra empresa)."""
+    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
+    return get_object_or_404(
+        PeriodoDF.objects.select_related("fundo__empresa"),
+        id=periodo_df_id,
+        fundo__in=fundo_qs,
+    )
+
+
+def _nivel_df(request) -> int:
+    """Nível de detalhe da DF (?nivel=), limitado ao intervalo válido do plano."""
     try:
-        v = float(v or 0)
-        b = float(base or 0)
-        return round((v / b) * 100, 2) if b != 0 else 0.0
-    except Exception:
-        return 0.0
-
-
-def annotate_percents(dpf: dict, pl_atual_val: float, pl_ant_val: float) -> dict:
-    """
-    Adiciona PERC_ATUAL/PERC_ANTERIOR em:
-      - cada TOTAL_* (com base em ATUAL/ANTERIOR)
-      - cada grupo (com base em SOMA/SOMA_ANTERIOR)
-      - cada subgrupo (com base em ATUAL/ANTERIOR)
-    Sempre usando como base o PL ajustado (pl_atual_val / pl_ant_val).
-    """
-    for sec_name, sec in dpf.items():  # ATIVO, PASSIVO, PL
-        if not isinstance(sec, dict):
-            continue
-
-        for grupo_label, bloco in sec.items():
-            if not isinstance(bloco, dict):
-                continue
-
-            # Totais da seção (ex.: TOTAL_ATIVO, TOTAL_PASSIVO, TOTAL_PL)
-            if grupo_label.startswith("TOTAL_"):
-                atual_tot = bloco.get("ATUAL", 0)
-                ant_tot = bloco.get("ANTERIOR", 0)
-                bloco["PERC_ATUAL"] = _pct(atual_tot, pl_atual_val)
-                bloco["PERC_ANTERIOR"] = _pct(ant_tot, pl_ant_val)
-                continue
-
-            # Grupos normais
-            soma_atual = bloco.get("SOMA", 0)
-            soma_ant = bloco.get("SOMA_ANTERIOR", 0)
-            bloco["PERC_ATUAL"] = _pct(soma_atual, pl_atual_val)
-            bloco["PERC_ANTERIOR"] = _pct(soma_ant, pl_ant_val)
-
-            # Subgrupos
-            for sub_label, valores in bloco.items():
-                if sub_label in ("SOMA", "SOMA_ANTERIOR"):
-                    continue
-                if isinstance(valores, dict) and ("ATUAL" in valores or "ANTERIOR" in valores):
-                    atual_v = valores.get("ATUAL", 0)
-                    ant_v = valores.get("ANTERIOR", 0)
-                    valores["PERC_ATUAL"] = _pct(atual_v, pl_atual_val)
-                    valores["PERC_ANTERIOR"] = _pct(ant_v, pl_ant_val)
-
-    return dpf
+        nivel = int(request.GET.get("nivel", NIVEL_PADRAO))
+    except (TypeError, ValueError):
+        return NIVEL_PADRAO
+    return max(NIVEL_MIN, min(NIVEL_MAX, nivel))
 
 
 @login_required
 @company_can_view_data
 def df_resultado(request, periodo_df_id):
-    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
-    periodo = get_object_or_404(
-        PeriodoDF.objects.select_related("fundo"),
-        id=periodo_df_id,
-        fundo__in=fundo_qs,
-    )
+    periodo = _periodo_da_empresa(request, periodo_df_id)
     fundo = periodo.fundo
+    garantir_datas_periodo(periodo)
 
-    if not periodo.data_referencia:
-        messages.error(request, f"O período '{periodo.nome_exibicao}' ainda não possui balancete importado.")
-        return redirect("demonstracao_financeira")
-
-    data_atual_date = periodo.data_referencia
-    data_anterior_date = periodo.data_anterior
-    zerar_anterior = data_anterior_date is None
-
-    dre_tabela, resultado_exercicio, resultado_exercicio_anterior = gerar_dados_dre(
-        fundo_id=fundo.id,
-        data_atual=data_atual_date,
-        data_anterior=data_anterior_date,
-        zerar_anterior=zerar_anterior,
-    )
-    dpf_tabela, metricas_dpf = gerar_dados_dpf(
-        fundo_id=fundo.id,
-        data_atual=data_atual_date,
-        data_anterior=data_anterior_date,
-        zerar_anterior=zerar_anterior,
-    )
-    dados_dmpl = gerar_dados_dmpl(
-        fundo_id=fundo.id,
-        data_atual=data_atual_date,
-        data_anterior=data_anterior_date,
-        zerar_anterior=zerar_anterior,
-    )
-    dfc_tabela, variacao_caixa_atual, variacao_caixa_ant = gerar_tabela_dfc(
-        fundo_id=fundo.id,
-        data_atual=data_atual_date,
-        data_anterior=data_anterior_date,
-        zerar_anterior=zerar_anterior,
-    )
-
-    pl_atual = (dpf_tabela["PL"]["TOTAL_PL"]["ATUAL"] or 0) + (resultado_exercicio or 0)
-    pl_anterior = (dpf_tabela["PL"]["TOTAL_PL"]["ANTERIOR"] or 0) + (resultado_exercicio_anterior or 0)
-    total_pl_passivo_atual = pl_atual + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ATUAL"] or 0)
-    total_pl_passivo_anterior = pl_anterior + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ANTERIOR"] or 0)
-
-    dpf_tabela = annotate_percents(dpf_tabela, pl_atual, pl_anterior)
+    dfs = gerar_dfs(periodo, _nivel_df(request))
 
     context = {
         "fundo": fundo,
         "periodo": periodo,
-        "data_atual": data_atual_date,
-        "data_anterior": data_anterior_date,
-        "zerar_anterior": zerar_anterior,
-        "dre_tabela": dre_tabela,
-        "dpf_tabela": dpf_tabela,
-        "dados_dmpl": dados_dmpl,
-        "dfc_tabela": dfc_tabela,
-        "resultado_exercicio": resultado_exercicio,
-        "resultado_exercicio_anterior": 0 if zerar_anterior else resultado_exercicio_anterior,
-        "pl_ajustado_atual": pl_atual,
-        "pl_ajustado_anterior": pl_anterior,
-        "total_pl_passivo_atual": total_pl_passivo_atual,
-        "total_pl_passivo_anterior": total_pl_passivo_anterior,
-        "variacao_atual": variacao_caixa_atual,
-        "variacao_ant": 0 if zerar_anterior else variacao_caixa_ant,
+        "niveis": range(NIVEL_MIN, NIVEL_MAX + 1),
+        **dfs,
         "contexto_operacional": fundo.empresa.contexto_operacional,
         "contexto_operacional_max": CONTEXTO_OPERACIONAL_MAX_CHARS,
         "contexto_atualizado_em": fundo.empresa.contexto_operacional_atualizado_em,
@@ -774,158 +542,72 @@ def salvar_contexto_operacional(request, periodo_df_id):
     })
 
 
-@login_required
-@company_can_download_data
-def exportar_dfs_excel(request, periodo_df_id):
-    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
-    periodo = get_object_or_404(
-        PeriodoDF.objects.select_related("fundo"),
-        id=periodo_df_id,
-        fundo__in=fundo_qs,
-    )
-    fundo = periodo.fundo
-
-    if not periodo.data_referencia:
-        messages.error(request, f"O período '{periodo.nome_exibicao}' ainda não possui balancete importado.")
-        return redirect("demonstracao_financeira")
-
-    data_atual = periodo.data_referencia
-    data_anterior = periodo.data_anterior
-    zerar_anterior = data_anterior is None
-
-    dre_tabela, resultado_exercicio, resultado_exercicio_anterior = gerar_dados_dre(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-    dpf_tabela, _metricas_dpf = gerar_dados_dpf(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-
-    pl_atual = (dpf_tabela["PL"]["TOTAL_PL"]["ATUAL"] or 0) + (resultado_exercicio or 0)
-    pl_anterior = (dpf_tabela["PL"]["TOTAL_PL"]["ANTERIOR"] or 0) + (resultado_exercicio_anterior or 0)
-    total_pl_passivo_atual = pl_atual + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ATUAL"] or 0)
-    total_pl_passivo_anterior = pl_anterior + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ANTERIOR"] or 0)
-
-    dpf_tabela = annotate_percents(dpf_tabela, pl_atual, pl_anterior)
-
-    dados_dmpl = gerar_dados_dmpl(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-    dfc_tabela, variacao_atual, variacao_ant = gerar_tabela_dfc(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-
-    wb = Workbook()
-    criar_aba_dpf(wb, fundo, data_atual, data_anterior, dpf_tabela, pl_atual, pl_anterior, total_pl_passivo_atual, total_pl_passivo_anterior)
-    criar_aba_dre(wb, fundo, data_atual, data_anterior, dre_tabela, resultado_exercicio, resultado_exercicio_anterior)
-    criar_aba_dmpl(wb, fundo, data_atual, data_anterior, dados_dmpl, resultado_exercicio, resultado_exercicio_anterior, pl_atual, pl_anterior)
-    criar_aba_dfc(wb, fundo, data_atual, data_anterior, dfc_tabela, variacao_atual, variacao_ant)
-
-    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+def _nome_arquivo_df(fundo, data_atual, data_anterior, extensao):
     nome_curto = "_".join(str(fundo.nome).replace("-", "").split())
     if data_anterior:
-        response["Content-Disposition"] = f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{data_anterior.strftime('%Y%m%d')}_{nome_curto}.xlsx"
-    else:
-        response["Content-Disposition"] = f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{nome_curto}.xlsx"
+        return f"DFs_{data_atual:%Y%m%d}_{data_anterior:%Y%m%d}_{nome_curto}.{extensao}"
+    return f"DFs_{data_atual:%Y%m%d}_{nome_curto}.{extensao}"
 
-    wb.save(response)
 
+def _registrar_emissao(request, periodo, tipo):
     HistoricoEmissaoDF.objects.create(
-        fundo=fundo,
-        empresa=fundo.empresa,
+        fundo=periodo.fundo,
+        empresa=periodo.fundo.empresa,
         usuario=request.user if request.user.is_authenticated else None,
-        data_referencia_df=data_atual,
-        data_anterior_df=data_anterior,
-        tipo_exportacao='excel',
+        data_referencia_df=periodo.data_referencia,
+        data_anterior_df=periodo.data_anterior,
+        tipo_exportacao=tipo,
         periodo_df=periodo,
     )
 
+
+@login_required
+@company_can_download_data
+def exportar_dfs_excel(request, periodo_df_id):
+    periodo = _periodo_da_empresa(request, periodo_df_id)
+    fundo = periodo.fundo
+    garantir_datas_periodo(periodo)
+
+    dfs = gerar_dfs(periodo, _nivel_df(request))
+    data_atual, data_anterior = dfs["data_atual"], dfs["data_anterior"]
+
+    wb = Workbook()
+    criar_aba_dpf(wb, fundo, data_atual, data_anterior, dfs["dpf"])
+    criar_aba_dre(wb, fundo, data_atual, data_anterior, dfs["dre"])
+    criar_aba_dmpl(
+        wb, fundo, data_atual, data_anterior, dfs["dados_dmpl"],
+        dfs["resultado_exercicio"], dfs["resultado_exercicio_anterior"],
+        dfs["pl_ajustado_atual"], dfs["pl_ajustado_anterior"],
+    )
+    criar_aba_dfc(wb, fundo, data_atual, data_anterior, dfs["dfc"])
+
+    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = f"attachment; filename={_nome_arquivo_df(fundo, data_atual, data_anterior, 'xlsx')}"
+    wb.save(response)
+
+    _registrar_emissao(request, periodo, "excel")
     return response
 
 
 @login_required
 @company_can_download_data
 def exportar_dfs_docx(request, periodo_df_id):
-    fundo_qs = query_por_empresa_ativa(Fundo.objects.select_related("empresa"), request, "empresa")
-    periodo = get_object_or_404(
-        PeriodoDF.objects.select_related("fundo"),
-        id=periodo_df_id,
-        fundo__in=fundo_qs,
-    )
+    periodo = _periodo_da_empresa(request, periodo_df_id)
     fundo = periodo.fundo
+    garantir_datas_periodo(periodo)
 
-    if not periodo.data_referencia:
-        messages.error(request, f"O período '{periodo.nome_exibicao}' ainda não possui balancete importado.")
-        return redirect("demonstracao_financeira")
-
-    data_atual = periodo.data_referencia
-    data_anterior = periodo.data_anterior
-    zerar_anterior = data_anterior is None
-
-    dre_tabela, resultado_exercicio, resultado_exercicio_anterior = gerar_dados_dre(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-    dpf_tabela, _metricas_dpf = gerar_dados_dpf(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-
-    pl_atual = (dpf_tabela["PL"]["TOTAL_PL"]["ATUAL"] or 0) + (resultado_exercicio or 0)
-    pl_anterior = (dpf_tabela["PL"]["TOTAL_PL"]["ANTERIOR"] or 0) + (resultado_exercicio_anterior or 0)
-    total_pl_passivo_atual = pl_atual + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ATUAL"] or 0)
-    total_pl_passivo_anterior = pl_anterior + (dpf_tabela["PASSIVO"]["TOTAL_PASSIVO"]["ANTERIOR"] or 0)
-
-    dpf_tabela = annotate_percents(dpf_tabela, pl_atual, pl_anterior)
-
-    dados_dmpl = gerar_dados_dmpl(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-    dfc_tabela, variacao_atual, variacao_ant = gerar_tabela_dfc(
-        fundo_id=fundo.id, data_atual=data_atual, data_anterior=data_anterior, zerar_anterior=zerar_anterior
-    )
-
-    if zerar_anterior:
-        resultado_exercicio_anterior = 0
-        variacao_ant = 0
-
-    docx_context = build_docx_context(
-        fundo=fundo,
-        data_atual=data_atual,
-        data_anterior=data_anterior,
-        dre_tabela=dre_tabela,
-        dpf_tabela=dpf_tabela,
-        dados_dmpl=dados_dmpl,
-        dfc_tabela=dfc_tabela,
-        resultado_exercicio=resultado_exercicio,
-        resultado_exercicio_anterior=resultado_exercicio_anterior,
-        pl_ajustado_atual=pl_atual,
-        pl_ajustado_anterior=pl_anterior,
-        total_pl_passivo_atual=total_pl_passivo_atual,
-        total_pl_passivo_anterior=total_pl_passivo_anterior,
-        variacao_atual=variacao_atual,
-        variacao_ant=variacao_ant,
-    )
-
-    buffer = gerar_docx(docx_context)
+    dfs = gerar_dfs(periodo, _nivel_df(request))
+    buffer = gerar_docx(build_docx_context(fundo, dfs))
 
     response = HttpResponse(
         buffer,
         content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
-    nome_curto = "_".join(str(fundo.nome).replace("-", "").split())
-    if data_anterior:
-        response["Content-Disposition"] = f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{data_anterior.strftime('%Y%m%d')}_{nome_curto}.docx"
-    else:
-        response["Content-Disposition"] = f"attachment; filename=DFs_{data_atual.strftime('%Y%m%d')}_{nome_curto}.docx"
-
-    HistoricoEmissaoDF.objects.create(
-        fundo=fundo,
-        empresa=fundo.empresa,
-        usuario=request.user if request.user.is_authenticated else None,
-        data_referencia_df=data_atual,
-        data_anterior_df=data_anterior,
-        tipo_exportacao='word',
-        periodo_df=periodo,
+    response["Content-Disposition"] = (
+        f"attachment; filename={_nome_arquivo_df(fundo, dfs['data_atual'], dfs['data_anterior'], 'docx')}"
     )
 
+    _registrar_emissao(request, periodo, "word")
     return response
 
 # ===========================
@@ -941,18 +623,11 @@ def atualizar_status_manual(request, periodo_id):
     periodo = get_object_or_404(PeriodoDF, id=periodo_id, empresa=empresa)
 
     novo_status = request.POST.get('status', '').strip()
-    STATUS_MANUAIS = {'nao_iniciada', 'em_andamento', 'finalizada'}
-    if novo_status not in STATUS_MANUAIS:
-        return JsonResponse({'ok': False, 'error': 'Status inválido'}, status=400)
-
-    if periodo.status == 'vencida' and novo_status == 'em_andamento':
-        return JsonResponse({
-            'ok': False,
-            'error': 'Período vencido não pode ser marcado como Em Andamento'
-        }, status=400)
-
-    periodo.status = novo_status
-    periodo.save(update_fields=['status', 'atualizado_em'])
+    try:
+        # Sair de "Finalizada" é reabrir: o service exige o motivo e registra quem/quando.
+        alterar_status_manual(periodo, novo_status, request.user, request.POST.get('motivo', ''))
+    except ValidationError as exc:
+        return JsonResponse({'ok': False, 'error': exc.messages[0]}, status=400)
     return JsonResponse({'ok': True, 'status': novo_status})
 
 
@@ -1164,178 +839,6 @@ def excluir_gestora(request, gestora_id):
 
 
 # ===========================
-# Plano de Contas (MapeamentoContas por empresa)
-# ===========================
-TIPO_LABELS = dict(GrupoGrande.TIPO_CHOICES)
-
-
-def _serializar_mapeamento(m, uso):
-    gp = m.grupo_pequeno
-    gg = gp.grupao if gp else None
-    return {
-        "id": m.id,
-        "conta": m.conta,
-        "descricao": m.descricao or "",
-        "grupo_pequeno_id": gp.id if gp else None,
-        "grupinho": gp.nome if gp else "",
-        "grupao": gg.nome if gg else "",
-        "tipo": gg.tipo if gg else None,
-        "tipo_label": TIPO_LABELS.get(gg.tipo, "") if gg else "",
-        "uso": uso,
-        "pendente": False,
-    }
-
-
-def _erros_do_form(form):
-    return {
-        campo: [e["message"] for e in erros]
-        for campo, erros in form.errors.get_json_data().items()
-    }
-
-
-@login_required
-@company_can_view_data
-def plano_de_contas(request):
-    empresa = get_empresa_escopo(request)
-
-    mapeamentos = (
-        MapeamentoContas.objects.filter(empresa=empresa)
-        .select_related("grupo_pequeno__grupao")
-        .annotate(uso=Count("itens"))
-        .order_by("conta")
-    )
-    linhas = [_serializar_mapeamento(m, m.uso) for m in mapeamentos]
-
-    pendentes = contas_pendentes_agrupadas(empresa)
-    for p in pendentes:
-        p["ultima"] = p["ultima"].strftime("%d/%m/%Y") if p["ultima"] else ""
-        p["descricao"] = p["descricao"] or ""
-
-    # <select> agrupado: "Ativo · Disponibilidades" → grupinhos
-    grupos_select = []
-    atual = None
-    grupinhos = (
-        GrupoPequeno.objects.select_related("grupao")
-        .order_by("grupao__tipo", "grupao__ordem", "grupao__nome", "nome")
-    )
-    for gp in grupinhos:
-        if atual is None or atual["grupao_id"] != gp.grupao_id:
-            tipo = TIPO_LABELS.get(gp.grupao.tipo, "")
-            rotulo = f"{tipo} · {gp.grupao.nome}" if tipo else gp.grupao.nome
-            atual = {"grupao_id": gp.grupao_id, "label": rotulo, "itens": []}
-            grupos_select.append(atual)
-        atual["itens"].append({"id": gp.id, "nome": gp.nome})
-
-    kpis = {
-        "mapeadas": len(linhas),
-        "sem_grupinho": sum(1 for l in linhas if not l["grupo_pequeno_id"]),
-        "pendentes": len(pendentes),
-        "usadas": sum(1 for l in linhas if l["uso"] > 0),
-    }
-
-    return render(request, "plano_contas/index.html", {
-        "empresa": empresa,
-        "can_manage": _can_manage_data(request),
-        "linhas": linhas,
-        "pendentes": pendentes,
-        "grupos_select": grupos_select,
-        "kpis": kpis,
-        "filtro_inicial": request.GET.get("filtro", "todas"),
-        "tipo_choices": GrupoGrande.TIPO_CHOICES,
-    })
-
-
-@login_required
-@company_can_manage_data
-@require_POST
-def criar_mapeamento(request):
-    empresa = get_empresa_escopo(request)
-    form = MapeamentoContasForm(request.POST, empresa=empresa)
-    if not form.is_valid():
-        return JsonResponse({"ok": False, "errors": _erros_do_form(form)}, status=400)
-
-    obj = form.save(commit=False)
-    obj.empresa = empresa  # nunca vem do POST
-    try:
-        obj.save()
-    except IntegrityError:
-        return JsonResponse(
-            {"ok": False, "errors": {"conta": [f"A conta {obj.conta} já está mapeada nesta empresa."]}},
-            status=400,
-        )
-
-    aplicados = materializar_pendentes(obj)
-    obj = MapeamentoContas.objects.select_related("grupo_pequeno__grupao").get(pk=obj.pk)
-    return JsonResponse({
-        "ok": True,
-        "item": _serializar_mapeamento(obj, aplicados["linhas"]),
-        "aplicados": aplicados,
-        "pendentes_total": total_contas_pendentes(empresa),
-    })
-
-
-@login_required
-@company_can_manage_data
-@require_POST
-def editar_mapeamento(request, mapeamento_id):
-    empresa = get_empresa_escopo(request)
-    obj = get_object_or_404(MapeamentoContas, id=mapeamento_id, empresa=empresa)
-    uso = obj.itens.count()
-    grupo_anterior = obj.grupo_pequeno_id
-
-    form = MapeamentoContasForm(request.POST, instance=obj, empresa=empresa, travar_conta=uso > 0)
-    if not form.is_valid():
-        return JsonResponse({"ok": False, "errors": _erros_do_form(form)}, status=400)
-
-    obj = form.save()
-    obj = MapeamentoContas.objects.select_related("grupo_pequeno__grupao").get(pk=obj.pk)
-    aviso = ""
-    if uso and obj.grupo_pequeno_id != grupo_anterior:
-        aviso = f"A mudança de subgrupo já vale para as DFs que usam esta conta ({uso} lançamento(s))."
-    return JsonResponse({
-        "ok": True,
-        "item": _serializar_mapeamento(obj, uso),
-        "aviso": aviso,
-    })
-
-
-@login_required
-@company_can_manage_data
-@require_POST
-def excluir_mapeamento(request, mapeamento_id):
-    empresa = get_empresa_escopo(request)
-    obj = get_object_or_404(MapeamentoContas, id=mapeamento_id, empresa=empresa)
-    uso = obj.itens.count()
-    mensagem_uso = (
-        f"A conta {obj.conta} é usada em {uso} lançamento(s) de balancete. "
-        f"Altere o subgrupo em vez de excluir."
-    )
-    if uso:
-        return JsonResponse({"ok": False, "message": mensagem_uso}, status=409)
-    try:
-        obj.delete()
-    except ProtectedError:
-        return JsonResponse({"ok": False, "message": mensagem_uso}, status=409)
-    return JsonResponse({"ok": True})
-
-
-@login_required
-@company_can_manage_data
-@require_POST
-def descartar_pendente(request):
-    empresa = get_empresa_escopo(request)
-    conta = (request.POST.get("conta") or "").strip()
-    if not conta:
-        return JsonResponse({"ok": False, "message": "Conta não informada."}, status=400)
-    removidas = descartar_pendentes(empresa, conta)
-    return JsonResponse({
-        "ok": True,
-        "removidas": removidas,
-        "pendentes_total": total_contas_pendentes(empresa),
-    })
-
-
-# ===========================
 # Gerenciamento de Períodos de DF
 # ===========================
 @login_required
@@ -1344,7 +847,11 @@ def gerenciar_periodos(request, fundo_id):
     qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
     fundo = get_object_or_404(qs, id=fundo_id)
 
-    periodos_qs = PeriodoDF.objects.filter(fundo=fundo).order_by("-ano", "tipo_periodo")
+    periodos_qs = (
+        PeriodoDF.objects.filter(fundo=fundo)
+        .prefetch_related(Prefetch("alteracoes_status", queryset=AlteracaoStatusPeriodo.objects.select_related("usuario")))
+        .order_by("-ano", "tipo_periodo")
+    )
 
     # Filtros opcionais por URL params
     ano_filtro = request.GET.get("ano")
@@ -1359,9 +866,18 @@ def gerenciar_periodos(request, fundo_id):
         status_info = calcular_status_periodo(periodo)
         dias = status_info["dias_ate_vencimento"]
         status_info["dias_vencida"] = abs(dias) if dias < 0 else 0
-        status_info["n_balancete"] = periodo.balancete_items.count()
         status_info["n_mec"] = periodo.mec_items.count()
+        movs, saldos = movimentacoes_na_janela(periodo) if periodo.data_referencia else (None, None)
+        status_info["n_movimentacoes"] = movs.count() if movs is not None else 0
+        status_info["n_saldos_iniciais"] = saldos.count() if saldos is not None else 0
         status_info["status"] = periodo.status  # usa o status salvo, não o calculado
+        # Anual com lançamentos seria recriado no próximo lançamento: a exclusão é recusada
+        status_info["pode_excluir"] = not (
+            periodo.tipo_periodo == "anual" and (status_info["n_movimentacoes"] or status_info["n_saldos_iniciais"])
+        )
+        status_info["ultima_reabertura"] = next(
+            (a for a in periodo.alteracoes_status.all() if a.e_reabertura), None
+        )  # já vêm da mais nova para a mais antiga
         periodos_info.append({"periodo": periodo, **status_info})
 
     anos_disponiveis = (
@@ -1426,17 +942,24 @@ def excluir_periodo(request, fundo_id, periodo_id):
     if request.method != "POST":
         return redirect("gerenciar_periodos", fundo_id=fundo_id)
 
-    tem_balancete = periodo.balancete_items.exists()
-    tem_mec = periodo.mec_items.exists()
-    tem_dados = tem_balancete or tem_mec
+    if periodo.tipo_periodo == "anual" and periodo_tem_movimentacao(periodo):
+        messages.error(
+            request,
+            f"O período '{periodo.nome_exibicao}' tem movimentações ou saldos iniciais e não pode ser excluído: "
+            "ele seria recriado no próximo lançamento. Para refazê-lo, apague ou desfaça os lançamentos do ano.",
+        )
+        return redirect("gerenciar_periodos", fundo_id=fundo_id)
 
-    if tem_dados and not request.POST.get("confirmar_exclusao"):
+    tem_mec = periodo.mec_items.exists()
+
+    if tem_mec and not request.POST.get("confirmar_exclusao"):
         messages.error(request, "Para excluir um período com dados importados, confirme a exclusão marcando a caixa de verificação.")
         return redirect("gerenciar_periodos", fundo_id=fundo_id)
 
     nome = periodo.nome_exibicao
-    n_balancete = periodo.balancete_items.count() if tem_balancete else 0
     n_mec = periodo.mec_items.count() if tem_mec else 0
+    # Movimentações pertencem ao fundo, não ao período: sobrevivem à exclusão.
+    n_mov = movimentacoes_na_janela(periodo)[0].count() if periodo.data_referencia else 0
     try:
         periodo.delete()
     except ProtectedError:
@@ -1447,10 +970,12 @@ def excluir_periodo(request, fundo_id, periodo_id):
         )
         return redirect("gerenciar_periodos", fundo_id=fundo_id)
 
-    if tem_dados:
-        messages.warning(request, f"Período '{nome}' excluído junto com {n_balancete} registro(s) de balancete e {n_mec} registro(s) de MEC.")
+    if tem_mec:
+        messages.warning(request, f"Período '{nome}' excluído junto com {n_mec} registro(s) de MEC.")
     else:
         messages.success(request, f"Período '{nome}' excluído com sucesso.")
+    if n_mov:
+        messages.info(request, f"As {n_mov} movimentação(ões) do fundo nesse período foram mantidas.")
 
     return redirect("gerenciar_periodos", fundo_id=fundo_id)
 
@@ -1484,9 +1009,6 @@ def gerar_periodos_historicos(request, fundo_id):
     ano_atual = date.today().year
     if ano_inicial < 1990 or ano_final > ano_atual or ano_inicial > ano_final:
         return _err(f"Intervalo de anos inválido. Use entre 1990 e {ano_atual}.")
-
-    if not fundo.configuracoes_df.exists():
-        return _err("Este fundo não possui configuração de DF Anual.")
 
     from df.services.periodo_service import gerar_periodos_para_anos
     resultado = gerar_periodos_para_anos(fundo, ano_inicial, ano_final)
@@ -2033,140 +1555,3 @@ def painel_documentos_config(request, empresa_id):
     else:
         messages.error(request, 'Erro ao atualizar configuração. Verifique os campos informados.')
     return redirect('painel_documentos_empresa', empresa_id=empresa.id)
-
-
-# ===========================
-# Saldos da DF (balancete por período: importação + lançamento manual)
-# ===========================
-def _periodo_escopado(request, periodo_id):
-    fundos = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
-    return get_object_or_404(
-        PeriodoDF.objects.select_related("fundo", "fundo__empresa"),
-        id=periodo_id, fundo__in=fundos,
-    )
-
-
-def _serializar_celula_saldo(item):
-    if item is None:
-        return None
-    return {
-        "id": item.id,
-        "valor": str(item.saldo_final) if item.saldo_final is not None else None,
-        "origem": item.origem,
-        "por": item.atualizado_por.get_username() if item.atualizado_por else "",
-        "em": timezone.localtime(item.atualizado_em).strftime("%d/%m/%Y %H:%M") if item.atualizado_em else "",
-    }
-
-
-def _serializar_saldo(linha):
-    m = linha["mapeamento"]
-    gp = m.grupo_pequeno
-    return {
-        "mapeamento_id": m.id,
-        "conta": linha["conta"],
-        "descricao": linha["descricao"],
-        "grupo": linha["grupo"],
-        "tipo": gp.grupao.tipo if gp else None,
-        "atual": _serializar_celula_saldo(linha["atual"]),
-        "anterior": _serializar_celula_saldo(linha["anterior"]),
-    }
-
-
-def _kpis_saldos(totais):
-    return {k: str(v) for k, v in totais.items()}
-
-
-@login_required
-@company_can_view_data
-def saldos_periodo(request, periodo_id):
-    from df.services.saldos_service import datas_do_periodo, listar_saldos
-
-    periodo = _periodo_escopado(request, periodo_id)
-    fundo = periodo.fundo
-    linhas, totais = listar_saldos(periodo)
-    data_atual, data_anterior = datas_do_periodo(periodo)
-
-    contas = (
-        MapeamentoContas.objects.filter(empresa=fundo.empresa, grupo_pequeno__isnull=False)
-        .select_related("grupo_pequeno__grupao")
-        .order_by("conta")
-    )
-    pendentes = BalanceteLinhaPendente.objects.filter(
-        fundo=fundo, data_referencia__in=[d for d in (data_atual, data_anterior) if d]
-    ).count()
-
-    periodos_clone = (
-        PeriodoDF.objects.filter(fundo=fundo, data_referencia__isnull=False)
-        .exclude(id=periodo.id).order_by("-ano", "tipo_periodo")
-    )
-
-    return render(request, "periodos/saldos.html", {
-        "periodo": periodo,
-        "fundo": fundo,
-        "data_atual": data_atual,
-        "data_anterior": data_anterior,
-        "linhas_json": [_serializar_saldo(l) for l in linhas],
-        "kpis_json": _kpis_saldos(totais),
-        "contas_json": [
-            {"id": c.id, "conta": c.conta, "descricao": c.descricao or "", "grupo": c.grupo_pequeno.nome}
-            for c in contas
-        ],
-        "pendentes": pendentes,
-        "periodos_clone": periodos_clone,
-        "can_manage": _can_manage_fundos(request),
-    })
-
-
-def _resposta_saldos(periodo, mapeamento_id):
-    from df.services.saldos_service import listar_saldos
-
-    linhas, totais = listar_saldos(periodo)
-    linha = next((l for l in linhas if l["mapeamento"].id == mapeamento_id), None)
-    return JsonResponse({
-        "ok": True,
-        "mapeamento_id": mapeamento_id,
-        "linha": _serializar_saldo(linha) if linha else None,
-        "kpis": _kpis_saldos(totais),
-    })
-
-
-@login_required
-@company_can_manage_fundos
-@require_POST
-def salvar_saldo_view(request, periodo_id):
-    from df.services.saldos_service import salvar_saldo
-
-    periodo = _periodo_escopado(request, periodo_id)
-    form = SaldoBalanceteForm(request.POST, empresa=periodo.fundo.empresa)
-    if not form.is_valid():
-        return JsonResponse({"ok": False, "errors": _erros_do_form(form)}, status=400)
-    mapeamento = form.cleaned_data["mapeamento"]
-    try:
-        salvar_saldo(
-            periodo=periodo,
-            mapeamento=mapeamento,
-            coluna=form.cleaned_data["coluna"],
-            valor=form.cleaned_data["saldo_final"],
-            usuario=request.user,
-        )
-    except ValidationError as e:
-        return JsonResponse({"ok": False, "errors": {"__all__": e.messages}}, status=400)
-    return _resposta_saldos(periodo, mapeamento.id)
-
-
-@login_required
-@company_can_manage_fundos
-@require_POST
-def excluir_saldo_view(request, periodo_id, item_id):
-    from df.services.saldos_service import excluir_saldo
-
-    periodo = _periodo_escopado(request, periodo_id)
-    item = BalanceteItem.objects.filter(id=item_id, fundo=periodo.fundo).first()
-    if item is None:
-        return JsonResponse({"ok": False, "errors": {"__all__": ["Lançamento não encontrado."]}}, status=404)
-    mapeamento_id = item.conta_corrente_id
-    try:
-        excluir_saldo(periodo=periodo, item_id=item.id)
-    except BalanceteItem.DoesNotExist:
-        return JsonResponse({"ok": False, "errors": {"__all__": ["Lançamento não pertence a esta DF."]}}, status=404)
-    return _resposta_saldos(periodo, mapeamento_id)

@@ -5,6 +5,7 @@
 
 {% block conteudo %}
 {% include 'base/navbar.html' %}
+{% include 'partials/_reabrir_periodo_modal.html' %}
 
 <div class="container py-5">
   {% if messages %}
@@ -39,6 +40,16 @@
     {% endif %}
   </div>
 
+  <div class="alert alert-info py-2 small d-flex align-items-start gap-2" role="note">
+    <i class="bi bi-info-circle mt-1"></i>
+    <div>
+      Os períodos <strong>anuais</strong> são criados automaticamente quando você lança ou importa movimentações
+      ou saldos iniciais. Anos cujo prazo já passou entram como <strong>Histórico</strong> (concluídos, sem alertas e sem
+      bloquear alterações); marque <strong>Finalizada</strong> para travar um ano emitido.
+      Transitórios e de encerramento continuam sendo criados manualmente.
+    </div>
+  </div>
+
   <!-- Filtros -->
   <div class="card border-0 shadow-sm mb-4">
     <div class="card-body">
@@ -60,6 +71,7 @@
             <option value="em_andamento" {% if status_filtro == "em_andamento" %}selected{% endif %}>Em Andamento</option>
             <option value="finalizada" {% if status_filtro == "finalizada" %}selected{% endif %}>Finalizada</option>
             <option value="vencida" {% if status_filtro == "vencida" %}selected{% endif %}>Vencida</option>
+            <option value="historico" {% if status_filtro == "historico" %}selected{% endif %}>Histórico</option>
           </select>
         </div>
         <div class="col-md-2">
@@ -126,6 +138,14 @@
                       <span class="badge bg-success" {% if can_manage_fundos %}data-pid="{{ info.periodo.id }}" data-status="finalizada"{% endif %}>Finalizada</span>
                     {% elif info.status == 'vencida' %}
                       <span class="badge bg-danger" {% if can_manage_fundos %}data-pid="{{ info.periodo.id }}" data-status="vencida"{% endif %}>Vencida</span>
+                    {% elif info.status == 'historico' %}
+                      <span class="badge text-white" style="background-color:#4d7c6f;" {% if can_manage_fundos %}data-pid="{{ info.periodo.id }}" data-status="historico"{% endif %}>Histórico</span>
+                    {% endif %}
+                    {% if info.ultima_reabertura %}
+                      <br><small class="text-muted" title="{{ info.ultima_reabertura.motivo }}">
+                        <i class="bi bi-unlock"></i> Reaberto por {{ info.ultima_reabertura.usuario.get_full_name|default:info.ultima_reabertura.usuario.get_username|default:"—" }}
+                        em {{ info.ultima_reabertura.criado_em|date:"d/m/Y" }}
+                      </small>
                     {% endif %}
                   </td>
                   <td class="text-center">
@@ -143,9 +163,9 @@
                     {% endif %}
                   </td>
                   <td class="text-center" style="white-space:nowrap;">
-                    <a href="{% url 'saldos_periodo' info.periodo.id %}"
+                    <a href="{% url 'balancete_periodo' info.periodo.id %}"
                        class="btn btn-sm btn-outline-secondary"
-                       title="Saldos do balancete">
+                       title="Balancete calculado">
                       <i class="bi bi-table"></i>
                     </a>
                     {% if info.tem_dados %}
@@ -156,12 +176,20 @@
                       </a>
                     {% endif %}
                     {% if can_manage_fundos %}
+                      {% if info.pode_excluir %}
                       <button type="button"
                               class="btn btn-sm btn-outline-danger"
                               title="Excluir período"
-                              onclick="abrirModalExcluir({{ info.periodo.id }}, '{{ info.periodo.nome_exibicao|escapejs }}', {{ info.n_balancete }}, {{ info.n_mec }})">
+                              onclick="abrirModalExcluir({{ info.periodo.id }}, '{{ info.periodo.nome_exibicao|escapejs }}', {{ info.n_mec }})">
                         <i class="bi bi-trash3"></i>
                       </button>
+                      {% else %}
+                      <span class="d-inline-block" tabindex="0" title="Tem movimentações ou saldos iniciais: seria recriado no próximo lançamento. Apague ou desfaça os lançamentos do ano para excluir.">
+                        <button type="button" class="btn btn-sm btn-outline-danger" disabled style="pointer-events:none;">
+                          <i class="bi bi-trash3"></i>
+                        </button>
+                      </span>
+                      {% endif %}
                     {% endif %}
                   </td>
                 </tr>
@@ -289,7 +317,6 @@
               <i class="bi bi-database-fill-x me-2"></i>
               <strong>Este período possui dados importados:</strong>
               <ul class="mb-0 mt-1">
-                <li id="excluir-linha-balancete" style="display:none;"></li>
                 <li id="excluir-linha-mec" style="display:none;"></li>
               </ul>
               <p class="mb-0 mt-2">Excluir este período <strong>apagará permanentemente</strong> todos esses registros. Essa ação não pode ser desfeita.</p>
@@ -323,7 +350,7 @@
 {% block scripts %}
 <script>
   function abrirModalExcluir(periodoId, periodoNome, nBalancete, nMec) {
-    const temDados = nBalancete > 0 || nMec > 0;
+    const temDados = nMec > 0;
 
     document.getElementById("excluir-periodo-nome").textContent = periodoNome;
     document.getElementById("form-excluir-periodo").action = `/fundos/{{ fundo.id }}/periodos/${periodoId}/excluir/`;
@@ -334,14 +361,7 @@
     const check = document.getElementById("confirmar-exclusao-check");
     check.checked = false;
 
-    const linhaBalancete = document.getElementById("excluir-linha-balancete");
     const linhaMec = document.getElementById("excluir-linha-mec");
-    if (nBalancete > 0) {
-      linhaBalancete.textContent = `${nBalancete} registro(s) de balancete`;
-      linhaBalancete.style.display = "list-item";
-    } else {
-      linhaBalancete.style.display = "none";
-    }
     if (nMec > 0) {
       linhaMec.textContent = `${nMec} registro(s) de MEC`;
       linhaMec.style.display = "list-item";
@@ -377,12 +397,14 @@
     em_andamento: { label: 'Em Andamento', cls: 'text-white',   style: 'background-color:#3b82f6;' },
     finalizada:   { label: 'Finalizada',   cls: 'bg-success',   style: '' },
     vencida:      { label: 'Vencida',      cls: 'bg-danger',    style: '' },
+    historico:    { label: 'Histórico',    cls: 'text-white',   style: 'background-color:#4d7c6f;' },
   };
   const _SD_OPTS = {
-    nao_iniciada: ['em_andamento', 'finalizada'],
-    em_andamento: ['nao_iniciada', 'finalizada'],
-    vencida:      ['finalizada'],
-    finalizada:   ['em_andamento', 'nao_iniciada'],
+    nao_iniciada: ['em_andamento', 'finalizada', 'historico'],
+    em_andamento: ['nao_iniciada', 'finalizada', 'historico'],
+    vencida:      ['finalizada', 'historico'],
+    finalizada:   ['em_andamento', 'nao_iniciada', 'historico'],
+    historico:    ['em_andamento', 'nao_iniciada', 'finalizada'],
   };
   const _sd = (() => {
     const el = document.createElement('div');
@@ -414,10 +436,20 @@
     _sd.style.top  = (window.innerHeight - r.bottom > sdH + 8) ? (r.bottom + 4) + 'px' : (r.top - sdH - 4) + 'px';
   }
 
-  function _selectSd(novoStatus) {
+  async function _selectSd(novoStatus) {
     const fd = new FormData();
     fd.append('status', novoStatus);
     fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+    const atual = document.querySelector(`[data-pid="${_sdPid}"]`);
+    // Sair de "Finalizada" é reabrir: pede o motivo, que o servidor registra
+    if (atual && atual.dataset.status === 'finalizada' && novoStatus !== 'finalizada') {
+      const pid = _sdPid;
+      _closeSd();
+      const motivo = await pedirMotivoReabertura();
+      if (motivo === null) return;
+      _sdPid = pid;
+      fd.append('motivo', motivo);
+    }
     fetch(`/api/periodo/${_sdPid}/status/`, {
       method: 'POST',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -435,6 +467,9 @@
           badge.dataset.status = novoStatus;
           badge.innerHTML = c.label + ' <i class="bi bi-chevron-down" style="font-size:.6em;opacity:.75;vertical-align:middle;"></i>';
         }
+        if (novoStatus !== 'finalizada') window.location.reload();  // mostra "Reaberto por..." e libera os dados
+      } else {
+        alert(data.error || 'Não foi possível alterar o status.');
       }
       _closeSd();
     })

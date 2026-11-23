@@ -9,8 +9,8 @@
       <img src="{% static 'img/logo-white.png' %}" alt="Cinnamon" class="site-nav__logo site-nav__logo--light">
     </a>
 
-    <!-- Seletor de Empresa (somente global) - versão desktop -->
-    {% if user_is_global and empresas_disponiveis %}
+    <!-- Seletor de Empresa (globais e quem alcança mais de uma empresa) - versão desktop -->
+    {% if pode_trocar_empresa and empresas_disponiveis %}
     <div class="site-nav__empresa site-nav__empresa--desktop">
       <form method="POST" action="{% url 'trocar_empresa_ativa' %}" class="site-nav__empresa-form">
         {% csrf_token %}
@@ -38,8 +38,8 @@
         <span class="site-nav__drawer-title">Menu</span>
       </div>
 
-      <!-- Seletor de Empresa (somente global) - versão mobile dentro do drawer -->
-      {% if user_is_global and empresas_disponiveis %}
+      <!-- Seletor de Empresa (globais e quem alcança mais de uma empresa) - versão mobile dentro do drawer -->
+      {% if pode_trocar_empresa and empresas_disponiveis %}
       <div class="site-nav__empresa site-nav__empresa--mobile">
         <form method="POST" action="{% url 'trocar_empresa_ativa' %}" class="site-nav__empresa-form">
           {% csrf_token %}
@@ -84,17 +84,21 @@
           </a>
         </li>
         <li>
-          <a href="{% url 'plano_de_contas' %}"
-             class="site-nav__link{% if request.resolver_match.url_name == 'plano_de_contas' %} is-active{% endif %}"
-             {% if request.resolver_match.url_name == 'plano_de_contas' %}aria-current="page"{% endif %}>
+          <a href="{% url 'plano_contas_unico' %}"
+             class="site-nav__link{% if request.resolver_match.url_name == 'plano_contas_unico' %} is-active{% endif %}"
+             {% if request.resolver_match.url_name == 'plano_contas_unico' %}aria-current="page"{% endif %}>
             <i class="bi bi-diagram-3"></i> Plano de Contas
-            {% if contas_pendentes_count > 0 %}
-            <span class="badge bg-warning text-dark ms-1" style="font-size: 0.7rem; vertical-align: super;" title="Contas do balancete sem mapeamento">
-              {{ contas_pendentes_count }}
-            </span>
-            {% endif %}
           </a>
         </li>
+{% if user_is_contabilidade %}
+        <li>
+          <a href="{% url 'painel_contabilidade' %}"
+             class="site-nav__link{% if request.resolver_match.url_name == 'painel_contabilidade' %} is-active{% endif %}"
+             {% if request.resolver_match.url_name == 'painel_contabilidade' %}aria-current="page"{% endif %}>
+            <i class="bi bi-calculator"></i> Contabilidade
+          </a>
+        </li>
+        {% endif %}
 {% if user_can_view_company_users %}
         <li>
           <a href="{% url 'gerenciar_usuarios' %}"
@@ -117,6 +121,13 @@
              class="site-nav__link{% if request.resolver_match.url_name == 'painel_documentos' %} is-active{% endif %}"
              {% if request.resolver_match.url_name == 'painel_documentos' %}aria-current="page"{% endif %}>
             <i class="bi bi-hdd-stack"></i> Painel de Documentos
+          </a>
+        </li>
+        <li class="site-nav__menu-item--drawer-only">
+          <a href="{% url 'escritorios_listar' %}"
+             class="site-nav__link{% if request.resolver_match.url_name == 'escritorios_listar' or request.resolver_match.url_name == 'escritorio_detalhe' %} is-active{% endif %}"
+             {% if request.resolver_match.url_name == 'escritorios_listar' or request.resolver_match.url_name == 'escritorio_detalhe' %}aria-current="page"{% endif %}>
+            <i class="bi bi-calculator"></i> Escritórios
           </a>
         </li>
         {% endif %}
@@ -181,6 +192,13 @@
              href="{% url 'painel_documentos' %}"
              {% if request.resolver_match.url_name == 'painel_documentos' %}aria-current="page"{% endif %}>
             <i class="bi bi-hdd-stack"></i> Painel de Documentos
+          </a>
+        </li>
+        <li>
+          <a class="site-nav__dropdown-item{% if request.resolver_match.url_name == 'escritorios_listar' or request.resolver_match.url_name == 'escritorio_detalhe' %} is-active{% endif %}"
+             href="{% url 'escritorios_listar' %}"
+             {% if request.resolver_match.url_name == 'escritorios_listar' or request.resolver_match.url_name == 'escritorio_detalhe' %}aria-current="page"{% endif %}>
+            <i class="bi bi-calculator"></i> Escritórios
           </a>
         </li>
         {% endif %}

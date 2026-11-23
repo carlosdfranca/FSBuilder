@@ -1,0 +1,247 @@
+{% extends 'base/base.html' %}
+
+{% block title %}Movimentações · {{ fundo.nome }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .mv-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; }
+  .mv-acoes { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .mv-filtros { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; margin-bottom: 1rem; }
+  .mv-filtros label { font-size: .72rem; color: var(--text-muted); text-transform: uppercase; display: block; }
+  .mv-card { background: var(--surface-2); border: 1px solid var(--border-color); border-radius: 14px; padding: .5rem; overflow-x: auto; }
+  .mv-conta { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 600; white-space: nowrap; }
+  .mv-sub { display: block; font-size: .74rem; color: var(--text-muted); font-family: inherit; font-weight: 400; }
+  .mv-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mv-neg { color: #ef4444; }
+  .mv-btn { min-width: 2rem; height: 2rem; padding: 0 .5rem; border-radius: 8px; cursor: pointer; background: transparent;
+    color: var(--text-secondary); border: 1px solid var(--border-color); font-size: .8rem; }
+  .mv-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--accent-primary); }
+  .mv-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .mv-aviso { padding: .7rem 1rem; border-radius: 12px; margin-bottom: 1rem; font-size: .86rem; color: var(--text-primary);
+    background: rgba(251,191,36,.10); border: 1px solid rgba(251,191,36,.32); }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+{% include 'base/navbar.html' %}
+<div class="container-fluid py-3">
+
+  <div class="page-header mv-head">
+    <div class="page-header__titles">
+      <h1 class="page-header__title">Movimentações</h1>
+      <p class="page-header__subtitle">{{ fundo.nome }} · lançamentos por conta do plano; os saldos e a DF são calculados a partir deles</p>
+    </div>
+    <div class="mv-acoes">
+      <a href="{% url 'demonstracao_financeira' %}?fundo={{ fundo.id }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
+      <a href="{% url 'saldos_iniciais_fundo' fundo.id %}" class="btn btn-outline-secondary"><i class="bi bi-flag me-1"></i>Saldos iniciais</a>
+      <a href="{% url 'movimentacoes_importar' fundo.id %}" class="btn btn-outline-secondary"><i class="bi bi-upload me-1"></i>Importar planilha</a>
+      {% if pode_lancar %}<button type="button" class="btn btn-primary" id="mvNova"><i class="bi bi-plus-lg me-1"></i>Nova movimentação</button>{% endif %}
+    </div>
+  </div>
+
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));">
+    <div class="kpi-card kpi-card--blue">
+      <div class="kpi-card__label">No filtro</div>
+      <div class="kpi-card__value">{{ qtd }}</div>
+      <div class="kpi-card__sub">movimentações</div>
+      <i class="bi bi-list-ul kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card kpi-card--gray">
+      <div class="kpi-card__label">Total do fundo</div>
+      <div class="kpi-card__value">{{ total_geral }}</div>
+      <div class="kpi-card__sub">todas as datas</div>
+      <i class="bi bi-collection kpi-card__ghost-icon"></i>
+    </div>
+    <div class="kpi-card kpi-card--amber">
+      <div class="kpi-card__label">Fechado até</div>
+      <div class="kpi-card__value" style="font-size:1.35rem;">{% if fechamento %}{{ fechamento|date:"d/m/Y" }}{% else %}—{% endif %}</div>
+      <div class="kpi-card__sub">períodos finalizados não aceitam alteração</div>
+      <i class="bi bi-lock kpi-card__ghost-icon"></i>
+    </div>
+  </div>
+
+  {% if truncado %}
+    <div class="mv-aviso"><i class="bi bi-exclamation-triangle me-1"></i>
+      Mostrando as 5.000 movimentações mais recentes do filtro ({{ qtd }} no total). Reduza o período para ver as demais.</div>
+  {% endif %}
+
+  <form method="get" class="mv-filtros">
+    <div><label for="fIni">De</label><input type="date" class="form-control" id="fIni" name="data_ini" value="{{ data_ini|date:'Y-m-d' }}"></div>
+    <div><label for="fFim">Até</label><input type="date" class="form-control" id="fFim" name="data_fim" value="{{ data_fim|date:'Y-m-d' }}"></div>
+    <div style="flex: 1 1 16rem;"><label for="fBusca">Conta ou histórico</label>
+      <input type="search" class="form-control" id="fBusca" name="conta" value="{{ busca }}" placeholder="Código, descrição ou histórico"></div>
+    <button type="submit" class="btn btn-outline-secondary"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+  </form>
+
+  <div class="mv-card">
+    <table id="mvTabela" class="table-ds" style="width:100%">
+      <thead><tr>
+        <th>Data</th><th>Conta</th><th>Histórico</th><th>Documento</th><th class="mv-num">Valor (R$)</th><th>Origem</th>{% if pode_lancar %}<th></th>{% endif %}
+      </tr></thead>
+      <tbody>
+        {% for m in movimentacoes %}
+        <tr data-id="{{ m.id }}">
+          <td data-order="{{ m.data }}">{{ m.data|slice:"8:10" }}/{{ m.data|slice:"5:7" }}/{{ m.data|slice:":4" }}</td>
+          <td><span class="mv-conta">{{ m.conta }}<span class="mv-sub">{{ m.conta_descricao }}</span></span></td>
+          <td>{{ m.historico }}</td>
+          <td>{{ m.documento }}</td>
+          <td class="mv-num{% if m.negativo %} mv-neg{% endif %}" data-order="{{ m.valor }}">{{ m.valor|floatformat:"2g" }}</td>
+          <td>{% if m.origem == 'importado' %}<span class="badge text-bg-secondary">Importada</span>{% else %}Manual{% endif %}</td>
+          {% if pode_lancar %}
+          <td style="white-space:nowrap;">
+            {% if m.origem == 'importado' %}
+              <button type="button" class="mv-btn" disabled title="Importada: desfaça o lote em Importar planilha"><i class="bi bi-lock"></i></button>
+            {% elif not m.editavel %}
+              <button type="button" class="mv-btn" disabled title="Período finalizado"><i class="bi bi-lock"></i></button>
+            {% else %}
+              <button type="button" class="mv-btn mv-editar" title="Editar"><i class="bi bi-pencil"></i></button>
+              <button type="button" class="mv-btn mv-excluir" title="Excluir"><i class="bi bi-trash"></i></button>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if pode_lancar %}
+<div class="modal fade" id="mvModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-sm-down"><div class="modal-content">
+    <form id="mvForm" autocomplete="off">
+      <div class="modal-header"><h5 class="modal-title" id="mvTitulo">Nova movimentação</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+      <div class="modal-body">
+        <div class="alert alert-danger" id="mvErro" hidden></div>
+        <div class="row g-3">
+          <div class="col-md-5"><label class="form-label" for="mvData">Data</label>
+            <input type="date" class="form-control" id="mvData" name="data" required></div>
+          <div class="col-md-7"><label class="form-label" for="mvValor">Valor (R$)</label>
+            <input type="text" class="form-control" id="mvValor" name="valor" inputmode="decimal" placeholder="1.234,56 ou -500,00" required>
+            <div class="form-text" id="mvValorDica" aria-live="polite">Positivo aumenta a conta; negativo diminui. Despesas e redutoras ficam negativas.</div></div>
+          <div class="col-12"><label class="form-label" id="mvContaLabel">Conta</label>
+            <div id="mvContaPicker"></div>
+            <input type="hidden" name="conta_id" id="mvContaId"></div>
+          <div class="col-md-8"><label class="form-label" for="mvHistorico">Histórico</label>
+            <input type="text" class="form-control" id="mvHistorico" name="historico" maxlength="255"></div>
+          <div class="col-md-4"><label class="form-label" for="mvDocumento">Documento</label>
+            <input type="text" class="form-control" id="mvDocumento" name="documento" maxlength="60"></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="mvSalvar">Salvar</button></div>
+    </form>
+  </div></div>
+</div>
+
+<div class="modal fade" id="mvExcluirModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Excluir movimentação</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+    <div class="modal-body"><div class="alert alert-danger" id="mvExcluirErro" hidden></div>
+      <p class="mb-0" id="mvExcluirTexto"></p></div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+      <button type="button" class="btn btn-danger" id="mvExcluirOk">Excluir</button></div>
+  </div></div>
+</div>
+{% include 'movimentacoes/_conta_autocomplete.html' %}
+{{ catalogo_contas|json_script:"ca-catalogo" }}
+{% endif %}
+
+{{ movimentacoes|json_script:"mv-dados" }}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const dados = {};
+  JSON.parse(document.getElementById("mv-dados").textContent).forEach(function (m) { dados[m.id] = m; });
+
+  $("#mvTabela").DataTable({
+    dom: 'rt<"mt-2"ip>', pageLength: 50, order: [[0, "desc"]], autoWidth: false,
+    {% if pode_lancar %}columnDefs: [{ orderable: false, targets: -1 }],{% endif %}
+    language: { emptyTable: "Nenhuma movimentação neste filtro.", zeroRecords: "Nada encontrado.",
+      info: "_START_–_END_ de _TOTAL_", infoEmpty: "0 movimentações", paginate: { previous: "‹", next: "›" } }
+  });
+
+  {% if pode_lancar %}
+  const CSRF = "{{ csrf_token }}";
+  const URL_CRIAR = "{% url 'movimentacao_criar' fundo.id %}";
+  const URL_EDITAR = "{% url 'movimentacao_editar' fundo.id 0 %}";
+  const URL_EXCLUIR = "{% url 'movimentacao_excluir' fundo.id 0 %}";
+  const modal = new bootstrap.Modal(document.getElementById("mvModal"));
+  const modalExcluir = new bootstrap.Modal(document.getElementById("mvExcluirModal"));
+  const form = document.getElementById("mvForm");
+  const erro = document.getElementById("mvErro");
+  const ac = contaAutocomplete({
+    container: document.getElementById("mvContaPicker"), hidden: document.getElementById("mvContaId"),
+    labelId: "mvContaLabel", url: "{% url 'contas_buscar' %}", patrimonial: false, fundoId: {{ fundo.id }},
+    catalogo: JSON.parse(document.getElementById("ca-catalogo").textContent),
+    dicaEl: document.getElementById("mvValorDica")
+  });
+  let editandoId = null, excluindoId = null;
+
+  function post(url, corpo) {
+    return fetch(url, { method: "POST", headers: { "X-CSRFToken": CSRF, "X-Requested-With": "XMLHttpRequest" }, body: corpo })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); });
+  }
+  function mensagens(json) {
+    const e = json.errors || {};
+    return [].concat.apply([], Object.keys(e).map(function (k) { return e[k]; })).join(" ") || "Não foi possível salvar.";
+  }
+  function numeroBR(texto) { return String(texto).replace(".", ","); }
+
+  document.getElementById("mvNova").addEventListener("click", function () {
+    editandoId = null;
+    form.reset(); ac.limpar(); erro.hidden = true;
+    document.getElementById("mvTitulo").textContent = "Nova movimentação";
+    document.getElementById("mvData").value = "{{ data_fim|date:'Y-m-d' }}";
+    modal.show();
+  });
+
+  document.getElementById("mvTabela").addEventListener("click", function (ev) {
+    const linha = ev.target.closest("tr");
+    if (!linha) return;
+    const m = dados[linha.dataset.id];
+    if (ev.target.closest(".mv-editar")) {
+      editandoId = m.id;
+      form.reset(); erro.hidden = true;
+      document.getElementById("mvTitulo").textContent = "Editar movimentação";
+      document.getElementById("mvData").value = m.data;
+      document.getElementById("mvValor").value = numeroBR(m.valor);
+      document.getElementById("mvHistorico").value = m.historico;
+      document.getElementById("mvDocumento").value = m.documento;
+      ac.definir(m.conta_detalhe);
+      modal.show();
+    } else if (ev.target.closest(".mv-excluir")) {
+      excluindoId = m.id;
+      document.getElementById("mvExcluirErro").hidden = true;
+      document.getElementById("mvExcluirTexto").textContent =
+        "Excluir o lançamento de " + m.data.split("-").reverse().join("/") + " na conta " + m.conta + " (R$ " + numeroBR(m.valor) + ")?";
+      modalExcluir.show();
+    }
+  });
+
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    if (!document.getElementById("mvContaId").value) { erro.textContent = "Escolha uma conta da lista."; erro.hidden = false; return; }
+    const url = editandoId ? URL_EDITAR.replace("/0/", "/" + editandoId + "/") : URL_CRIAR;
+    document.getElementById("mvSalvar").disabled = true;
+    post(url, new FormData(form)).then(function (res) {
+      document.getElementById("mvSalvar").disabled = false;
+      if (!res.ok) { erro.textContent = mensagens(res.json); erro.hidden = false; return; }
+      window.location.reload();
+    });
+  });
+
+  document.getElementById("mvExcluirOk").addEventListener("click", function () {
+    post(URL_EXCLUIR.replace("/0/", "/" + excluindoId + "/"), new FormData()).then(function (res) {
+      if (!res.ok) { const e = document.getElementById("mvExcluirErro"); e.textContent = mensagens(res.json); e.hidden = false; return; }
+      window.location.reload();
+    });
+  });
+  {% endif %}
+});
+</script>
+{% endblock %}

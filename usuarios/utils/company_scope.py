@@ -16,8 +16,8 @@ def set_empresa_ativa(request, empresa_id: Optional[int]):
 
 def query_por_empresa_ativa(qs, request, empresa_field: str = "empresa"):
     """
-    Se usuário tem escopo global e há empresa ativa em sessão -> filtra por ela.
-    Senão, aplica a sua regra padrão restrict_by_empresa(user,...).
+    Se há empresa ativa em sessão -> filtra por ela (globais) ou pela interseção com o que o usuário
+    alcança (demais). Sem empresa ativa: globais não veem nada; demais seguem restrict_by_empresa.
     """
     user = request.user
     empresa = get_empresa_ativa(request)
@@ -28,5 +28,8 @@ def query_por_empresa_ativa(qs, request, empresa_field: str = "empresa"):
         # Sem empresa ativa, por segurança não retorna nada
         return qs.none()
 
-    # Usuário não-global segue a regra já existente
+    # Não-global: com empresa ativa (validada pelo middleware) filtra só por ela, como nos globais;
+    # sem ela, cai na regra de todas as empresas que o usuário alcança.
+    if empresa:
+        return restrict_by_empresa(qs, user, empresa_field).filter(**{f"{empresa_field}_id": empresa.id})
     return restrict_by_empresa(qs, user, empresa_field)

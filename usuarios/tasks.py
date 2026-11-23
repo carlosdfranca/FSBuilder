@@ -297,7 +297,7 @@ def expirar_convites_antigos():
     Returns:
         dict: Estatísticas da execução
     """
-    from usuarios.models import Convite
+    from usuarios.models import Convite, ConviteEscritorio
     
     agora = timezone.now()
     
@@ -314,9 +314,17 @@ def expirar_convites_antigos():
         convites_expirados.update(status=Convite.Status.EXPIRED)
         
         logger.info(f"Marcados {total} convites como expirados.")
+
+    # Convites de escritório de contabilidade
+    total_escritorio = ConviteEscritorio.objects.filter(
+        status=ConviteEscritorio.Status.PENDING, expira_em__lt=agora
+    ).update(status=ConviteEscritorio.Status.EXPIRED)
+    if total_escritorio:
+        logger.info(f"Marcados {total_escritorio} convites de escritório como expirados.")
     
     return {
         'total_expirados': total,
+        'total_expirados_escritorio': total_escritorio,
         'executado_em': agora.isoformat()
     }
 
@@ -573,3 +581,97 @@ def enviar_email_reset_senha_sync(reset_token_id: int):
             'reason': 'erro_envio',
             'error': str(e)
         }
+
+
+# =====================================================================
+# Convites de escritório de contabilidade
+# =====================================================================
+def _enviar_email_convite_escritorio(convite) -> str:
+    """Monta e envia o e-mail. Um só caminho para a versão assíncrona e a síncrona (mesmo contexto)."""
+    from usuarios.email_service import send_email
+    from usuarios.models import MembroEscritorio
+
+    base_url = getattr(settings, 'BASE_URL', 'http://localhost:8000')
+
+    convidante = convite.convidado_por
+    convidante_nome = "Administrador da plataforma"
+    convidante_role = "Administrador da plataforma"
+    if convidante:
+        convidante_nome = convidante.get_full_name() or convidante.username
+        membro = MembroEscritorio.objects.filter(
+            escritorio=convite.escritorio, usuario=convidante, is_active=True
+        ).first()
+        if membro:
+            convidante_role = membro.get_role_display()
+
+    context = {
+        'convite': convite,
+        'escritorio': convite.escritorio,
+        'convidante_nome': convidante_nome,
+        'convidante_role': convidante_role,
+        'role_display': convite.get_role_display(),
+        'link_aceite': convite.get_link_aceite(base_url),
+        'base_url': base_url,
+        'dias_validade': getattr(settings, 'CONVITE_EXPIRACAO_DIAS', 7),
+    }
+    send_email(
+        to_email=convite.email,
+        subject=f"Convite para o escritório {convite.escritorio.nome} - FSBuilder",
+        html_content=render_to_string('emails/convite_escritorio.html', context),
+        text_content=render_to_string('emails/convite_escritorio.txt', context),
+        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@fsbuilder.com'),
+    )
+    type(convite).objects.filter(pk=convite.pk).update(ultimo_envio_em=timezone.now())
+    return convite.email
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=300,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+)
+def enviar_email_convite_escritorio_async(self, convite_id: int):
+    """Envia o e-mail do convite de escritório (retry automático, como o convite de empresa)."""
+    from usuarios.models import ConviteEscritorio
+
+    try:
+        convite = ConviteEscritorio.objects.select_related('escritorio', 'convidado_por').get(id=convite_id)
+    except ConviteEscritorio.DoesNotExist:
+        logger.error(f"Convite de escritório {convite_id} não encontrado")
+        return {'success': False, 'reason': 'convite_nao_existe'}
+
+    if convite.status != ConviteEscritorio.Status.PENDING:
+        logger.info(f"Convite de escritório {convite_id} não está pendente ({convite.status}). E-mail não enviado.")
+        return {'success': False, 'reason': 'status_invalido', 'status': convite.status}
+    if timezone.now() > convite.expira_em:
+        convite.marcar_expirado()
+        return {'success': False, 'reason': 'expirado'}
+
+    try:
+        email = _enviar_email_convite_escritorio(convite)
+    except Exception as exc:
+        logger.error(
+            f"Erro ao enviar convite de escritório {convite_id}: {exc} | "
+            f"Tentativa {self.request.retries + 1}/{self.max_retries}"
+        )
+        raise  # dispara o retry automático
+    logger.info(f"Convite de escritório {convite_id} enviado para {email} (tentativa {self.request.retries + 1})")
+    return {'success': True, 'convite_id': convite_id, 'email': email, 'tentativas': self.request.retries + 1}
+
+
+def enviar_email_convite_escritorio_sync(convite_id: int) -> dict:
+    """Versão síncrona (dev/testes, CONVITE_ENVIO_SINCRONO): nunca propaga erro, só registra e devolve."""
+    from usuarios.models import ConviteEscritorio
+
+    try:
+        convite = ConviteEscritorio.objects.select_related('escritorio', 'convidado_por').get(id=convite_id)
+        if convite.status != ConviteEscritorio.Status.PENDING:
+            return {'success': False, 'reason': 'status_invalido', 'status': convite.status}
+        email = _enviar_email_convite_escritorio(convite)
+        return {'success': True, 'convite_id': convite_id, 'email': email}
+    except Exception as exc:
+        logger.error(f"Erro ao enviar (síncrono) convite de escritório {convite_id}: {exc}")
+        return {'success': False, 'reason': 'erro', 'erro': str(exc)}

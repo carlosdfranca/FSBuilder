@@ -10,6 +10,27 @@ logger = logging.getLogger(__name__)
 THRESHOLDS = [90, 60, 30, 15, 1]
 
 
+def _destinatarios_vencimento(empresa, memberships) -> list[int]:
+    """Ids de quem recebe o aviso: membros da empresa (MASTER/ADMIN/MEMBER) e a equipe do escritório
+    de contabilidade vinculado. Sem repetição, mesmo que a pessoa esteja nos dois lugares."""
+    from usuarios.models import Usuario
+
+    ids = {m.usuario_id for m in memberships}
+    contabilidade = (
+        Usuario.objects
+        .filter(
+            is_active=True,
+            escritorios_contabeis__is_active=True,
+            escritorios_contabeis__escritorio__is_ativo=True,
+            escritorios_contabeis__escritorio__vinculos__empresa=empresa,
+            escritorios_contabeis__escritorio__vinculos__is_active=True,
+        )
+        .exclude(email='')
+        .values_list('id', flat=True)
+    )
+    return sorted(ids | set(contabilidade))
+
+
 @shared_task
 def verificar_vencimentos_df():
     from df.models import PeriodoDF
@@ -48,12 +69,14 @@ def verificar_vencimentos_df():
                 .exclude(usuario__email='')
             )
 
+            destinatarios = _destinatarios_vencimento(periodo.empresa, memberships)
+
             sincrono = getattr(settings, 'DF_NOTIFICACAO_SINCRONO', False)
-            for m in memberships:
+            for usuario_id in destinatarios:
                 if sincrono:
-                    enviar_notificacao_vencimento_df(m.usuario.id, periodo.id, dias)
+                    enviar_notificacao_vencimento_df(usuario_id, periodo.id, dias)
                 else:
-                    enviar_notificacao_vencimento_df.delay(m.usuario.id, periodo.id, dias)
+                    enviar_notificacao_vencimento_df.delay(usuario_id, periodo.id, dias)
 
             setattr(periodo, flag, True)
             periodo.save(update_fields=[flag, 'atualizado_em'])
@@ -61,7 +84,7 @@ def verificar_vencimentos_df():
             logger.info(
                 f'Notificações de {dias}d enfileiradas: '
                 f'período {periodo.id} ({periodo.fundo.nome} {periodo.ano}), '
-                f'{memberships.count()} usuário(s)'
+                f'{len(destinatarios)} usuário(s)'
             )
 
 

@@ -6,6 +6,9 @@
 
 {% block extra_head %}
 <style>
+  #myTabjustifiedContent { transition: opacity .15s ease; }
+  #myTabjustifiedContent[aria-busy="true"] { opacity: .45; pointer-events: none; }
+  @media (prefers-reduced-motion: reduce) { #myTabjustifiedContent { transition: none; } }
   /* Barra de ações da DF — mobile first: empilha; a partir de md vira uma linha só */
   .df-toolbar { display: flex; flex-direction: column; gap: 1rem; }
   .df-toolbar__info { display: flex; flex-direction: column; align-items: stretch; gap: .75rem; }
@@ -80,14 +83,22 @@
             <i class="bi bi-exclamation-circle"></i>
           </span>
         </button>
-        <a href="{% url 'saldos_periodo' periodo.id %}" class="btn btn-outline-secondary">
-          <i class="bi bi-table me-1"></i>Editar saldos
-        </a>
+        <div class="dropdown">
+          <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                  title="Nível de detalhe do plano de contas" id="df-nivel-btn">
+            <i class="bi bi-diagram-3 me-1"></i><span id="df-nivel-rotulo">Detalhe: nível {{ nivel }}</span>
+          </button>
+          <ul class="dropdown-menu" id="df-nivel-menu">
+            {% for n in niveis %}
+              <li><a class="dropdown-item{% if n == nivel %} active{% endif %}" href="?nivel={{ n }}" data-nivel="{{ n }}">Nível {{ n }}</a></li>
+            {% endfor %}
+          </ul>
+        </div>
         <span class="vr df-toolbar__sep"></span>
-        <a href="{% url 'exportar_dfs_excel' periodo.id %}" class="btn btn-success">
+        <a href="{% url 'exportar_dfs_excel' periodo.id %}?nivel={{ nivel }}" class="btn btn-success" id="df-exp-excel">
           Exportar Excel <i class="bi bi-file-earmark-excel-fill ms-2"></i>
         </a>
-        <a href="{% url 'exportar_dfs_docx' periodo.id %}" class="btn btn-word">
+        <a href="{% url 'exportar_dfs_docx' periodo.id %}?nivel={{ nivel }}" class="btn btn-word" id="df-exp-word">
           Exportar Word <i class="bi bi-file-earmark-word-fill ms-2"></i>
         </a>
       </div>
@@ -114,7 +125,7 @@
     </ul>
 
     <!-- Conteúdo das abas -->
-    <div class="tab-content pt-2" id="myTabjustifiedContent">
+    <div class="tab-content pt-2" id="myTabjustifiedContent" aria-live="polite" aria-busy="false">
 
       <!-- DPF -->
       <div class="tab-pane fade show active" id="dpf-justified" role="tabpanel" aria-labelledby="dpf-tab">
@@ -228,6 +239,64 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+// Nível de detalhe sem recarregar a página: troca só o conteúdo das tabelas e mantém a aba aberta.
+(function () {
+  const menu = document.getElementById('df-nivel-menu');
+  const conteudo = document.getElementById('myTabjustifiedContent');
+  if (!menu || !conteudo) return;
+  const PAINEIS = ['dpf-justified', 'dre-justified', 'dmpl-justified', 'dfc-justified'];
+  let seq = 0;
+
+  function aplicarNivel(n) {
+    document.getElementById('df-nivel-rotulo').textContent = 'Detalhe: nível ' + n;
+    menu.querySelectorAll('.dropdown-item').forEach(function (a) {
+      a.classList.toggle('active', a.dataset.nivel === String(n));
+    });
+    ['df-exp-excel', 'df-exp-word'].forEach(function (id) {
+      const a = document.getElementById(id);
+      if (a) a.href = a.href.replace(/([?&]nivel=)\d+/, '$1' + n);
+    });
+    const url = new URL(window.location.href);
+    url.searchParams.set('nivel', n);
+    history.replaceState(null, '', url.pathname + url.search + url.hash);
+  }
+
+  menu.addEventListener('click', function (e) {
+    const link = e.target.closest('a[data-nivel]');
+    if (!link) return;
+    e.preventDefault();
+    const n = link.dataset.nivel;
+    if (link.classList.contains('active')) return;
+    const minha = ++seq;
+    conteudo.setAttribute('aria-busy', 'true');
+    fetch('?nivel=' + encodeURIComponent(n), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(function (html) {
+        if (minha !== seq) return;  // ignora respostas antigas
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const novos = PAINEIS.map(function (id) { return doc.getElementById(id); });
+        if (novos.some(function (el) { return !el; })) throw new Error('resposta inesperada');
+        PAINEIS.forEach(function (id, i) { document.getElementById(id).innerHTML = novos[i].innerHTML; });
+        aplicarNivel(n);
+        conteudo.setAttribute('aria-busy', 'false');
+      })
+      .catch(function () {
+        if (minha !== seq) return;
+        window.location.href = link.getAttribute('href') + window.location.hash;  // plano B: recarrega
+      });
+  });
+
+  // Lembra a aba no endereço (#dre, #dmpl...) para sobreviver a F5 e a links compartilhados
+  document.querySelectorAll('#myTabjustified [data-bs-toggle="tab"]').forEach(function (btn) {
+    btn.addEventListener('shown.bs.tab', function () {
+      history.replaceState(null, '', window.location.pathname + window.location.search + '#' + btn.id.replace('-tab', ''));
+    });
+  });
+  const inicial = document.getElementById((window.location.hash || '').slice(1) + '-tab');
+  if (inicial && window.bootstrap) bootstrap.Tab.getOrCreateInstance(inicial).show();
+})();
+</script>
 <script>
 (function () {
   const textarea = document.getElementById('contexto-texto');

@@ -1,0 +1,74 @@
+{% extends 'base/base.html' %}
+
+{% block title %}Convite · {{ escritorio.nome }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .ac-wrap { min-height: 100vh; display: grid; place-items: center; padding: 1.5rem 1rem; }
+  .ac-card { width: 100%; max-width: 30rem; background: var(--surface-2); border: 1px solid var(--border-color); border-radius: 16px; padding: 1.75rem; }
+  .ac-card h1 { font-size: 1.3rem; margin: 0 0 .25rem; color: var(--text-primary); }
+  .ac-sub { color: var(--text-muted); font-size: .88rem; margin-bottom: 1.25rem; }
+  .ac-info { background: var(--surface-3); border: 1px solid var(--border-color); border-radius: 12px; padding: .8rem 1rem; margin-bottom: 1.25rem; font-size: .88rem; }
+  .ac-info p { margin: .15rem 0; color: var(--text-secondary); }
+  .ac-info strong { color: var(--text-primary); }
+  .ac-erros { color: #ef4444; font-size: .8rem; margin: .2rem 0 0; padding: 0; list-style: none; }
+  .ac-ajuda { font-size: .76rem; color: var(--text-muted); }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+<div class="ac-wrap">
+  <div class="ac-card">
+    <h1><i class="bi bi-envelope-check me-1"></i>Convite para o escritório</h1>
+    <p class="ac-sub">Você foi convidado para a equipe de contabilidade no FSBuilder.</p>
+
+    <div class="ac-info">
+      <p><strong>Escritório:</strong> {{ escritorio.nome }}</p>
+      <p><strong>Seu papel:</strong> {{ role_display }}</p>
+      <p><strong>E-mail do convite:</strong> {{ convite.email }}</p>
+    </div>
+
+    {% if erro %}<div class="alert alert-danger" role="alert">{{ erro }}</div>{% endif %}
+
+    {% if estado == 'novo' %}
+      <form method="post" autocomplete="off" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+
+        <div class="mb-3"><label class="form-label" for="{{ form.username.id_for_label }}">Nome de usuário</label>
+          {{ form.username }}{{ form.username.errors }}<div class="ac-ajuda">{{ form.username.help_text }}</div></div>
+        <div class="row g-3 mb-3">
+          <div class="col-sm-6"><label class="form-label" for="{{ form.first_name.id_for_label }}">Primeiro nome</label>{{ form.first_name }}{{ form.first_name.errors }}</div>
+          <div class="col-sm-6"><label class="form-label" for="{{ form.last_name.id_for_label }}">Sobrenome</label>{{ form.last_name }}{{ form.last_name.errors }}</div>
+        </div>
+        <div class="mb-3"><label class="form-label" for="{{ form.password1.id_for_label }}">Senha</label>
+          {{ form.password1 }}{{ form.password1.errors }}</div>
+        <div class="mb-4"><label class="form-label" for="{{ form.password2.id_for_label }}">Confirmar senha</label>
+          {{ form.password2 }}{{ form.password2.errors }}</div>
+        <button type="submit" class="btn btn-primary w-100"><i class="bi bi-check2-circle me-1"></i>Criar conta e aceitar</button>
+      </form>
+
+    {% elif estado == 'tem_conta' %}
+      <p>Já existe uma conta com este e-mail. Entre nela para aceitar o convite: o acesso ao escritório será somado à sua conta.</p>
+      <a href="{{ login_url }}" class="btn btn-primary w-100"><i class="bi bi-box-arrow-in-right me-1"></i>Entrar para aceitar</a>
+
+    {% elif estado == 'logado_ok' %}
+      <p>Você está conectado como <strong>{{ email_logado }}</strong>. Confirme para entrar na equipe do escritório.</p>
+      <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary w-100"><i class="bi bi-check2-circle me-1"></i>Aceitar convite</button>
+      </form>
+
+    {% else %}
+      <div class="alert alert-warning" role="alert">
+        Este convite é para <strong>{{ convite.email }}</strong>, mas você está conectado como <strong>{{ email_logado|default:"outra conta" }}</strong>.
+        Saia da conta atual e abra o link do convite de novo.
+      </div>
+      <form method="post" action="{% url 'logout' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline-secondary w-100"><i class="bi bi-box-arrow-right me-1"></i>Sair da conta atual</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -95,6 +95,9 @@
                         <a href="{% url 'gerenciar_periodos' fundo.id %}" class="btn btn-sm btn-outline-primary" title="Gerenciar períodos de DF">
                           <i class="bi bi-calendar3"></i>
                         </a>
+                        <a href="{% url 'movimentacoes_fundo' fundo.id %}" class="btn btn-sm btn-outline-primary" title="Movimentações do fundo">
+                          <i class="bi bi-list-ul"></i>
+                        </a>
                       </td>
                       {% if can_manage_fundos %}
                       <td class="text-center">

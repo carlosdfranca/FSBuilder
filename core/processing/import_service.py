@@ -7,7 +7,7 @@ from datetime import date
 
 from django.db import transaction
 
-from df.models import BalanceteItem, MapeamentoContas, MecItem
+from df.models import MecItem
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,7 @@ def _to_decimal(v: Optional[float]) -> Optional[Decimal]:
 
 def calcular_data_referencia_periodo(periodo_df) -> date:
     """
-    Retorna a data de fechamento do balancete para um período.
+    Retorna a data de referência (fechamento) da DF de um período.
     Anual: 31/12 do ano.
     Transitória/Encerramento: usa data_vencimento.
     """
@@ -47,142 +47,9 @@ def calcular_data_referencia_periodo(periodo_df) -> date:
         return periodo_df.data_vencimento
 
 
-def calcular_data_referencia_periodo_anterior(periodo_df):
-    """
-    Retorna a data de fechamento do período ANTERIOR para usar como saldo_anterior.
-    Retorna None para tipos manuais (transitória/encerramento).
-    """
-    if periodo_df.tipo_periodo == 'anual':
-        return date(periodo_df.ano - 1, 12, 31)
-    return None
-
-
 # ============================================================
-# BALANCETE (com data_referencia + só saldo_atual)
+# IMPORTAÇÃO DO MEC (posição de cotas por data)
 # ============================================================
-@transaction.atomic
-def import_balancete(
-    *,
-    fundo_id: int,
-    data_referencia: date,
-    rows: List,
-    periodo_df_id: int = None,
-    usuario=None,
-    substituir: bool = False,
-) -> ImportReport:
-    """
-    Importa linhas canônicas (BalanceteRowDTO) para BalanceteItem:
-    - grava apenas o saldo atual
-    - usa data_referencia (não mais 'ano')
-    - ignora completamente saldo_anterior
-    - idempotente (update_or_create)
-    - Opcionalmente vincula ao PeriodoDF (periodo_df_id)
-    - substituir=True apaga antes os saldos e pendentes da data (fonte única = arquivo)
-    - sem periodo_df_id (saldo anterior), a FK é a do período dono da data, ou a que a linha já tinha
-    """
-    if not rows:
-        return ImportReport(imported=0, updated=0, ignored=0, errors=[])
-
-    # Obter fundo para acessar empresa (tenant)
-    from df.models import Fundo, PeriodoDF
-    fundo = Fundo.objects.select_related("empresa").get(id=fundo_id)
-
-    # Validar PeriodoDF se fornecido
-    periodo_df = None
-    if periodo_df_id:
-        periodo_df = PeriodoDF.objects.filter(id=periodo_df_id, fundo=fundo).first()
-        if not periodo_df:
-            raise ValueError(f"PeriodoDF {periodo_df_id} não encontrado ou não pertence ao fundo {fundo_id}")
-
-    from df.services.saldos_service import periodo_dono_da_data, substituir_saldos
-    if substituir:
-        substituir_saldos(fundo, data_referencia)
-
-    # FK efetiva das linhas: o período informado ou, sem ele, o dono da data (se houver)
-    fk_periodo = periodo_df_id
-    if fk_periodo is None:
-        dono = periodo_dono_da_data(fundo, data_referencia)
-        fk_periodo = dono.id if dono else None
-
-    # Cache de contas conhecidas para esta empresa
-    contas = {r.conta for r in rows if getattr(r, "conta", None)}
-    mapa_by_conta: Dict[str, MapeamentoContas] = {
-        m.conta: m for m in MapeamentoContas.objects.filter(
-            empresa=fundo.empresa,
-            conta__in=list(contas)
-        )
-    }
-
-    imported = updated = ignored = 0
-    errors: List[ImportErrorItem] = []
-    sem_mapeamento = []
-    contas_gravadas = set()
-
-    for idx, r in enumerate(rows):
-        conta = r.conta
-        if not conta:
-            ignored += 1
-            continue
-
-        conta_map = mapa_by_conta.get(conta)
-        if conta_map is None:
-            ignored += 1
-            if r.saldo_atual is not None:
-                sem_mapeamento.append(r)
-            continue
-
-        if r.saldo_atual is None:
-            ignored += 1
-            continue
-
-        try:
-            defaults = {
-                "saldo_final": _to_decimal(r.saldo_atual),
-                "data_referencia": data_referencia,
-                "origem": BalanceteItem.ORIGEM_IMPORTADO,
-                "atualizado_por": usuario,
-            }
-            # Sem dono conhecido, não toca na FK (evita zerar o vínculo de outra DF)
-            if fk_periodo is not None:
-                defaults["periodo_df_id"] = fk_periodo
-            _, created = BalanceteItem.objects.update_or_create(
-                fundo_id=fundo_id,
-                conta_corrente_id=conta_map.id,
-                data_referencia=data_referencia,
-                defaults=defaults,
-            )
-            contas_gravadas.add(conta)
-            if created:
-                imported += 1
-            else:
-                updated += 1
-
-        except Exception as e:
-            errors.append(ImportErrorItem(idx, str(e), raw=r.raw))
-
-    # Contas sem mapeamento viram pendências (visíveis no Plano de Contas);
-    # contas que agora têm mapeamento deixam de ser pendentes.
-    from df.services.mapeamento_service import registrar_pendentes, limpar_pendentes_mapeadas
-    pendentes = registrar_pendentes(
-        fundo=fundo,
-        data_referencia=data_referencia,
-        periodo_df_id=periodo_df_id,
-        rows=sem_mapeamento,
-        decimal_fn=_to_decimal,
-    )
-    limpar_pendentes_mapeadas(fundo=fundo, data_referencia=data_referencia, contas=contas_gravadas)
-
-    # Atualizar data_referencia do período se fornecido e não definida
-    if periodo_df and not periodo_df.data_referencia:
-        periodo_df.data_referencia = data_referencia
-        periodo_df.save()
-
-    return ImportReport(
-        imported=imported, updated=updated, ignored=ignored, errors=errors, pendentes=pendentes
-    )
-
-
-@transaction.atomic
 def import_mec(*, fundo_id: int, rows: List, periodo_df_id: int = None) -> ImportReport:
     """
     Importa linhas canônicas (MecRowDTO) para MecItem:

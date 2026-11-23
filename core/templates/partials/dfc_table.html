@@ -1,6 +1,4 @@
-{% load custom_tags %}
-
-<!-- Tabela DFC - layout original com datas dinâmicas -->
+{# DFC (método indireto) pelas linhas cadastradas em LinhaDFC. #}
 <table class="table table-bordered table-sm mt-3 align-middle">
   <thead class="table-light">
     <tr>
@@ -10,139 +8,13 @@
     </tr>
   </thead>
   <tbody>
-
-    <!-- FLUXO OPERACIONAIS -->
-    <tr class="table-secondary fw-bold">
-      <td colspan="3">{{ dfc_tabela.fluxo_operacionais.titulo }}</td>
-    </tr>
-
-    <tr>
-      <td class="ps-3">{{ dfc_tabela.fluxo_operacionais.resultado_liquido.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.resultado_liquido.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.resultado_liquido.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <!-- Separador -->
-    <tr class="table-separator"><td colspan="3"></td></tr>
-
-    <!-- AJUSTES -->
-    <tr class="table-secondary fw-bold">
-      <td colspan="3">{{ dfc_tabela.fluxo_operacionais.ajustes.titulo }}</td>
-    </tr>
-
-    <tr>
-      <td class="ps-4">{{ dfc_tabela.fluxo_operacionais.ajustes.rendimento_dc.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.ajustes.rendimento_dc.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.ajustes.rendimento_dc.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <tr>
-      <td class="ps-4">{{ dfc_tabela.fluxo_operacionais.ajustes.provisao_perdas.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.ajustes.provisao_perdas.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.ajustes.provisao_perdas.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <tr>
-      <td class="ps-4">{{ dfc_tabela.fluxo_operacionais.ajustes.taxa_adm.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.ajustes.taxa_adm.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.ajustes.taxa_adm.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <tr>
-      <td class="ps-4">{{ dfc_tabela.fluxo_operacionais.ajustes.taxa_gestao.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.ajustes.taxa_gestao.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.ajustes.taxa_gestao.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <tr class="fw-bold">
-      <td>{{ dfc_tabela.fluxo_operacionais.ajustes.resultado_ajustado.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.ajustes.resultado_ajustado.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.ajustes.resultado_ajustado.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <!-- Separador -->
-    <tr class="table-separator"><td colspan="3"></td></tr>
-
-    <tr>
-      <td>{{ dfc_tabela.fluxo_operacionais.aumento_dc.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.aumento_dc.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.aumento_dc.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <tr>
-      <td>{{ dfc_tabela.fluxo_operacionais.aumento_receber.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.aumento_receber.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.aumento_receber.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <tr>
-      <td>{{ dfc_tabela.fluxo_operacionais.reducao_pagar.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.reducao_pagar.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.reducao_pagar.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <tr class="fw-bold">
-      <td>{{ dfc_tabela.fluxo_operacionais.caixa_operacional.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.caixa_operacional.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_operacionais.caixa_operacional.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <!-- Separador -->
-    <tr class="table-separator"><td colspan="3"></td></tr>
-
-    <!-- FINANCIAMENTO -->
-    <tr class="table-secondary fw-bold">
-      <td colspan="3">{{ dfc_tabela.fluxo_financiamento.titulo }}</td>
-    </tr>
-
-    <tr>
-      <td>{{ dfc_tabela.fluxo_financiamento.emissao.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_financiamento.emissao.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_financiamento.emissao.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <tr>
-      <td>{{ dfc_tabela.fluxo_financiamento.resgate.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_financiamento.resgate.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_financiamento.resgate.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <tr>
-      <td>{{ dfc_tabela.fluxo_financiamento.variacoes_resgates.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_financiamento.variacoes_resgates.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_financiamento.variacoes_resgates.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <tr class="fw-bold">
-      <td>{{ dfc_tabela.fluxo_financiamento.caixa_financiamento.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_financiamento.caixa_financiamento.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.fluxo_financiamento.caixa_financiamento.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <!-- Separador -->
-    <tr class="table-separator"><td colspan="3"></td></tr>
-
-    <!-- VARIAÇÃO FINAL -->
-    <tr class="fw-bold">
-      <td>{{ dfc_tabela.variacao_caixa.titulo }}</td>
-      <td class="text-end border-top">{{ dfc_tabela.variacao_caixa.ATUAL|formata_milhar }}</td>
-      <td class="text-end border-top">{{ dfc_tabela.variacao_caixa.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <!-- Separador -->
-    <tr class="table-separator"><td colspan="3"></td></tr>
-
-    <tr>
-      <td>{{ dfc_tabela.caixa_inicio.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.caixa_inicio.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.caixa_inicio.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
-    <tr>
-      <td>{{ dfc_tabela.caixa_final.titulo }}</td>
-      <td class="text-end">{{ dfc_tabela.caixa_final.ATUAL|formata_milhar }}</td>
-      <td class="text-end">{{ dfc_tabela.caixa_final.ANTERIOR|formata_milhar }}</td>
-    </tr>
-
+    {% include 'partials/df_linhas.html' with linhas=dfc.linhas com_perc=False %}
   </tbody>
 </table>
+{% if dfc.tem_conciliacao %}
+  <div class="alert alert-warning small mt-2" role="alert">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    Há contas do plano sem linha na DFC; a diferença está na linha de conciliação.
+    Ajuste as linhas da DFC no admin (Linhas da DFC).
+  </div>
+{% endif %}

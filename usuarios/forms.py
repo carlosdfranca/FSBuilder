@@ -1,7 +1,7 @@
 from django import forms
 from django.core.exceptions import ValidationError
 from django.contrib.auth.password_validation import validate_password
-from usuarios.models import Usuario, Membership, Convite
+from usuarios.models import Usuario, Membership, Convite, EscritorioContabil, MembroEscritorio
 
 class CompanyUserCreateForm(forms.ModelForm):
     role = forms.ChoiceField(
@@ -214,3 +214,27 @@ class RedefinirSenhaForm(forms.Form):
 
         return password2
 
+
+
+
+class EscritorioContabilForm(forms.ModelForm):
+    """Cadastro de escritório de contabilidade (nome e CNPJ únicos; CNPJ em branco vira NULL)."""
+
+    class Meta:
+        model = EscritorioContabil
+        fields = ("nome", "cnpj", "is_ativo")
+
+    def clean_nome(self):
+        return (self.cleaned_data.get("nome") or "").strip()
+
+    def clean_cnpj(self):
+        # O campo é unique: duas strings vazias colidiriam, então "em branco" precisa ser NULL.
+        return (self.cleaned_data.get("cnpj") or "").strip() or None
+
+
+class ConvidarEscritorioForm(forms.Form):
+    email = forms.EmailField(label="E-mail", max_length=254)
+    role = forms.ChoiceField(choices=MembroEscritorio.Role.choices, label="Papel", initial=MembroEscritorio.Role.MEMBRO)
+
+    def clean_email(self):
+        return (self.cleaned_data.get("email") or "").strip().lower()
