@@ -9,7 +9,7 @@ from django.db import transaction
 from django.db.models import Max
 
 from df.models import Conta, Fundo, Movimentacao, PeriodoDF, SaldoInicial
-from df.services.periodo_service import atualizar_periodos_da_data
+from df.services.periodo_service import ano_do_saldo_inicial, atualizar_periodos_da_data, garantir_periodos_anuais
 
 
 def data_fechamento(fundo: Fundo) -> date | None:
@@ -93,6 +93,7 @@ def criar_movimentacao(
         criado_por=usuario,
         atualizado_por=usuario,
     )
+    garantir_periodos_anuais(fundo, [data.year])
     atualizar_periodos_da_data(fundo, data)
     return mov
 
@@ -116,6 +117,7 @@ def editar_movimentacao(
         mov.documento = documento[:60]
     mov.atualizado_por = usuario
     mov.save()
+    garantir_periodos_anuais(mov.fundo, [nova_data.year])
     for d in {data_antiga, nova_data}:
         atualizar_periodos_da_data(mov.fundo, d)
     return mov
@@ -144,12 +146,14 @@ def definir_saldo_inicial(
         data_antiga = existente.data_base
         existente.data_base, existente.valor, existente.atualizado_por = data_base, valor, usuario
         existente.save()
+        garantir_periodos_anuais(fundo, [ano_do_saldo_inicial(data_base)])
         for d in {data_antiga, data_base}:
             atualizar_periodos_da_data(fundo, d)
         return existente
     saldo = SaldoInicial.objects.create(
         fundo=fundo, conta=conta, data_base=data_base, valor=valor, criado_por=usuario, atualizado_por=usuario
     )
+    garantir_periodos_anuais(fundo, [ano_do_saldo_inicial(data_base)])
     atualizar_periodos_da_data(fundo, data_base)
     return saldo
 

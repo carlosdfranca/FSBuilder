@@ -26,9 +26,9 @@ def painel_contabilidade(request):
         .filter(vinculos_contabeis__is_active=True, vinculos_contabeis__escritorio__in=escritorios)
         .annotate(
             qtd_fundos=Count("fundos", distinct=True),
-            periodos_abertos=Count("periodos_df", filter=~Q(periodos_df__status="finalizada"), distinct=True),
+            periodos_abertos=Count("periodos_df", filter=~Q(periodos_df__status__in=["finalizada", "historico"]), distinct=True),
             periodos_vencidos=Count("periodos_df", filter=Q(periodos_df__status="vencida"), distinct=True),
-            proximo_vencimento=Min("periodos_df__data_vencimento", filter=~Q(periodos_df__status="finalizada")),
+            proximo_vencimento=Min("periodos_df__data_vencimento", filter=~Q(periodos_df__status__in=["finalizada", "historico"])),
         )
         .only("id", "nome", "cnpj")
         .order_by("nome")

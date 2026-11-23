@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import io
+import re
+from collections import Counter
 from datetime import date, datetime
 from decimal import Decimal
 
 import openpyxl
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.db.models import Count, Q, Sum
+from django.db.models import Case, Count, IntegerField, Max, Q, Sum, Value, When
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
@@ -28,7 +30,20 @@ from usuarios.permissions import (
 from usuarios.utils.company_scope import query_por_empresa_ativa
 
 LIMITE_LINHAS_TELA = 5000
-LIMITE_BUSCA_CONTAS = 30
+LIMITE_BUSCA_CONTAS = 50
+LIMITE_MAIS_USADAS = 6
+_RE_CODIGO_GRUPO = re.compile(r"^\d+(\.\d+)*$")
+NATUREZAS_CURTAS = {1: "Ativo", 2: "Passivo", 3: "PL", 4: "Resultado"}
+# Siglas que devem continuar em maiúsculas quando o nome do grupo (que vem TODO em maiúsculas) é suavizado
+ACRONIMOS = {"IRPJ", "CSLL", "IR", "PL", "CPC", "AVP", "VJPR", "LALUR", "ECD", "ECF", "PIS", "COFINS", "ICMS", "IPI"}
+
+
+def _aviso_periodos(criados) -> str:
+    """Frase sobre os períodos anuais que a importação criou (vazia se não criou nenhum)."""
+    if not criados:
+        return ""
+    nomes = ", ".join(f"{p.ano}{' (Histórico)' if p.status == 'historico' else ''}" for p in sorted(criados, key=lambda p: p.ano))
+    return f" Períodos de DF criados automaticamente: {nomes}."
 
 
 def _fundo(request, fundo_id) -> Fundo:
@@ -71,30 +86,159 @@ def _moeda(v) -> str:
 
 
 # ------------------------------------------------------------------ busca de contas
+def _titulo(descricao: str) -> str:
+    """Nomes de grupo vêm do plano em MAIÚSCULAS; suaviza para leitura, mantendo siglas conhecidas."""
+    if not descricao or not descricao.isupper():
+        return descricao
+    palavras = [
+        p.upper() if p.upper().strip(",.;:()-–") in ACRONIMOS else p
+        for p in descricao.lower().split(" ")
+    ]
+    texto = " ".join(palavras)
+    return texto[:1].upper() + texto[1:]
+
+
+def _nomes_dos_grupos() -> dict[str, str]:
+    """{código: nome} dos grupos de nível 2 e 3 (uma consulta), para montar o caminho das contas."""
+    grupos = Conta.objects.filter(tipo=Conta.Tipo.SINTETICA, nivel__in=(2, 3)).values_list("codigo", "descricao")
+    return {codigo: _titulo(descricao) for codigo, descricao in grupos}
+
+
+def _grupo_e_caminho(codigo: str, nomes: dict[str, str]) -> tuple[str, list[str]]:
+    """Código do grupo de nível 3 e nomes dos grupos de nível 2 e 3 a que a conta pertence."""
+    partes = codigo.split(".")
+    pai = ".".join(partes[:2]) if len(partes) >= 3 else ""
+    grupo = ".".join(partes[:3]) if len(partes) >= 4 else ""
+    return grupo, [nome for nome in (nomes.get(pai), nomes.get(grupo)) if nome]
+
+
+def _serializar_conta(c: Conta, nomes: dict[str, str]) -> dict:
+    grupo, caminho = _grupo_e_caminho(c.codigo, nomes)
+    return {
+        "id": c.id, "codigo": c.codigo, "descricao": c.descricao, "natureza": c.get_natureza_display(),
+        "natureza_codigo": c.natureza, "grupo_codigo": grupo, "caminho": caminho,
+    }
+
+
+def _inteiro(valor) -> int | None:
+    try:
+        return int(valor)
+    except (TypeError, ValueError):
+        return None
+
+
+def catalogo_do_plano(patrimonial: bool = False) -> dict:
+    """
+    Dados dos filtros do seletor de contas: naturezas (com a quantidade de contas lançáveis) e
+    grupos de nível 3 (com o grupo de nível 2 pai). `patrimonial=True` tira o Resultado.
+    """
+    analiticas = Conta.objects.filter(tipo=Conta.Tipo.ANALITICA, is_ativa=True)
+    if patrimonial:
+        analiticas = analiticas.exclude(natureza=Conta.Natureza.RESULTADO)
+
+    por_natureza, por_grupo = Counter(), Counter()
+    for codigo, natureza in analiticas.values_list("codigo", "natureza"):
+        por_natureza[natureza] += 1
+        partes = codigo.split(".")
+        if len(partes) >= 4:
+            por_grupo[".".join(partes[:3])] += 1
+
+    nomes = _nomes_dos_grupos()
+    grupos = []
+    sinteticas = Conta.objects.filter(tipo=Conta.Tipo.SINTETICA, nivel=3).order_by("codigo")
+    for codigo, natureza in sinteticas.values_list("codigo", "natureza"):
+        if por_grupo[codigo]:
+            pai = ".".join(codigo.split(".")[:2])
+            grupos.append({
+                "codigo": codigo, "descricao": nomes.get(codigo, codigo), "natureza": natureza,
+                "pai_codigo": pai, "pai_descricao": nomes.get(pai, pai), "qtd": por_grupo[codigo],
+            })
+    naturezas = [
+        {"codigo": n.value, "label": n.label, "curto": NATUREZAS_CURTAS[n.value], "qtd": por_natureza[n.value]}
+        for n in Conta.Natureza if por_natureza[n.value]
+    ]
+    return {"naturezas": naturezas, "grupos": grupos}
+
+
+def _contas_mais_usadas(request, patrimonial: bool, nomes: dict[str, str]) -> list[dict]:
+    """Contas com mais lançamentos no fundo. O fundo precisa ser da empresa ativa (senão, lista vazia)."""
+    fundo_id = _inteiro(request.GET.get("fundo"))
+    if not fundo_id:
+        return []
+    fundo = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa").filter(id=fundo_id).first()
+    if fundo is None:
+        return []
+    lancamentos = Movimentacao.objects.filter(fundo=fundo, conta__tipo=Conta.Tipo.ANALITICA, conta__is_ativa=True)
+    if patrimonial:
+        lancamentos = lancamentos.exclude(conta__natureza=Conta.Natureza.RESULTADO)
+    linhas = list(
+        lancamentos.values("conta_id")
+        .annotate(usos=Count("id"), ultima=Max("data"))
+        .order_by("-usos", "-ultima", "conta_id")[:LIMITE_MAIS_USADAS]
+    )
+    contas = Conta.objects.in_bulk([linha["conta_id"] for linha in linhas])
+    return [{**_serializar_conta(contas[linha["conta_id"]], nomes), "usos": linha["usos"]} for linha in linhas]
+
+
 @login_required
 @company_can_view_data
 @require_GET
 def contas_buscar(request):
-    """Autocomplete: contas analíticas ativas por código ou descrição. `patrimonial=1` exclui resultado."""
-    termo = (request.GET.get("q") or "").strip()
+    """
+    Seletor de contas: analíticas ativas por código ou descrição, com filtros opcionais.
+    `natureza` (1–4) e `grupo` (código de grupo) filtram; `patrimonial=1` tira o Resultado;
+    `fundo` + `recentes=1` acrescenta as contas mais usadas no fundo (só sem texto nem filtros).
+    Valores de filtro inválidos são ignorados, não geram erro.
+    """
+    termo = (request.GET.get("q") or "").strip()[:100]
+    natureza = _inteiro(request.GET.get("natureza"))
+    natureza = natureza if natureza in Conta.Natureza.values else None
+    grupo = (request.GET.get("grupo") or "").strip()
+    grupo = grupo if _RE_CODIGO_GRUPO.match(grupo) else ""
+    patrimonial = request.GET.get("patrimonial") == "1"
+
     qs = Conta.objects.filter(tipo=Conta.Tipo.ANALITICA, is_ativa=True)
-    if request.GET.get("patrimonial") == "1":
+    if patrimonial:
         qs = qs.exclude(natureza=Conta.Natureza.RESULTADO)
+    if natureza:
+        qs = qs.filter(natureza=natureza)
+    if grupo:
+        qs = qs.filter(codigo__startswith=grupo + ".")
     if termo:
-        qs = qs.filter(Q(codigo__startswith=termo) | Q(codigo__icontains=termo) | Q(descricao__icontains=termo))
-    return JsonResponse({"contas": [
-        {"id": c.id, "codigo": c.codigo, "descricao": c.descricao, "natureza": c.get_natureza_display()}
-        for c in qs.order_by("codigo")[:LIMITE_BUSCA_CONTAS]
-    ]})
+        qs = (
+            qs.filter(Q(codigo__startswith=termo) | Q(codigo__icontains=termo) | Q(descricao__icontains=termo))
+            .annotate(relevancia=Case(
+                When(codigo=termo, then=Value(0)),
+                When(codigo__startswith=termo, then=Value(1)),
+                When(descricao__istartswith=termo, then=Value(2)),
+                default=Value(3), output_field=IntegerField(),
+            ))
+            .order_by("relevancia", "codigo")
+        )
+    else:
+        qs = qs.order_by("codigo")
+
+    nomes = _nomes_dos_grupos()
+    resposta = {
+        "contas": [_serializar_conta(c, nomes) for c in qs[:LIMITE_BUSCA_CONTAS]],
+        "total": qs.count(),
+        "limite": LIMITE_BUSCA_CONTAS,
+    }
+    if request.GET.get("recentes") == "1" and not (termo or natureza or grupo):
+        resposta["mais_usadas"] = _contas_mais_usadas(request, patrimonial, nomes)
+    return JsonResponse(resposta)
 
 
 # ------------------------------------------------------------------ movimentações
-def _serializar(m: Movimentacao, fechamento: date | None) -> dict:
+def _serializar(m: Movimentacao, fechamento: date | None, nomes: dict[str, str] | None = None) -> dict:
+    nomes = _nomes_dos_grupos() if nomes is None else nomes
     return {
         "id": m.id, "data": m.data.isoformat(), "conta_id": m.conta_id, "conta": m.conta.codigo,
         "conta_descricao": m.conta.descricao, "valor": str(m.valor), "historico": m.historico,
         "documento": m.documento, "origem": m.origem, "negativo": m.valor < 0,
         "editavel": not (fechamento and m.data <= fechamento),
+        # o cartão da conta selecionada, ao editar, precisa de natureza e caminho do grupo
+        "conta_detalhe": _serializar_conta(m.conta, nomes),
     }
 
 
@@ -114,10 +258,12 @@ def movimentacoes_fundo(request, fundo_id):
         qs = qs.filter(Q(conta__codigo__startswith=busca) | Q(conta__descricao__icontains=busca) | Q(historico__icontains=busca))
     totais = qs.aggregate(qtd=Count("id"), soma=Sum("valor"))
     fechamento = ms.data_fechamento(fundo)
+    nomes = _nomes_dos_grupos()
 
     return render(request, "movimentacoes/lista.html", {
         "fundo": fundo,
-        "movimentacoes": [_serializar(m, fechamento) for m in qs.order_by("-data", "-id")[:LIMITE_LINHAS_TELA]],
+        "movimentacoes": [_serializar(m, fechamento, nomes) for m in qs.order_by("-data", "-id")[:LIMITE_LINHAS_TELA]],
+        "catalogo_contas": catalogo_do_plano(patrimonial=False),
         "truncado": (totais["qtd"] or 0) > LIMITE_LINHAS_TELA,
         "qtd": totais["qtd"] or 0,
         "soma": totais["soma"] or Decimal("0"),
@@ -235,8 +381,12 @@ def _importar_post(request, fundo):
         return JsonResponse({"ok": False, "erros": [{"linha": None, "mensagem": "Selecione um arquivo."}], "total": 1}, status=400)
 
     def fazer():
-        lote = importar_movimentacoes(fundo, arquivo.name, arquivo.read(), request.user)
-        return {"qtd": lote.qtd_linhas, "mensagem": f"{lote.qtd_linhas} movimentação(ões) importada(s)."}
+        criados: list = []
+        lote = importar_movimentacoes(fundo, arquivo.name, arquivo.read(), request.user, periodos_criados=criados)
+        return {
+            "qtd": lote.qtd_linhas,
+            "mensagem": f"{lote.qtd_linhas} movimentação(ões) importada(s)." + _aviso_periodos(criados),
+        }
     return _resposta_importacao(fazer)
 
 
@@ -289,11 +439,13 @@ def movimentacoes_modelo(request, fundo_id):
 
 
 # ------------------------------------------------------------------ saldos iniciais
-def _serializar_saldo(s: SaldoInicial, fechamento: date | None) -> dict:
+def _serializar_saldo(s: SaldoInicial, fechamento: date | None, nomes: dict[str, str] | None = None) -> dict:
+    nomes = _nomes_dos_grupos() if nomes is None else nomes
     return {
         "id": s.id, "conta_id": s.conta_id, "conta": s.conta.codigo, "conta_descricao": s.conta.descricao,
         "natureza": s.conta.get_natureza_display(), "data_base": s.data_base.isoformat(), "valor": str(s.valor),
         "negativo": s.valor < 0, "editavel": not (fechamento and s.data_base <= fechamento),
+        "conta_detalhe": _serializar_conta(s.conta, nomes),
     }
 
 
@@ -303,9 +455,11 @@ def saldos_iniciais_fundo(request, fundo_id):
     fundo = _fundo(request, fundo_id)
     fechamento = ms.data_fechamento(fundo)
     saldos = SaldoInicial.objects.filter(fundo=fundo).select_related("conta").order_by("conta__codigo")
+    nomes = _nomes_dos_grupos()
     return render(request, "movimentacoes/saldos_iniciais.html", {
         "fundo": fundo,
-        "saldos": [_serializar_saldo(s, fechamento) for s in saldos],
+        "saldos": [_serializar_saldo(s, fechamento, nomes) for s in saldos],
+        "catalogo_contas": catalogo_do_plano(patrimonial=True),
         "fechamento": fechamento,
         "pode_lancar": _pode_lancar(request),
     })
@@ -356,8 +510,11 @@ def saldos_iniciais_importar(request, fundo_id):
         return JsonResponse({"ok": False, "erros": [{"linha": None, "mensagem": "Selecione um arquivo."}], "total": 1}, status=400)
 
     def fazer():
-        qtd = importar_saldos_iniciais(fundo, data_base, arquivo.name, arquivo.read(), request.user)
-        return {"qtd": qtd, "mensagem": f"{qtd} saldo(s) inicial(is) gravado(s)."}
+        criados: list = []
+        qtd = importar_saldos_iniciais(
+            fundo, data_base, arquivo.name, arquivo.read(), request.user, periodos_criados=criados
+        )
+        return {"qtd": qtd, "mensagem": f"{qtd} saldo(s) inicial(is) gravado(s)." + _aviso_periodos(criados)}
     return _resposta_importacao(fazer)
 
 

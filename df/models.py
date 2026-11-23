@@ -268,6 +268,7 @@ class PeriodoDF(models.Model):
         ('em_andamento', 'Em Andamento'),
         ('finalizada', 'Finalizada'),
         ('vencida', 'Vencida'),
+        ('historico', 'Histórico'),
     ]
     status = models.CharField(
         max_length=20,
@@ -329,6 +330,28 @@ class PeriodoDF(models.Model):
             desc = f" - {self.descricao}" if self.descricao else ""
             return f"{self.ano} Encerramento{desc}"
         return f"{self.ano} {self.get_tipo_periodo_display()}"
+
+
+class AlteracaoStatusPeriodo(models.Model):
+    """Registro de cada troca manual de status de um período (principalmente as reaberturas)."""
+    periodo = models.ForeignKey(PeriodoDF, on_delete=models.CASCADE, related_name="alteracoes_status")
+    status_anterior = models.CharField(max_length=20)
+    status_novo = models.CharField(max_length=20)
+    motivo = models.TextField(blank=True)
+    usuario = models.ForeignKey(Usuario, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Alteração de status do período"
+        verbose_name_plural = "Alterações de status dos períodos"
+        ordering = ["-criado_em", "-id"]
+
+    @property
+    def e_reabertura(self) -> bool:
+        return self.status_anterior == "finalizada" and self.status_novo != "finalizada"
+
+    def __str__(self):
+        return f"{self.periodo_id}: {self.status_anterior} → {self.status_novo}"
 
 
 # =========================

@@ -85,16 +85,16 @@
 
 {% if pode_lancar %}
 <div class="modal fade" id="siModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-sm-down"><div class="modal-content">
     <form id="siForm" autocomplete="off">
       <div class="modal-header"><h5 class="modal-title" id="siTitulo">Novo saldo inicial</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
       <div class="modal-body">
         <div class="alert alert-danger" id="siErro" hidden></div>
         <div class="row g-3">
-          <div class="col-12"><label class="form-label" for="siConta">Conta</label>
-            <div class="ca-wrap"><input type="text" class="form-control" id="siConta" placeholder="Digite o código ou parte do nome" required>
-              <input type="hidden" name="conta_id" id="siContaId"></div>
+          <div class="col-12"><label class="form-label" id="siContaLabel">Conta</label>
+            <div id="siContaPicker"></div>
+            <input type="hidden" name="conta_id" id="siContaId">
             <div class="form-text">Só contas de Ativo, Passivo e Patrimônio Líquido.</div></div>
           <div class="col-md-5"><label class="form-label" for="siData">Data-base</label>
             <input type="date" class="form-control" id="siData" name="data_base" required></div>
@@ -119,6 +119,7 @@
   </div></div>
 </div>
 {% include 'movimentacoes/_conta_autocomplete.html' %}
+{{ catalogo_contas|json_script:"ca-catalogo" }}
 {% endif %}
 
 {{ saldos|json_script:"si-dados" }}
@@ -146,8 +147,9 @@ document.addEventListener("DOMContentLoaded", function () {
   const modalExcluir = new bootstrap.Modal(document.getElementById("siExcluirModal"));
   const form = document.getElementById("siForm"), erro = document.getElementById("siErro");
   const ac = contaAutocomplete({
-    input: document.getElementById("siConta"), hidden: document.getElementById("siContaId"),
-    url: "{% url 'contas_buscar' %}", patrimonial: true
+    container: document.getElementById("siContaPicker"), hidden: document.getElementById("siContaId"),
+    labelId: "siContaLabel", url: "{% url 'contas_buscar' %}", patrimonial: true,
+    catalogo: JSON.parse(document.getElementById("ca-catalogo").textContent)
   });
   let excluindoId = null;
 
@@ -177,7 +179,7 @@ document.addEventListener("DOMContentLoaded", function () {
       document.getElementById("siTitulo").textContent = "Editar saldo inicial";
       document.getElementById("siData").value = s.data_base;
       document.getElementById("siValor").value = numeroBR(s.valor);
-      ac.definir({ id: s.conta_id, codigo: s.conta, descricao: s.conta_descricao });
+      ac.definir(s.conta_detalhe);
       modal.show();
     } else if (ev.target.closest(".si-excluir")) {
       excluindoId = s.id;

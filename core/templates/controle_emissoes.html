@@ -25,6 +25,7 @@
 
 {% block conteudo %}
 {% include 'base/navbar.html' %}
+{% include 'partials/_reabrir_periodo_modal.html' %}
 
 <div class="container py-5">
 
@@ -270,7 +271,9 @@
                   {% endif %}
                 </td>
                 <td>
-                  {% if item.urgencia == 'finalizada' %}
+                  {% if item.periodo.status == 'historico' %}
+                    <span class="text-muted small"><i class="bi bi-archive me-1"></i>Histórico</span>
+                  {% elif item.urgencia == 'finalizada' %}
                     <span class="text-success small"><i class="bi bi-check-circle me-1"></i>Entregue</span>
                   {% elif item.urgencia == 'vencida' %}
                     {% if item.dias_atraso %}
@@ -287,7 +290,9 @@
                   {% endif %}
                 </td>
                 <td>
-                  {% if item.periodo.status == 'finalizada' %}
+                  {% if item.periodo.status == 'historico' %}
+                    <span class="badge text-white" style="background-color:#4d7c6f;" {% if can_manage_fundos %}data-pid="{{ item.periodo.id }}" data-status="historico"{% endif %}>Histórico</span>
+                  {% elif item.periodo.status == 'finalizada' %}
                     <span class="badge bg-success" {% if can_manage_fundos %}data-pid="{{ item.periodo.id }}" data-status="finalizada"{% endif %}>Finalizada</span>
                   {% elif item.periodo.status == 'em_andamento' %}
                     <span class="badge text-white" style="background-color:#3b82f6;" {% if can_manage_fundos %}data-pid="{{ item.periodo.id }}" data-status="em_andamento"{% endif %}>Em Andamento</span>
@@ -476,12 +481,14 @@ const _SD_CFG = {
   em_andamento: { label: 'Em Andamento', cls: 'text-white',   style: 'background-color:#3b82f6;' },
   finalizada:   { label: 'Finalizada',   cls: 'bg-success',   style: '' },
   vencida:      { label: 'Vencida',      cls: 'bg-danger',    style: '' },
+  historico:    { label: 'Histórico',    cls: 'text-white',   style: 'background-color:#4d7c6f;' },
 };
 const _SD_OPTS = {
-  nao_iniciada: ['em_andamento', 'finalizada'],
-  em_andamento: ['nao_iniciada', 'finalizada'],
-  vencida:      ['finalizada'],
-  finalizada:   ['em_andamento', 'nao_iniciada'],
+  nao_iniciada: ['em_andamento', 'finalizada', 'historico'],
+  em_andamento: ['nao_iniciada', 'finalizada', 'historico'],
+  vencida:      ['finalizada', 'historico'],
+  finalizada:   ['em_andamento', 'nao_iniciada', 'historico'],
+  historico:    ['em_andamento', 'nao_iniciada', 'finalizada'],
 };
 const _sd = (() => {
   const el = document.createElement('div');
@@ -514,6 +521,9 @@ function _openSd(trigger) {
 }
 
 function _calcPrazoHtml(novoStatus, dataVencStr) {
+  if (novoStatus === 'historico') {
+    return '<span class="text-muted small"><i class="bi bi-archive me-1"></i>Histórico</span>';
+  }
   if (novoStatus === 'finalizada') {
     return '<span class="text-success small"><i class="bi bi-check-circle me-1"></i>Entregue</span>';
   }
@@ -532,10 +542,20 @@ function _calcPrazoHtml(novoStatus, dataVencStr) {
   return `<span class="text-muted small">${dias} dias</span>`;
 }
 
-function _selectSd(novoStatus) {
+async function _selectSd(novoStatus) {
   const fd = new FormData();
   fd.append('status', novoStatus);
   fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+  const atual = document.querySelector(`[data-pid="${_sdPid}"]`);
+  // Sair de "Finalizada" é reabrir: pede o motivo, que o servidor registra
+  if (atual && atual.dataset.status === 'finalizada' && novoStatus !== 'finalizada') {
+    const pid = _sdPid;
+    _closeSd();
+    const motivo = await pedirMotivoReabertura();
+    if (motivo === null) return;
+    _sdPid = pid;
+    fd.append('motivo', motivo);
+  }
   fetch(`/api/periodo/${_sdPid}/status/`, {
     method: 'POST',
     headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -561,10 +581,12 @@ function _selectSd(novoStatus) {
           if (tds[5]) tds[5].innerHTML = _calcPrazoHtml(novoStatus, dataVenc);
 
           row.classList.remove('table-danger', 'table-warning', 'table-success', 'row-aviso');
-          if (novoStatus === 'finalizada') row.classList.add('table-success');
+          if (novoStatus === 'finalizada' || novoStatus === 'historico') row.classList.add('table-success');
           else if (novoStatus === 'vencida') row.classList.add('table-danger');
         }
       }
+    } else {
+      alert(data.error || 'Não foi possível alterar o status.');
     }
     _closeSd();
   })

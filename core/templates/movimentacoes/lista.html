@@ -108,7 +108,7 @@
 
 {% if pode_lancar %}
 <div class="modal fade" id="mvModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-sm-down"><div class="modal-content">
     <form id="mvForm" autocomplete="off">
       <div class="modal-header"><h5 class="modal-title" id="mvTitulo">Nova movimentação</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
@@ -119,10 +119,10 @@
             <input type="date" class="form-control" id="mvData" name="data" required></div>
           <div class="col-md-7"><label class="form-label" for="mvValor">Valor (R$)</label>
             <input type="text" class="form-control" id="mvValor" name="valor" inputmode="decimal" placeholder="1.234,56 ou -500,00" required>
-            <div class="form-text">Positivo aumenta a conta; negativo diminui. Despesas e redutoras ficam negativas.</div></div>
-          <div class="col-12"><label class="form-label" for="mvConta">Conta</label>
-            <div class="ca-wrap"><input type="text" class="form-control" id="mvConta" placeholder="Digite o código ou parte do nome" required>
-              <input type="hidden" name="conta_id" id="mvContaId"></div></div>
+            <div class="form-text" id="mvValorDica" aria-live="polite">Positivo aumenta a conta; negativo diminui. Despesas e redutoras ficam negativas.</div></div>
+          <div class="col-12"><label class="form-label" id="mvContaLabel">Conta</label>
+            <div id="mvContaPicker"></div>
+            <input type="hidden" name="conta_id" id="mvContaId"></div>
           <div class="col-md-8"><label class="form-label" for="mvHistorico">Histórico</label>
             <input type="text" class="form-control" id="mvHistorico" name="historico" maxlength="255"></div>
           <div class="col-md-4"><label class="form-label" for="mvDocumento">Documento</label>
@@ -146,6 +146,7 @@
   </div></div>
 </div>
 {% include 'movimentacoes/_conta_autocomplete.html' %}
+{{ catalogo_contas|json_script:"ca-catalogo" }}
 {% endif %}
 
 {{ movimentacoes|json_script:"mv-dados" }}
@@ -174,8 +175,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const form = document.getElementById("mvForm");
   const erro = document.getElementById("mvErro");
   const ac = contaAutocomplete({
-    input: document.getElementById("mvConta"), hidden: document.getElementById("mvContaId"),
-    url: "{% url 'contas_buscar' %}", patrimonial: false
+    container: document.getElementById("mvContaPicker"), hidden: document.getElementById("mvContaId"),
+    labelId: "mvContaLabel", url: "{% url 'contas_buscar' %}", patrimonial: false, fundoId: {{ fundo.id }},
+    catalogo: JSON.parse(document.getElementById("ca-catalogo").textContent),
+    dicaEl: document.getElementById("mvValorDica")
   });
   let editandoId = null, excluindoId = null;
 
@@ -209,7 +212,7 @@ document.addEventListener("DOMContentLoaded", function () {
       document.getElementById("mvValor").value = numeroBR(m.valor);
       document.getElementById("mvHistorico").value = m.historico;
       document.getElementById("mvDocumento").value = m.documento;
-      ac.definir({ id: m.conta_id, codigo: m.conta, descricao: m.conta_descricao });
+      ac.definir(m.conta_detalhe);
       modal.show();
     } else if (ev.target.closest(".mv-excluir")) {
       excluindoId = m.id;

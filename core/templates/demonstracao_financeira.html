@@ -311,6 +311,7 @@
 
 {% block conteudo %}
 {% include 'base/navbar.html' %}
+{% include 'partials/_reabrir_periodo_modal.html' %}
 
 <div class="container py-4">
 
@@ -946,12 +947,14 @@
             em_andamento: `<span class="badge text-white" style="background-color:#3b82f6;cursor:pointer;" data-pid="${p.id}" data-status="em_andamento">Em Andamento ${_chv}</span>`,
             finalizada:   `<span class="badge bg-success" data-pid="${p.id}" data-status="finalizada" style="cursor:pointer;">Finalizada ${_chv}</span>`,
             vencida:      `<span class="badge bg-danger" data-pid="${p.id}" data-status="vencida" style="cursor:pointer;">Vencida ${_chv}</span>`,
+            historico:    `<span class="badge text-white" style="background-color:#4d7c6f;cursor:pointer;" data-pid="${p.id}" data-status="historico">Histórico ${_chv}</span>`,
           }[p.status] || `<span class="badge bg-secondary">${escapeHtml(p.status)}</span>`)
         : ({
             nao_iniciada: '<span class="badge bg-secondary">Não Iniciada</span>',
             em_andamento: '<span class="badge text-white" style="background-color:#3b82f6;">Em Andamento</span>',
             finalizada:   '<span class="badge bg-success">Finalizada</span>',
             vencida:      '<span class="badge bg-danger">Vencida</span>',
+            historico:    '<span class="badge text-white" style="background-color:#4d7c6f;">Histórico</span>',
           }[p.status] || `<span class="badge bg-secondary">${escapeHtml(p.status)}</span>`);
 
       // Vencimento + prazo visual
@@ -963,7 +966,7 @@
         const dias        = Math.round((dataVenc - hoje) / 86400000);
         let prazoTag      = "";
 
-        if (p.status === "finalizada") {
+        if (p.status === "finalizada" || p.status === "historico") {
           rowClass = "table-success";
         } else if (p.status === "vencida" || dias < 0) {
           rowClass  = "table-danger";
@@ -1632,12 +1635,14 @@
     em_andamento: { label: 'Em Andamento', cls: 'text-white',          style: 'background-color:#3b82f6;' },
     finalizada:   { label: 'Finalizada',   cls: 'bg-success',          style: '' },
     vencida:      { label: 'Vencida',      cls: 'bg-danger',           style: '' },
+    historico:    { label: 'Histórico',    cls: 'text-white',          style: 'background-color:#4d7c6f;' },
   };
   const _SD_OPTS = {
-    nao_iniciada: ['em_andamento', 'finalizada'],
-    em_andamento: ['nao_iniciada', 'finalizada'],
-    vencida:      ['finalizada'],
-    finalizada:   ['em_andamento', 'nao_iniciada'],
+    nao_iniciada: ['em_andamento', 'finalizada', 'historico'],
+    em_andamento: ['nao_iniciada', 'finalizada', 'historico'],
+    vencida:      ['finalizada', 'historico'],
+    finalizada:   ['em_andamento', 'nao_iniciada', 'historico'],
+    historico:    ['em_andamento', 'nao_iniciada', 'finalizada'],
   };
   const _sd = (() => {
     const el = document.createElement('div');
@@ -1679,10 +1684,20 @@
       : Math.max(M, r.top - sdH - 4) + 'px';
   }
 
-  function _selectSd(novoStatus) {
+  async function _selectSd(novoStatus) {
     const fd = new FormData();
     fd.append('status', novoStatus);
     fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+    const atual = document.querySelector(`[data-pid="${_sdPid}"]`);
+    // Sair de "Finalizada" é reabrir: pede o motivo, que o servidor registra
+    if (atual && atual.dataset.status === 'finalizada' && novoStatus !== 'finalizada') {
+      const pid = _sdPid;
+      _closeSd();
+      const motivo = await pedirMotivoReabertura();
+      if (motivo === null) return;
+      _sdPid = pid;
+      fd.append('motivo', motivo);
+    }
     fetch(`/api/periodo/${_sdPid}/status/`, {
       method: 'POST',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -1696,6 +1711,7 @@
       // `badge.closest('tr')` que retornava null quando o badge estava
       // dentro de um card em vez de uma <tr>.
       if (data.ok) document.dispatchEvent(new CustomEvent('df:periodo-atualizado'));
+      else alert(data.error || 'Não foi possível alterar o status.');
       _closeSd();
     })
     .catch(_closeSd);

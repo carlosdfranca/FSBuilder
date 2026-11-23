@@ -1,0 +1,59 @@
+{# Modal "Reabrir período" (sair de Finalizada exige motivo; o servidor registra quem e quando).
+   Uso: const motivo = await pedirMotivoReabertura(); // texto, ou null se a pessoa cancelou #}
+<div class="modal fade" id="modalReabrirPeriodo" tabindex="-1" aria-labelledby="modalReabrirPeriodoLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="formReabrirPeriodo" novalidate>
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalReabrirPeriodoLabel"><i class="bi bi-unlock me-2"></i>Reabrir período</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning py-2 small mb-3">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          Ao reabrir, as movimentações e os saldos até a data de referência voltam a aceitar alterações e a
+          Demonstração Financeira já emitida <strong>pode mudar</strong>.
+        </div>
+        <label for="reabrirMotivo" class="form-label fw-semibold">Motivo da reabertura <span class="text-danger">*</span></label>
+        <textarea id="reabrirMotivo" class="form-control" rows="3" maxlength="500" required
+                  placeholder="Ex.: correção de lançamento do mês 11"></textarea>
+        <div class="invalid-feedback">Informe o motivo para reabrir o período.</div>
+        <div class="form-text">Fica registrado com o seu nome e a data.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-warning"><i class="bi bi-unlock me-1"></i>Reabrir período</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+window.pedirMotivoReabertura = function () {
+  return new Promise(function (resolver) {
+    const el = document.getElementById('modalReabrirPeriodo');
+    const form = document.getElementById('formReabrirPeriodo');
+    const campo = document.getElementById('reabrirMotivo');
+    const modal = bootstrap.Modal.getOrCreateInstance(el);
+    let resposta = null;
+    campo.value = '';
+    campo.classList.remove('is-invalid');
+
+    function enviar(e) {
+      e.preventDefault();
+      const texto = campo.value.trim();
+      if (!texto) { campo.classList.add('is-invalid'); campo.focus(); return; }
+      resposta = texto;
+      modal.hide();
+    }
+    function aoFechar() {
+      form.removeEventListener('submit', enviar);
+      el.removeEventListener('hidden.bs.modal', aoFechar);
+      resolver(resposta);
+    }
+    function aoAbrir() { campo.focus(); el.removeEventListener('shown.bs.modal', aoAbrir); }
+    form.addEventListener('submit', enviar);
+    el.addEventListener('hidden.bs.modal', aoFechar);
+    el.addEventListener('shown.bs.modal', aoAbrir);
+    modal.show();
+  });
+};
+</script>

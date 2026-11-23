@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Count, ProtectedError
+from django.db.models import Count, Prefetch, ProtectedError
 from django.http import FileResponse, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
@@ -17,11 +17,14 @@ import json
 import logging
 
 from df.models import (
-    Fundo, HistoricoEmissaoDF, PeriodoDF, Gestora,
+    AlteracaoStatusPeriodo, Fundo, HistoricoEmissaoDF, PeriodoDF, Gestora,
     ChecklistItemPeriodo, DocumentoDF, LogAcessoDocumento,
 )
 from df.validators import validar_documento_upload
-from df.services.periodo_service import garantir_datas_periodo, movimentacoes_na_janela, periodo_tem_dados
+from df.services.periodo_service import (
+    alterar_status_manual, garantir_datas_periodo, movimentacoes_na_janela, periodo_tem_dados,
+    periodo_tem_movimentacao,
+)
 from df.services.documento_service import (
     sugerir_contem_dados_pessoais,
     registrar_acesso,
@@ -161,7 +164,7 @@ def demonstracao_financeira(request):
 
         proximo_periodo = (
             PeriodoDF.objects.filter(fundo=fundo, data_vencimento__gte=hoje)
-            .exclude(status="finalizada")
+            .exclude(status__in=["finalizada", "historico"])
             .order_by("data_vencimento")
             .first()
         )
@@ -257,13 +260,13 @@ def controle_emissoes(request):
 
     metricas = {
         'total': len(todos),
-        'finalizadas': sum(1 for p in todos if p.status == 'finalizada'),
+        'finalizadas': sum(1 for p in todos if p.status in ('finalizada', 'historico')),  # concluídas
         'em_andamento': sum(1 for p in todos if p.status == 'em_andamento'),
         'nao_iniciadas': sum(1 for p in todos if p.status == 'nao_iniciada'),
         'vencidas': sum(1 for p in todos if p.status == 'vencida'),
         'quase_vencendo': sum(
             1 for p in todos
-            if p.status not in ('finalizada', 'vencida')
+            if p.status not in ('finalizada', 'historico', 'vencida')
             and p.data_vencimento
             and 0 <= (p.data_vencimento - hoje).days <= 30
         ),
@@ -272,10 +275,12 @@ def controle_emissoes(request):
     if status_filtro == 'quase_vencendo':
         periodos_base = [
             p for p in todos
-            if p.status not in ('finalizada', 'vencida')
+            if p.status not in ('finalizada', 'historico', 'vencida')
             and p.data_vencimento
             and 0 <= (p.data_vencimento - hoje).days <= 30
         ]
+    elif status_filtro == 'finalizada':
+        periodos_base = [p for p in todos if p.status in ('finalizada', 'historico')]
     elif status_filtro:
         periodos_base = [p for p in todos if p.status == status_filtro]
     else:
@@ -284,7 +289,7 @@ def controle_emissoes(request):
     periodos = []
     for p in periodos_base:
         dias = (p.data_vencimento - hoje).days if p.data_vencimento else None
-        if p.status == 'finalizada':
+        if p.status in ('finalizada', 'historico'):
             urgencia = 'finalizada'
         elif p.status == 'vencida':
             urgencia = 'vencida'
@@ -334,7 +339,7 @@ def controle_emissoes(request):
         yr = str(p.ano)
         if yr not in ano_breakdown:
             ano_breakdown[yr] = {'finalizada': 0, 'em_andamento': 0, 'vencida': 0, 'nao_iniciada': 0}
-        key = p.status if p.status in ano_breakdown[yr] else 'nao_iniciada'
+        key = 'finalizada' if p.status == 'historico' else (p.status if p.status in ano_breakdown[yr] else 'nao_iniciada')
         ano_breakdown[yr][key] += 1
 
     anos_sorted = sorted(ano_breakdown.keys())
@@ -618,18 +623,11 @@ def atualizar_status_manual(request, periodo_id):
     periodo = get_object_or_404(PeriodoDF, id=periodo_id, empresa=empresa)
 
     novo_status = request.POST.get('status', '').strip()
-    STATUS_MANUAIS = {'nao_iniciada', 'em_andamento', 'finalizada'}
-    if novo_status not in STATUS_MANUAIS:
-        return JsonResponse({'ok': False, 'error': 'Status inválido'}, status=400)
-
-    if periodo.status == 'vencida' and novo_status == 'em_andamento':
-        return JsonResponse({
-            'ok': False,
-            'error': 'Período vencido não pode ser marcado como Em Andamento'
-        }, status=400)
-
-    periodo.status = novo_status
-    periodo.save(update_fields=['status', 'atualizado_em'])
+    try:
+        # Sair de "Finalizada" é reabrir: o service exige o motivo e registra quem/quando.
+        alterar_status_manual(periodo, novo_status, request.user, request.POST.get('motivo', ''))
+    except ValidationError as exc:
+        return JsonResponse({'ok': False, 'error': exc.messages[0]}, status=400)
     return JsonResponse({'ok': True, 'status': novo_status})
 
 
@@ -849,7 +847,11 @@ def gerenciar_periodos(request, fundo_id):
     qs = query_por_empresa_ativa(Fundo.objects.all(), request, "empresa")
     fundo = get_object_or_404(qs, id=fundo_id)
 
-    periodos_qs = PeriodoDF.objects.filter(fundo=fundo).order_by("-ano", "tipo_periodo")
+    periodos_qs = (
+        PeriodoDF.objects.filter(fundo=fundo)
+        .prefetch_related(Prefetch("alteracoes_status", queryset=AlteracaoStatusPeriodo.objects.select_related("usuario")))
+        .order_by("-ano", "tipo_periodo")
+    )
 
     # Filtros opcionais por URL params
     ano_filtro = request.GET.get("ano")
@@ -869,6 +871,13 @@ def gerenciar_periodos(request, fundo_id):
         status_info["n_movimentacoes"] = movs.count() if movs is not None else 0
         status_info["n_saldos_iniciais"] = saldos.count() if saldos is not None else 0
         status_info["status"] = periodo.status  # usa o status salvo, não o calculado
+        # Anual com lançamentos seria recriado no próximo lançamento: a exclusão é recusada
+        status_info["pode_excluir"] = not (
+            periodo.tipo_periodo == "anual" and (status_info["n_movimentacoes"] or status_info["n_saldos_iniciais"])
+        )
+        status_info["ultima_reabertura"] = next(
+            (a for a in periodo.alteracoes_status.all() if a.e_reabertura), None
+        )  # já vêm da mais nova para a mais antiga
         periodos_info.append({"periodo": periodo, **status_info})
 
     anos_disponiveis = (
@@ -933,6 +942,14 @@ def excluir_periodo(request, fundo_id, periodo_id):
     if request.method != "POST":
         return redirect("gerenciar_periodos", fundo_id=fundo_id)
 
+    if periodo.tipo_periodo == "anual" and periodo_tem_movimentacao(periodo):
+        messages.error(
+            request,
+            f"O período '{periodo.nome_exibicao}' tem movimentações ou saldos iniciais e não pode ser excluído: "
+            "ele seria recriado no próximo lançamento. Para refazê-lo, apague ou desfaça os lançamentos do ano.",
+        )
+        return redirect("gerenciar_periodos", fundo_id=fundo_id)
+
     tem_mec = periodo.mec_items.exists()
 
     if tem_mec and not request.POST.get("confirmar_exclusao"):
@@ -992,9 +1009,6 @@ def gerar_periodos_historicos(request, fundo_id):
     ano_atual = date.today().year
     if ano_inicial < 1990 or ano_final > ano_atual or ano_inicial > ano_final:
         return _err(f"Intervalo de anos inválido. Use entre 1990 e {ano_atual}.")
-
-    if not fundo.configuracoes_df.exists():
-        return _err("Este fundo não possui configuração de DF Anual.")
 
     from df.services.periodo_service import gerar_periodos_para_anos
     resultado = gerar_periodos_para_anos(fundo, ano_inicial, ano_final)

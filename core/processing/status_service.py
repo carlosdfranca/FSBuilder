@@ -9,7 +9,7 @@ def calcular_status_periodo(periodo_df):
     Calcula o status de um período de DF específico.
     
     Retorna um dicionário com:
-    - status: 'nao_iniciada' | 'em_andamento' | 'finalizada' | 'vencida'
+    - status: 'nao_iniciada' | 'em_andamento' | 'finalizada' | 'vencida' (o 'historico' é escolha do usuário e vem de periodo.status)
     - tem_dados: bool (tem movimentação, balancete ou MEC no período)
     - tem_emissao: bool (tem registro no histórico de emissão)
     - ultima_emissao: HistoricoEmissaoDF ou None

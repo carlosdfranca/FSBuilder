@@ -70,9 +70,13 @@ Accounting-firm users get the pseudo-role `CONTABILIDADE` (`permissions.ROLE_CON
 Values in statements are in R$ thousands (integers); checks (e.g. Ativo − Passivo − Resultado) use exact values.
 
 ### PeriodoDF status lifecycle
-Statuses: `nao_iniciada` → `em_andamento` → `finalizada` (or `vencida`)
+Statuses: `nao_iniciada` → `em_andamento` → `finalizada` (or `vencida`); plus `historico`.
 
-`atualizar_status_automatico()` in `df/services/periodo_service.py` runs on user interaction (posting/importing movements and opening balances, exporting). To sync stale statuses in bulk on page load, use direct ORM `.update()` calls — see `controle_emissoes` view for the pattern.
+**Annual periods are created by the movements themselves**: posting/editing a movement or opening balance, or importing a spreadsheet, calls `garantir_periodos_anuais(fundo, anos)` (`df/services/periodo_service.py`) for the years touched (an opening balance on 31/12/Y opens year Y+1). Due date = the fund's `ConfiguracaoDF`, else `VENCIMENTO_PADRAO` (31/03 of the next year — provisional, confirm with the client). A year whose due date already passed is born **`historico`**: counts as concluded in the calendar, sends no deadline alerts and **does not lock data**. Only **`finalizada`** locks (up to the latest finalized period's `data_referencia`). An annual period with movements/opening balances in its window cannot be deleted (it would be recreated); transitória/encerramento stay manual.
+
+Leaving `finalizada` is a **reopening**: `alterar_status_manual()` requires a motive and logs every manual change in `AlteracaoStatusPeriodo` (who/when/why; read-only in the admin). The UI asks for the motive via `partials/_reabrir_periodo_modal.html` (`pedirMotivoReabertura()`).
+
+`atualizar_status_automatico()` runs on user interaction (posting/importing movements and opening balances, exporting) and never changes `finalizada`/`historico`. To sync stale statuses in bulk on page load, use direct ORM `.update()` calls — see `controle_emissoes` view for the pattern.
 
 ### AJAX pattern
 All AJAX requests use `fetch` with `X-Requested-With: XMLHttpRequest`. Views detect this via `request.headers.get('X-Requested-With') == 'XMLHttpRequest'` and return `JsonResponse` instead of a redirect/render.

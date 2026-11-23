@@ -1,20 +1,306 @@
-{# Autocomplete de conta do plano (invólucro do autocomplete genérico). Uso: contaAutocomplete({ input, hidden, url, patrimonial }) #}
+{# Seletor de contas do plano: filtros por natureza e grupo, busca, atalhos "mais usadas", cartão da conta escolhida e dica de sinal.
+   contaAutocomplete({ container, hidden, url, patrimonial, fundoId, catalogo, dicaEl, labelId, onSelect })
+   -> { definir(conta|null), limpar(), focar() }   (catalogo vem de catalogo_do_plano, via json_script) #}
 {% include 'partials/_autocomplete.html' %}
+<style>
+  .cp-n1 { --nat: 59,130,246; }   /* Ativo */
+  .cp-n2 { --nat: 245,158,11; }   /* Passivo */
+  .cp-n3 { --nat: 167,139,250; }  /* Patrimônio líquido */
+  .cp-n4 { --nat: 34,197,94; }    /* Resultado */
+
+  .cp-filtros { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .6rem; }
+  .cp-chip { display: inline-flex; align-items: center; gap: .45rem; min-height: 32px; padding: .2rem .45rem .2rem .75rem;
+    border-radius: 999px; font-size: .8rem; font-weight: 600; cursor: pointer; color: var(--text-secondary);
+    background: var(--surface-2); border: 1px solid var(--border-color);
+    transition: background .15s ease, border-color .15s ease, color .15s ease; }
+  .cp-chip::before { content: ""; width: .55rem; height: .55rem; border-radius: 50%; background: rgb(var(--nat)); }
+  .cp-chip:hover { border-color: rgb(var(--nat)); color: var(--text-primary); }
+  .cp-chip:focus-visible { outline: 2px solid rgb(var(--nat)); outline-offset: 2px; }
+  .cp-chip.is-ativo { background: rgba(var(--nat), .16); border-color: rgb(var(--nat)); color: var(--text-primary); }
+  .cp-chip__n { font-size: .7rem; font-variant-numeric: tabular-nums; padding: .05rem .45rem; border-radius: 999px;
+    background: rgba(var(--nat), .18); color: var(--text-secondary); }
+  .cp-grupo { margin-bottom: .6rem; }
+
+  .cp-busca .form-control { padding-left: 2.15rem; padding-right: 2.15rem; }
+  .cp-busca__icone { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+  .cp-limpar { position: absolute; right: .4rem; top: 50%; transform: translateY(-50%); width: 1.8rem; height: 1.8rem; border: 0; border-radius: 50%;
+    background: transparent; color: var(--text-muted); cursor: pointer; }
+  .cp-limpar:hover { background: var(--surface-3); color: var(--text-primary); }
+  .cp-limpar:focus-visible { outline: 2px solid var(--accent-primary); }
+
+  .cp-dot { display: inline-block; width: .55rem; height: .55rem; margin-right: .5rem; border-radius: 50%; background: rgb(var(--nat)); }
+  .cp-caminho { display: block; margin: .1rem 0 0 1.05rem; }
+  .cp-usos { float: right; margin-top: .15rem; }
+
+  .cp-selecionada { display: flex; align-items: center; gap: .75rem; padding: .6rem .75rem; border-radius: 12px;
+    background: var(--surface-3); border: 1px solid var(--border-color); border-left: 4px solid rgb(var(--nat)); }
+  .cp-selecionada[hidden] { display: none; }
+  .cp-selecionada__texto { flex: 1 1 auto; min-width: 0; font-size: .88rem; color: var(--text-primary); }
+  .cp-selecionada__texto small { display: block; color: var(--text-muted); }
+  .cp-cod { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin-right: .35rem; }
+  .cp-selo { flex: 0 0 auto; padding: .1rem .6rem; border-radius: 999px; font-size: .7rem; font-weight: 700;
+    background: rgba(var(--nat), .18); border: 1px solid rgb(var(--nat)); color: var(--text-primary); }
+  @media (prefers-reduced-motion: reduce) { .cp-chip { transition: none; } }
+</style>
 <script>
-window.contaAutocomplete = function (opts) {
-  return window.autocomplete({
-    input: opts.input, hidden: opts.hidden, url: opts.url,
-    params: opts.patrimonial ? { patrimonial: 1 } : {},
-    resultsKey: "contas",
-    emptyText: "Nenhuma conta analítica encontrada.",
-    label: function (c) { return c.codigo + " — " + c.descricao; },
-    render: function (c, li) {
-      const b = document.createElement("b"); b.textContent = c.codigo;
-      const t = document.createElement("span"); t.textContent = c.descricao;
-      const s = document.createElement("small"); s.textContent = c.natureza;
-      li.appendChild(b); li.appendChild(t); li.appendChild(s);
-    },
-    onSelect: opts.onSelect
-  });
-};
+window.contaAutocomplete = (function () {
+  const DICAS = {
+    1: "Ativo: positivo aumenta o ativo; negativo reduz (baixa).",
+    2: "Passivo: positivo aumenta a obrigação; negativo reduz (pagamento).",
+    3: "Patrimônio líquido: positivo aumenta o PL; negativo reduz.",
+    4: "Resultado: receitas positivas; despesas e deduções negativas."
+  };
+  let ultimo = { natureza: null, grupo: "" };  // último filtro escolhido nesta página (só em memória)
+
+  function el(tag, classe, texto) {
+    const e = document.createElement(tag);
+    if (classe) e.className = classe;
+    if (texto != null) e.textContent = texto;
+    return e;
+  }
+  // Mesmo comprimento do original (uma letra por letra), para os índices do destaque baterem
+  function normaliza(s) {
+    return Array.from(s || "").map(function (ch) { return ch.normalize("NFD").charAt(0).toLowerCase(); }).join("");
+  }
+  function destacar(destino, texto, termo) {
+    const t = (termo || "").trim();
+    const i = t ? normaliza(texto).indexOf(normaliza(t)) : -1;
+    if (i < 0) { destino.appendChild(document.createTextNode(texto)); return; }
+    const n = Array.from(t).length;
+    destino.appendChild(document.createTextNode(texto.slice(0, i)));
+    destino.appendChild(el("mark", null, texto.slice(i, i + n)));
+    destino.appendChild(document.createTextNode(texto.slice(i + n)));
+  }
+
+  return function (cfg) {
+    const raiz = cfg.container, hidden = cfg.hidden;
+    const catalogo = cfg.catalogo || { naturezas: [], grupos: [] };
+    const idBase = "cp" + Math.random().toString(36).slice(2, 7);
+    const padraoDica = cfg.dicaEl ? cfg.dicaEl.textContent : "";
+    const estado = { natureza: null, grupo: "" };
+
+    raiz.innerHTML = "";
+    raiz.classList.add("cp");
+
+    // ── filtros: natureza (botões) e grupo (lista) ───────────────────
+    const filtros = el("div", "cp-filtros");
+    filtros.setAttribute("role", "group");
+    filtros.setAttribute("aria-label", "Filtrar contas por natureza");
+    const chips = {};
+    catalogo.naturezas.forEach(function (n) {
+      const b = el("button", "cp-chip cp-n" + n.codigo);
+      b.type = "button";
+      b.setAttribute("aria-pressed", "false");
+      b.title = n.label + " · " + n.qtd + " contas";
+      b.appendChild(el("span", null, n.curto));
+      b.appendChild(el("span", "cp-chip__n", String(n.qtd)));
+      b.addEventListener("click", function () { alternarNatureza(n.codigo); });
+      chips[n.codigo] = b;
+      filtros.appendChild(b);
+    });
+
+    const blocoGrupo = el("div", "cp-grupo");
+    blocoGrupo.hidden = true;
+    const select = el("select", "form-select form-select-sm");
+    select.id = idBase + "-grupo";
+    const rotuloGrupo = el("label", "ca-sr", "Grupo de contas");
+    rotuloGrupo.htmlFor = select.id;
+    select.addEventListener("change", function () { estado.grupo = select.value; lembrar(); ac.abrir(); });
+    blocoGrupo.appendChild(rotuloGrupo);
+    blocoGrupo.appendChild(select);
+
+    // ── busca ───────────────────────────────────────────────────────
+    const busca = el("div", "ca-wrap cp-busca");
+    const lupa = el("i", "bi bi-search cp-busca__icone");
+    lupa.setAttribute("aria-hidden", "true");
+    const input = el("input", "form-control");
+    input.type = "text";
+    input.placeholder = "Digite o código ou parte do nome";
+    input.autocomplete = "off";
+    if (cfg.labelId) input.setAttribute("aria-labelledby", cfg.labelId);
+    else input.setAttribute("aria-label", "Buscar conta por código ou nome");
+    const botaoLimpar = el("button", "cp-limpar");
+    botaoLimpar.type = "button";
+    botaoLimpar.hidden = true;
+    botaoLimpar.setAttribute("aria-label", "Limpar busca");
+    botaoLimpar.innerHTML = '<i class="bi bi-x-lg" aria-hidden="true"></i>';
+    botaoLimpar.addEventListener("click", function () { input.value = ""; botaoLimpar.hidden = true; ac.abrir(); });
+    input.addEventListener("input", function () { botaoLimpar.hidden = !input.value; });
+    busca.appendChild(lupa);
+    busca.appendChild(input);
+    busca.appendChild(botaoLimpar);
+
+    // ── cartão da conta escolhida ───────────────────────────────────
+    const cartao = el("div", "cp-selecionada");
+    cartao.hidden = true;
+    const selo = el("span", "cp-selo");
+    const bloco = el("div", "cp-selecionada__texto");
+    const cod = el("b", "cp-cod");
+    const desc = el("span");
+    const caminho = el("small");
+    bloco.appendChild(cod); bloco.appendChild(desc); bloco.appendChild(caminho);
+    const botaoTrocar = el("button", "btn btn-sm btn-outline-secondary", "Trocar");
+    botaoTrocar.type = "button";
+    botaoTrocar.addEventListener("click", trocar);
+    cartao.appendChild(selo); cartao.appendChild(bloco); cartao.appendChild(botaoTrocar);
+
+    [filtros, blocoGrupo, busca, cartao].forEach(function (e) { raiz.appendChild(e); });
+
+    // ── estado dos filtros ──────────────────────────────────────────
+    function gruposDaNatureza() {
+      return catalogo.grupos.filter(function (g) { return g.natureza === estado.natureza; });
+    }
+    function validarEstado() {
+      // O que foi lembrado pode não existir aqui (ex.: Resultado em saldos iniciais)
+      if (!catalogo.naturezas.some(function (n) { return n.codigo === estado.natureza; })) estado.natureza = null;
+      if (!gruposDaNatureza().some(function (g) { return g.codigo === estado.grupo; })) estado.grupo = "";
+    }
+    function atualizarFiltros() {
+      validarEstado();
+      Object.keys(chips).forEach(function (k) {
+        const ligado = Number(k) === estado.natureza;
+        chips[k].classList.toggle("is-ativo", ligado);
+        chips[k].setAttribute("aria-pressed", ligado ? "true" : "false");
+      });
+      const grupos = gruposDaNatureza();
+      blocoGrupo.hidden = !estado.natureza || !grupos.length;
+      select.innerHTML = "";
+      if (blocoGrupo.hidden) return;
+      select.appendChild(new Option("Todos os grupos", ""));
+      let optgroup = null, pai = null;
+      grupos.forEach(function (g) {
+        if (g.pai_codigo !== pai) {
+          optgroup = document.createElement("optgroup");
+          optgroup.label = g.pai_descricao;
+          select.appendChild(optgroup);
+          pai = g.pai_codigo;
+        }
+        optgroup.appendChild(new Option(g.descricao + " (" + g.qtd + ")", g.codigo));
+      });
+      select.value = estado.grupo;
+    }
+    function lembrar() { ultimo = { natureza: estado.natureza, grupo: estado.grupo }; }
+    function alternarNatureza(codigo) {
+      estado.natureza = estado.natureza === codigo ? null : codigo;
+      estado.grupo = "";
+      atualizarFiltros();
+      lembrar();
+      ac.abrir();
+    }
+    function limparFiltros() {
+      estado.natureza = null; estado.grupo = "";
+      input.value = ""; botaoLimpar.hidden = true;
+      atualizarFiltros();
+      lembrar();
+      ac.abrir();
+    }
+
+    // ── dica de sinal sob o campo Valor ─────────────────────────────
+    function atualizarDica(conta) {
+      if (!cfg.dicaEl) return;
+      if (!conta) { cfg.dicaEl.textContent = padraoDica; return; }
+      let texto = DICAS[conta.natureza_codigo] || padraoDica;
+      if (conta.descricao.trim().indexOf("(-)") === 0) texto += " Conta redutora: normalmente negativa.";
+      cfg.dicaEl.textContent = texto;
+    }
+
+    // ── lista de resultados ─────────────────────────────────────────
+    function filtrando() { return !!(estado.natureza || estado.grupo); }
+    function entradas(json) {
+      const lista = [];
+      const temTexto = !!input.value.trim();
+      if (json.mais_usadas && json.mais_usadas.length) {
+        lista.push({ tipo: "cabecalho", texto: "Mais usadas neste fundo" });
+        json.mais_usadas.forEach(function (c) { lista.push({ tipo: "item", item: c, recente: true }); });
+        lista.push({ tipo: "cabecalho", texto: "Todas as contas, por código" });
+      }
+      let ultimoGrupo = null;
+      json.contas.forEach(function (c) {
+        if (!temTexto && filtrando() && c.grupo_codigo !== ultimoGrupo) {
+          lista.push({ tipo: "cabecalho", texto: c.caminho.join(" › ") || c.natureza });
+          ultimoGrupo = c.grupo_codigo;
+        }
+        lista.push({ tipo: "item", item: c });
+      });
+      if (!json.contas.length) {
+        lista.push({
+          tipo: "vazio", texto: "Nenhuma conta encontrada.",
+          acao: (filtrando() || temTexto) ? { rotulo: "Limpar filtros", fazer: limparFiltros } : null
+        });
+      }
+      if (json.total > json.contas.length) {
+        lista.push({ tipo: "rodape", texto: "Mostrando " + json.contas.length + " de " + json.total + " · digite para refinar" });
+      }
+      return lista;
+    }
+    function renderItem(c, li, entrada) {
+      const termo = input.value;
+      const navegando = !termo.trim() && filtrando();
+      li.appendChild(el("span", "cp-dot cp-n" + c.natureza_codigo));
+      const codigo = el("b");
+      destacar(codigo, c.codigo, termo);
+      const descricao = el("span");
+      destacar(descricao, c.descricao, termo);
+      li.appendChild(codigo);
+      li.appendChild(descricao);
+      if (entrada.recente && c.usos) {
+        li.appendChild(el("small", "cp-usos", c.usos + (c.usos === 1 ? " lançamento" : " lançamentos")));
+      }
+      if (!navegando && c.caminho.length) li.appendChild(el("small", "cp-caminho", c.caminho.join(" › ")));
+    }
+
+    const ac = window.autocomplete({
+      input: input, hidden: hidden, url: cfg.url, resultsKey: "contas",
+      params: function () {
+        const p = {};
+        if (estado.natureza) p.natureza = estado.natureza;
+        if (estado.grupo) p.grupo = estado.grupo;
+        if (cfg.patrimonial) p.patrimonial = 1;
+        if (cfg.fundoId) { p.fundo = cfg.fundoId; p.recentes = 1; }
+        return p;
+      },
+      entries: entradas,
+      label: function (c) { return c.codigo + " — " + c.descricao; },
+      render: renderItem,
+      liveText: function (json) { return json.total + (json.total === 1 ? " conta encontrada" : " contas encontradas"); },
+      onSelect: function (c) { selecionar(c); }
+    });
+
+    // ── escolher, trocar, limpar ────────────────────────────────────
+    function selecionar(c) {
+      hidden.value = c.id;
+      selo.className = "cp-selo cp-n" + c.natureza_codigo;
+      selo.textContent = c.natureza;
+      cartao.className = "cp-selecionada cp-n" + c.natureza_codigo;
+      cod.textContent = c.codigo;
+      desc.textContent = c.descricao;
+      caminho.textContent = (c.caminho || []).join(" › ");
+      cartao.hidden = false;
+      filtros.hidden = true; blocoGrupo.hidden = true; busca.hidden = true;
+      atualizarDica(c);
+      if (cfg.onSelect) cfg.onSelect(c);
+    }
+    function mostrarBusca() {
+      hidden.value = ""; input.value = ""; botaoLimpar.hidden = true;
+      cartao.hidden = true; filtros.hidden = false; busca.hidden = false;
+      atualizarFiltros();
+      atualizarDica(null);
+    }
+    function trocar() { mostrarBusca(); ac.abrir(); }
+    function limpar() {
+      estado.natureza = ultimo.natureza; estado.grupo = ultimo.grupo;  // reabre com o último filtro
+      mostrarBusca();
+      ac.limpar();
+    }
+
+    estado.natureza = ultimo.natureza; estado.grupo = ultimo.grupo;
+    atualizarFiltros();
+
+    return {
+      definir: function (conta) { if (!conta) { limpar(); return; } ac.fechar(); selecionar(conta); },
+      limpar: limpar,
+      focar: function () { input.focus(); }
+    };
+  };
+})();
 </script>

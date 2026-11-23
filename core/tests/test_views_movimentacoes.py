@@ -91,10 +91,11 @@ class BuscaDeContasTests(ViewsMixin, TestCase):
 
     def test_limite_de_resultados(self):
         pai = Conta.objects.get(codigo="3.01")
-        for i in range(40):
+        for i in range(60):
             Conta.objects.create(codigo=f"3.01.9{i:02d}", descricao=f"Extra {i}", tipo="A", nivel=3, natureza=4, conta_superior=pai)
         self.como(self.viewer)
-        self.assertEqual(len(self.client.get(self.url_busca, {"q": "extra"}).json()["contas"]), 30)
+        r = self.client.get(self.url_busca, {"q": "extra"}).json()
+        self.assertEqual((len(r["contas"]), r["total"]), (50, 60))
 
     def test_exige_acesso_a_uma_empresa(self):
         self.client.logout()

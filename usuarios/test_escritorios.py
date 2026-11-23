@@ -584,7 +584,7 @@ class NavegacaoEscritoriosTests(TelasMixin, TestCase):
         s.save()
         html = self.client.get(reverse("saldos_iniciais_fundo", args=[fundo.id])).content.decode()
         self.assertIn("window.autocomplete = function", html)
-        self.assertIn("window.contaAutocomplete = function", html)
+        self.assertIn("window.contaAutocomplete = ", html)
 
 
 class AdminDoConviteTests(TelasMixin, TestCase):

@@ -21,7 +21,7 @@ from df.models import Conta, Fundo, LoteImportacaoMovimentacao, Movimentacao, Sa
 from df.services.movimentacao_service import (
     _checar_fechamento, data_fechamento, validar_conta_lancavel, validar_lancamento,
 )
-from df.services.periodo_service import atualizar_periodos_do_intervalo
+from df.services.periodo_service import ano_do_saldo_inicial, atualizar_periodos_do_intervalo, garantir_periodos_anuais
 
 LIMITE_ERROS = 200
 TAMANHO_LOTE_BD = 1000
@@ -61,7 +61,9 @@ def _valor_da_linha(linha: LinhaPlanilha, conta: Conta) -> Decimal:
 
 
 # ---------------------------------------------------------------- movimentações
-def importar_movimentacoes(fundo: Fundo, nome_arquivo: str, conteudo: bytes, usuario=None) -> LoteImportacaoMovimentacao:
+def importar_movimentacoes(
+    fundo: Fundo, nome_arquivo: str, conteudo: bytes, usuario=None, periodos_criados: list | None = None
+) -> LoteImportacaoMovimentacao:
     sha = hashlib.sha256(conteudo).hexdigest()
     repetido = LoteImportacaoMovimentacao.objects.filter(fundo=fundo, sha256=sha).first()
     if repetido:
@@ -116,6 +118,9 @@ def importar_movimentacoes(fundo: Fundo, nome_arquivo: str, conteudo: bytes, usu
             batch_size=TAMANHO_LOTE_BD,
         )
         datas = [linha.data for linha, _, _ in prontas]
+        criados = garantir_periodos_anuais(fundo, {d.year for d in datas})
+        if periodos_criados is not None:
+            periodos_criados.extend(criados)
         atualizar_periodos_do_intervalo(fundo, min(datas), max(datas))
     return lote
 
@@ -135,7 +140,10 @@ def desfazer_lote(lote: LoteImportacaoMovimentacao) -> int:
 
 
 # ---------------------------------------------------------------- saldos iniciais
-def importar_saldos_iniciais(fundo: Fundo, data_base: date, nome_arquivo: str, conteudo: bytes, usuario=None) -> int:
+def importar_saldos_iniciais(
+    fundo: Fundo, data_base: date, nome_arquivo: str, conteudo: bytes, usuario=None,
+    periodos_criados: list | None = None,
+) -> int:
     """
     Planilha com CONTA e VALOR (ou DÉBITO/CRÉDITO). Substitui o saldo inicial das contas citadas;
     as não citadas ficam como estão. Devolve a quantidade de contas gravadas.
@@ -197,5 +205,8 @@ def importar_saldos_iniciais(fundo: Fundo, data_base: date, nome_arquivo: str, c
                     fundo=fundo, conta=conta, data_base=data_base, valor=valor,
                     criado_por=usuario, atualizado_por=usuario,
                 )
+        criados = garantir_periodos_anuais(fundo, [ano_do_saldo_inicial(data_base)])
+        if periodos_criados is not None:
+            periodos_criados.extend(criados)
         atualizar_periodos_do_intervalo(fundo, data_base, data_base)
     return len(prontas)

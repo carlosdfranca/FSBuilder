@@ -9,6 +9,7 @@ from .models import (
     LinhaDFC,
     Movimentacao,
     SaldoInicial,
+    AlteracaoStatusPeriodo,
 )
 from .admin_mixins import TenantScopedAdminMixin
 
@@ -116,3 +117,20 @@ class MovimentacaoAdmin(SomenteConsultaAdmin):
     list_filter = ("fundo", "origem")
     search_fields = ("conta__codigo", "historico", "documento", "fundo__nome")
     date_hierarchy = "data"
+
+
+@admin.register(AlteracaoStatusPeriodo)
+class AlteracaoStatusPeriodoAdmin(admin.ModelAdmin):
+    """Trilha de auditoria: somente leitura."""
+    list_display = ("periodo", "status_anterior", "status_novo", "usuario", "criado_em")
+    list_filter = ("status_novo",)
+    readonly_fields = ("periodo", "status_anterior", "status_novo", "motivo", "usuario", "criado_em")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

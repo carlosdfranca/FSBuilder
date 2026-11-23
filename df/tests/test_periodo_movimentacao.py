@@ -135,23 +135,39 @@ class StatusAutomaticoTests(PlanoMinimoMixin, TestCase):
         self.assertEqual(self.status(), "vencida")
 
 
-class ExcluirPeriodoMantemMovimentacoesTests(PlanoMinimoMixin, TestCase):
-    def test_movimentacoes_sobrevivem_a_exclusao(self):
+class ExcluirPeriodoTests(PlanoMinimoMixin, TestCase):
+    def setUp(self):
         self.montar_plano()
-        fundo = self.montar_fundo()
-        periodo = PeriodoDF.objects.create(
-            fundo=fundo, empresa=fundo.empresa, tipo_periodo="anual", ano=2025,
-            data_vencimento=date(2099, 3, 31), data_referencia=date(2025, 12, 31),
-            data_anterior=date(2024, 12, 31), status="nao_iniciada",
-        )
-        ms.criar_movimentacao(fundo, self.caixa, date(2025, 6, 1), D("10"))
+        self.fundo = self.montar_fundo()
         user = Usuario.objects.create_user(username="master_ep", password="x")
-        Membership.objects.create(usuario=user, empresa=fundo.empresa, role=Membership.Role.MASTER, is_active=True)
+        Membership.objects.create(usuario=user, empresa=self.fundo.empresa, role=Membership.Role.MASTER, is_active=True)
         self.client.force_login(user)
 
-        r = self.client.post(reverse("excluir_periodo", args=[fundo.id, periodo.id]), follow=True)
-        self.assertEqual(r.status_code, 200)
+    def _periodo(self, tipo, ano=2025, **extra):
+        return PeriodoDF.objects.create(
+            fundo=self.fundo, empresa=self.fundo.empresa, tipo_periodo=tipo, ano=ano,
+            data_vencimento=date(2099, 3, 31), data_referencia=date(ano, 12, 31),
+            data_anterior=date(ano - 1, 12, 31), status="nao_iniciada", **extra,
+        )
+
+    def test_anual_com_movimentacao_nao_pode_ser_excluido(self):
+        periodo = self._periodo("anual")
+        ms.criar_movimentacao(self.fundo, self.caixa, date(2025, 6, 1), D("10"))
+        r = self.client.post(reverse("excluir_periodo", args=[self.fundo.id, periodo.id]), follow=True)
+        self.assertTrue(PeriodoDF.objects.filter(pk=periodo.pk).exists())
+        textos = [m.message for m in get_messages(r.wsgi_request)]
+        self.assertTrue(any("não pode ser excluído" in t for t in textos), textos)
+
+    def test_anual_vazio_pode_ser_excluido(self):
+        periodo = self._periodo("anual")
+        self.client.post(reverse("excluir_periodo", args=[self.fundo.id, periodo.id]), follow=True)
         self.assertFalse(PeriodoDF.objects.filter(pk=periodo.pk).exists())
-        self.assertEqual(Movimentacao.objects.filter(fundo=fundo).count(), 1)
+
+    def test_transitoria_exclui_e_as_movimentacoes_sobrevivem(self):
+        periodo = self._periodo("transitoria", descricao="parcial")
+        ms.criar_movimentacao(self.fundo, self.caixa, date(2025, 6, 1), D("10"))
+        r = self.client.post(reverse("excluir_periodo", args=[self.fundo.id, periodo.id]), follow=True)
+        self.assertFalse(PeriodoDF.objects.filter(pk=periodo.pk).exists())
+        self.assertEqual(Movimentacao.objects.filter(fundo=self.fundo).count(), 1)
         textos = [m.message for m in get_messages(r.wsgi_request)]
         self.assertTrue(any("mantidas" in t for t in textos), textos)
